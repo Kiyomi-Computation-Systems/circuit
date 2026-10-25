@@ -45,8 +45,9 @@ close-out under **Close-outs**, newest first.
     - a case-mismatched path (`circuit/Request.sls`), a surviving mutant's gap;
     - two citations in `global-constraints.md`, and the launcher test's copy skips
       `.claude/`.
-- **Slice 2, spikes S1 and S2 (design §13), on `spike/s1-s2`**, stacked on
-  `chore/scaffolding`. Each ran as an Opus agent. The session reran each one, checked its
+- **Slice 2, spikes S1 and S2 (design §13), built on `spike/s1-s2` and folded into
+  `chore/scaffolding`**, so PR #1 carries the design and slices 1 and 2, not yet merged.
+  Each ran as an Opus agent. The session reran each one, checked its
   claims against the code and the server's records, and took both into the design:
   - **S1, a port that waits** ([findings](research/s1-a-port-that-waits.md); 278,281
     tokens, 27 minutes): **the request body is a port.** A custom port's `read!` parks
