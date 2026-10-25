@@ -4,14 +4,32 @@
 
 ### Architecture & portability
 
-* Use the functional core / imperative shell pattern
+* Use the functional core / imperative shell pattern: a pure core (requests,
+  responses, headers, middleware) and two libraries that import
+  chez-http-server, the adapter `(circuit http-server)` and
+  `(circuit middleware waits)`. No other library imports `(http-server)`;
+  `make check-imports` holds it.
 * Follow the 12 Factor Apps philosophy
-* Project is built for Chez Scheme but should be mostly portable to R6RS.
+* Project is built for Chez Scheme but should be mostly portable to R6RS:
+  the core is plain R6RS, and only the two libraries above may use Chez's
+  own procedures.
 * Project should be portable across macos (darwin) and linux; windows is not
-  supported (`.plans/decisions/0004-windows-not-supported.md`)
+  supported (`.plans/decisions/0001-windows-is-not-supported.md`)
 * Project should be portable across amd64 and arm64
 * **DO NOT** setup macos CI runners: linux only!
 * Exported functions should have a comment with a Typed Racket style type signature
+
+### Dependencies
+
+* chez-http-server https://github.com/Kiyomi-Computation-Systems/chez-http-server,
+  a submodule under `vendor/` pinned at a release tag. It carries its own
+  pins, which circuit uses through it: chez-libuv, chez-httparse (with
+  byte-machine), uriparse, and chez-srfi for the tests.
+* `Akku.manifest`'s `depends` names chez-http-server at `^` its vendored
+  version; `make check-pins` holds the pin, its range and `Akku.lock`
+  together, so move all three on one commit.
+* The server's Akku package leaves out its `tests/`, so its fake shell
+  (`tests/fake-shell.sls`) is reached only through the vendored copy.
 
 ### Layout, process & libraries
 
@@ -38,7 +56,8 @@
 * Edit, commit and push on the host. The container has no git identity,
   agents or tokens, and no network but loopback
 * Verify it with `make check-guix`, run on the host.
-* The container exports `CHEZ` (the real `scheme` binary)
+* The container exports `CHEZ` (the real `scheme` binary) and `CC` (gcc;
+  the toolchain has no `cc`), which builds chez-libuv's shim.
 * Anything that needs the network or git runs on the host: fetches, pushes,
   downloads, `make check-pins`, and `git submodule update --init`, which a
   fresh clone needs once before `make deps`. The container has no git.
@@ -51,8 +70,8 @@
   it fail.
 * Prefer a check to a comment.
 * **Do not** write tests that rely on reading code comments
-* `make check-nothreads` fails on a threaded Chez by design, so `make test`
-  doesn't run it. CI runs it on a `--nothreads` Chez.
+* Chez must be a threaded build: chez-http-server needs one, so circuit has
+  no `--nothreads` lane.
 * `make test` runs every suite under GNU `timeout`. On macOS, run
   `brew install coreutils`, and make finds its `gtimeout`. Homebrew installs
   Chez as `chez`, which make also finds.
