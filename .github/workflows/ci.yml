@@ -1,0 +1,179 @@
+name: CI
+
+# Linux only, deliberately (AGENTS.md: do NOT set up macOS runners). One job,
+# on one amd64 image: it gets the pinned server and the pins it carries with
+# `make submodules`, holds them at their pins with `make check-pins`, builds
+# Chez at its floor (once, then cached), and runs `make test`, which builds
+# chez-libuv's shim against the system libuv and runs check-help,
+# check-suites and every suite.
+#
+# Every action is pinned to a full commit SHA, with its tag in a comment: a tag
+# can be moved to other code, a commit cannot.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      # A run by hand with a salt misses the Chez cache, so the build-and-save
+      # path runs: proven now, not at the next floor or image bump. A push or
+      # a PR has none, and the key is the cache's usual one.
+      chez-cache-salt:
+        description: "Appended to the Chez cache key, to run its miss path"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The floors. The job asserts the Chez and the libuv it ends up with meet
+# these rather than trusting the steps that resolve them. The Chez floor is
+# chez-http-server's: manifest.scm builds the Guix container's Chez at it.
+# chez-libuv's Makefile reads the libuv floor off the same number; below it,
+# its build would go looking for a vendored libuv that `make submodules` does
+# not clone.
+env:
+  CHEZ_FLOOR_VERSION: "10.4.1"
+  LIBUV_FLOOR_VERSION: "1.48.0"
+
+jobs:
+  linux:
+    name: linux
+    # An explicit image, not ubuntu-latest: that label moves from one Ubuntu
+    # release to the next, and an image change should be a reviewed commit.
+    # The libuv step below fails the job if the image's libuv is below the
+    # floor. Changing the image re-keys the Chez cache (step `os`).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # This repository alone, with the job's own token, which is not kept in
+      # .git/config once the checkout is done; `make submodules` below clones
+      # the submodules.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Clone the server and the pins it carries, then verify each is where
+      # its parent records before building anything: a drifted pin fails here,
+      # in seconds, not after a cold Chez build. Every one is public, so no
+      # token is needed, and a pull request from a fork, which gets no
+      # secrets, builds as one from this repository does. `make test` needs
+      # the checkouts (deps checks they are there) and never fetches.
+      - name: Init submodules
+        run: make submodules
+
+      - name: Check dependency pins
+        run: make check-pins
+
+      # libuv for the shim (pkg-config path); the X11/ncurses/uuid headers are
+      # what Chez's from-source build needs; curl is the client the
+      # integration suites run against the server, over loopback; coreutils
+      # is GNU timeout, which `make test` runs every suite under. Most are
+      # already on the image: naming them keeps the job from depending on
+      # that. No cmake: with libuv at its floor the shim links the system one.
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libuv1-dev \
+            libx11-dev libncurses-dev uuid-dev git curl coreutils
+
+      # The OS release for the Chez cache key, read off the machine rather than
+      # restated from runs-on (which a bump could forget), so a new image misses
+      # the cache instead of restoring a Chez built against another release's
+      # libraries. An empty ID or VERSION_ID fails the step.
+      - name: Identify the OS release
+        id: os
+        run: |
+          . /etc/os-release
+          echo "release=${ID:?}-${VERSION_ID:?}" >> "$GITHUB_OUTPUT"
+
+      # apt's chezscheme is below the floor, so build 10.4.1 from source and
+      # cache it keyed on the exact version, the OS release and the arch (a
+      # change to any must miss, not merge). Threaded, as chez-http-server
+      # needs.
+      - name: Restore cached Chez Scheme
+        id: chez-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/chez
+          key: chez-${{ runner.os }}-${{ steps.os.outputs.release }}-${{ runner.arch }}-${{ env.CHEZ_FLOOR_VERSION }}-threads${{ inputs.chez-cache-salt }}
+
+      - name: Build Chez Scheme from source (apt's is below the floor)
+        if: steps.chez-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "v${CHEZ_FLOOR_VERSION}" \
+            https://github.com/cisco/ChezScheme.git "${RUNNER_TEMP}/ChezScheme"
+          cd "${RUNNER_TEMP}/ChezScheme"
+          ./configure --threads --installprefix="${HOME}/.local/chez"
+          make -j"$(nproc)"
+          make install
+
+      # Saved here, not by the cache action's post-step, so a failed later step
+      # never publishes a half-installed prefix under the key.
+      - name: Save built Chez Scheme
+        if: steps.chez-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/chez
+          key: ${{ steps.chez-cache.outputs.cache-primary-key }}
+
+      - name: Put Chez on PATH
+        run: echo "${HOME}/.local/chez/bin" >> "${GITHUB_PATH}"
+
+      # The from-source install names its binary `scheme`; the Makefile
+      # defaults CHEZ to whichever of `scheme` and `chez` is on PATH. Resolve
+      # whichever exists into the environment so every later `make` step uses
+      # it.
+      - name: Resolve the Chez binary
+        run: |
+          if command -v chez >/dev/null; then echo "CHEZ=chez" >> "$GITHUB_ENV"
+          elif command -v chezscheme >/dev/null; then echo "CHEZ=chezscheme" >> "$GITHUB_ENV"
+          elif command -v scheme >/dev/null; then echo "CHEZ=scheme" >> "$GITHUB_ENV"
+          else echo "no Chez Scheme binary found" >&2; exit 1; fi
+
+      - name: Assert Chez meets the declared floor
+        run: |
+          raw="$($CHEZ --version 2>&1)"
+          ver="$(echo "$raw" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          [ -n "$ver" ] || { echo "::error::could not parse a Chez version from '$raw'"; exit 1; }
+          lowest="$(printf '%s\n%s\n' "$ver" "$CHEZ_FLOOR_VERSION" | sort -V | head -1)"
+          [ "$lowest" = "$CHEZ_FLOOR_VERSION" ] || { echo "::error::Chez $ver is below the floor $CHEZ_FLOOR_VERSION"; exit 1; }
+          echo "Chez $ver satisfies the $CHEZ_FLOOR_VERSION floor"
+
+      # circuit has no --nothreads lane (AGENTS.md): a Chez without threads
+      # fails here, by name, not inside the server's first import.
+      - name: Assert Chez is a threaded build
+        run: |
+          $CHEZ -q --script /dev/stdin <<'EOF'
+          (if (threaded?)
+              (begin (display "Chez is threaded") (newline) (exit 0))
+              (begin (display "Chez is not a threaded build" (current-error-port))
+                     (newline (current-error-port))
+                     (exit 1)))
+          EOF
+
+      - name: Assert libuv meets chez-libuv's floor
+        run: |
+          pkg-config --atleast-version="$LIBUV_FLOOR_VERSION" libuv || {
+            echo "::error::libuv ($(pkg-config --modversion libuv 2>/dev/null || echo absent)) does not meet chez-libuv's floor $LIBUV_FLOOR_VERSION"
+            exit 1
+          }
+          echo "libuv $(pkg-config --modversion libuv) satisfies the $LIBUV_FLOOR_VERSION floor"
+
+      - name: Report versions
+        run: |
+          $CHEZ --version 2>&1 || true
+          cc --version | head -1
+          curl --version | head -1
+          timeout --version | head -1
+
+      # check-help, check-suites, then every suite as its own process under
+      # timeout. `deps` builds chez-libuv's shim and links SRFI-64 first.
+      - name: Test
+        run: make test
