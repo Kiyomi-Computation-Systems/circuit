@@ -1,0 +1,13 @@
+#!r6rs
+(library (circuit http-server)
+  (export)
+  (import (rnrs)
+          (only (chezscheme) getenv)
+          (prefix (only (chezscheme) getenv) c:)
+          (http-server)
+          (http-server waits)
+          (only (http-server) serve)
+          (prefix (http-server coroutine) h:)
+          (http-server privateer)
+          (circuit request)
+          (circuit response)))

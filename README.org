@@ -10,9 +10,28 @@ An HTTP abstraction layer in the manner of [[https://github.com/ring-clojure/rin
 
 ** Requirements
 
-- Chez Scheme 10.4.0 or later, built with threads
+- Linux or macOS, on x86-64 or arm64
+- Chez Scheme 10.4.1 or later, built with threads
+- libuv 1.48 or later that ~pkg-config~ can see, and a C compiler: the
+  server's libuv binding builds a small C shim
+
+Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], pinned under ~vendor/~.
 
 ** Status
+
+Early. The build and its tests are in place; the library is not yet.
+
+** Build and test
+
+#+begin_src sh
+git clone https://github.com/Kiyomi-Computation-Systems/circuit.git
+cd circuit
+make submodules   # clones the pinned server and what it needs
+make test         # builds the libuv shim, then runs every tests/test-*.sps
+#+end_src
+
+On a Guix host, run builds and tests in the pinned container:
+~scripts/guix-env make test~. ~make help~ lists every target.
 
 ** Quick start
 
