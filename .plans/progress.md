@@ -45,9 +45,29 @@ close-out under **Close-outs**, newest first.
     - a case-mismatched path (`circuit/Request.sls`), a surviving mutant's gap;
     - two citations in `global-constraints.md`, and the launcher test's copy skips
       `.claude/`.
-- **Next: slice 2, spikes S1 and S2** (design §13): a port whose reads wait, which decides
-  the request body's interface; and the cost of a coroutine for every request, which sets
-  the gate on circuit's cost over the raw server.
+- **Slice 2, spikes S1 and S2 (design §13), on `spike/s1-s2`**, stacked on
+  `chore/scaffolding`. Each ran as an Opus agent. The session reran each one, checked its
+  claims against the code and the server's records, and took both into the design:
+  - **S1, a port that waits** ([findings](research/s1-a-port-that-waits.md); 278,281
+    tokens, 27 minutes): **the request body is a port.** A custom port's `read!` parks
+    soundly under the real server, and Chez 10.4.1 holds nothing across the park. A raise
+    loses what a gathering read had collected, and `get-bytevector-some` loses nothing; a
+    text port loses data even through `get-string-some`; a park runs every
+    `dynamic-wind`'s after thunk. Design §2, §4, §6, §12's A4 row, §13 and §14 take it up;
+  - **S2, the cost of a coroutine for every request**
+    ([findings](research/s2-coroutine-cost.md); 267,024 tokens, 30 minutes):
+    - a GET through an adapter-shaped prototype costs raw + 1,324–1,440 B a request, the
+      coroutine 1,036–1,154 B of it, and answers 93–95% of raw's requests a second at 50
+      connections, on a quiet rerun;
+    - a POST read whole costs raw + 2,863–2,951 B, for three coroutines, not two;
+    - the catch helper escapes by `call/cc`, not `call/1cc`, which costs 3.4–4.3 KB on a
+      coroutine once a park or Chez's `error` falls inside it;
+    - decision 0025's `guard` figure stands, and the server's `docs/waiting.md`'s is
+      stale.
+
+    Design §2, §3, §4, §6, §11, §12, §13, §15 and §16 take it up.
+- **Next: slice 3, the pure core** (design §17), once the owner has ruled on the gate
+  (design §16) and on ADR-0006's `call/1cc` (below).
 
 ## Open
 
@@ -64,10 +84,21 @@ close-out under **Close-outs**, newest first.
 - **Upstream asks** (design §12). Filed on chez-http-server on 2026-10-25, the owner's
   word, from the drafts in [upstream/](upstream/): A1 `request-header-list` as #214, A2
   the HTTP version in the facade as #215, A5 a producer with a declared length as #216,
-  A6 a call when a response is done as #217. Held: A4 and A8 until spikes S1 and S2
-  report, A3 until the server's side is decided, A7 until the adapter's tests are
-  written. Not in the design yet: **publishing chez-http-server on the Akku index**,
-  without which circuit can't be installed with Akku (ADR-0003).
+  A6 a call when a response is done as #217. **A4 and A8 can be drafted now:** S1 gives
+  A4's verb three guarantees (a sticky eof, a sticky close, a raise only before taking a
+  piece), and S2 gives A8 its cost, 143–149 B a request. Held: A3 until the server's
+  side is decided, A7 until the adapter's tests are written. Besides the asks, two fixes
+  to the server's `docs/waiting.md` (design §12): its stale `guard` figure, and a park's
+  running every `dynamic-wind`. Not in the design yet: **publishing chez-http-server on
+  the Akku index**, without which circuit can't be installed with Akku (ADR-0003).
+- **The gate on circuit's cost over the raw server** (design §16): S2 proposes G1–G6.
+  The owner decides.
+- **ADR-0006 allows `(only (chezscheme) call/1cc)`, and nothing needs it now.** S2 moved
+  the catch helper to `call/cc`, which is plain R6RS. The allowance, its line in
+  `global-constraints.md`, `tests/check-imports.sps`'s `chez-names` and its rows could
+  go, leaving the impure libraries nothing from `(chezscheme)`. The owner decides.
+- **ADR-0004 says a request with a body pays for two coroutines.** S2 counts three for a
+  body in one piece, and one more for each further piece (design §4).
 - **A7's shape**, the fake shell as a supported library (design §16).
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and
