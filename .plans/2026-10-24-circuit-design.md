@@ -364,7 +364,8 @@ The core is plain R6RS and imports nothing of the server's. The two
 impure libraries import `(http-server)`; the catch helper's `call/1cc` is
 Chez-only, and lives in `(circuit middleware waits)` with it.
 chez-http-server is a pinned submodule under `vendor/`, as it is in
-chez-websocket, and an Akku dependency.
+chez-websocket. It isn't on the Akku index, so it can't be an Akku
+dependency yet (ADR-0003).
 
 ## 12. Upstream asks (drafts, not filed)
 
