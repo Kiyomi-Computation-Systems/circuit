@@ -1,0 +1,24 @@
+* Circuit
+
+[[https://github.com/Kiyomi-Computation-Systems/circuit/actions/workflows/ci.yml][https://github.com/Kiyomi-Computation-Systems/circuit/actions/workflows/ci.yml/badge.svg]]
+
+An HTTP abstraction layer in the manner of [[https://github.com/ring-clojure/ring][Ring]] for R6RS Scheme.
+
+#+begin_quote
+✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
+#+end_quote
+
+** Requirements
+
+- Chez Scheme 10.4.0 or later, built with threads
+
+** Status
+
+** Quick start
+
+** Configuration
+
+** License
+
+© [[https://kiyomicomputation.systems/][Kiyomi Computation Systems LLC]]. Licensed under BSD 3-Clause — see
+[[file:LICENSE][LICENSE]].
