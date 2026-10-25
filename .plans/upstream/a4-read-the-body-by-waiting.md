@@ -1,5 +1,5 @@
 Title: Let a handler that waits read its body by waiting
-Drafted: 2026-10-25, not filed
+Filed: chez-http-server #227, 2026-10-25
 
 **The problem**
 

@@ -443,10 +443,9 @@ dependency yet (ADR-0003).
 
 ## 12. Upstream asks
 
-On chez-http-server, in the table form of its decision 0008. A1, A2, A5 and
-A6 were filed on 2026-10-25, each linked in its row; the rest are drafts.
-Each
-workaround carries a probe that goes red when its ask lands, and one that
+On chez-http-server, in the table form of its decision 0008. A1, A2, A4,
+A5, A6 and A8 were filed on 2026-10-25, each linked in its row; the rest
+are drafts. Each workaround carries a probe that goes red when its ask lands, and one that
 goes red when the library it reaches into changes shape: `(http-server
 request)`, `(http-server span)` and `(http-server headers)` are installed
 and importable, but `docs/reference.md` documents only the facade, so
@@ -458,11 +457,11 @@ the server's.
 | A1, [#214](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/214) | `request-header-list : Request -> (Listof (Pair String String))`: every header as strings, names as sent, values as `request-header` gives them, wire order. Not `request-headers`: `(http-server request)` exports that name with the span type | `req-headers`; logging, proxying | read the spans from `(http-server request)` with `(http-server span)`, trimmed as `(http-server headers)` trims, imported with `only` |
 | A2, [#215](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/215) | the HTTP version in the facade | `req-http-version` | `request-http-major` and `-minor` from `(http-server request)` |
 | A3 | the peer's and the local address of the connection a request came on | `req-remote-address`; trusting `X-Forwarded-For` only from your own proxy, which the server's deploying guide advises and which needs the peer's address | none: `#f`. It reverses a choice the server made on purpose, so it needs the argument made |
-| A4 | a waiting handler reads its body by waiting: a verb that gives the next piece (a copy, never empty) or eof, usable before the handler has answered and refused after; sends `100 Continue` at the first call, after the declared-length check against the caps (a 413 comes with no `100`); reads on credit; takes an optional cap of its own; and an answer before the body's end closes the connection after the response, as an unread body does today; once it has answered eof it answers eof, and once the client has closed or the body has failed it raises, on every later call and without waiting; it raises only before taking a piece, so a raise drops no bytes (S1). Today an answer that arrives while a streaming reader is mid-body is dropped, so this is a new core path | §4's port with backpressure; refusing a body before reading it | `read-whole-body`, capped |
+| A4, [#227](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/227) | a waiting handler reads its body by waiting: a verb that gives the next piece (a copy, never empty) or eof, usable before the handler has answered and refused after; sends `100 Continue` at the first call, after the declared-length check against the caps (a 413 comes with no `100`); reads on credit; takes an optional cap of its own; and an answer before the body's end closes the connection after the response, as an unread body does today; once it has answered eof it answers eof, and once the client has closed or the body has failed it raises, on every later call and without waiting; it raises only before taking a piece, so a raise drops no bytes (S1). Today an answer that arrives while a streaming reader is mid-body is dropped, so this is a new core path | §4's port with backpressure; refusing a body before reading it | `read-whole-body`, capped |
 | A5, [#216](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/216) | a producer with a declared length: the server writes `Content-Length` and closes on a producer that gives more or less | files with a length, HEAD on files, ranges later | chunked |
 | A6, [#217](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/217) | a call once a response is done, saying how: sent, the client left, a write failed | §7's moment 3; closing a port body when the client leaves | moments 1 and 2 only; a port whose client left is never closed by the adapter |
 | A7 | ship the fake shell as a supported library: run a handler, its waits included, against scripted requests and a fake clock | testing handlers that wait, and the adapter, with no socket | reach into `vendor/chez-http-server/tests/` |
-| A8 | `request-has-body? : Request -> Boolean`, the server's own decision that a request has a body: chunked, or a Content-Length above 0 | §4's choice of path without a copy of the server's rule | judge from the headers, leaning towards a reader (§4) |
+| A8, [#228](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/228) | `request-has-body? : Request -> Boolean`, the server's own decision that a request has a body: chunked, or a Content-Length above 0 | §4's choice of path without a copy of the server's rule | judge from the headers, leaning towards a reader (§4) |
 
 A1, A2 and A4 matter most: A1 and A2 have workarounds, while A4 changes
 what circuit can be. A3 needs a decision on the server's side before it is

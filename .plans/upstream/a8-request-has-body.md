@@ -1,5 +1,5 @@
 Title: Say whether a request has a body: request-has-body?
-Drafted: 2026-10-25, not filed
+Filed: chez-http-server #228, 2026-10-25
 
 **The problem**
 
