@@ -65,9 +65,21 @@ close-out under **Close-outs**, newest first.
     - decision 0025's `guard` figure stands, and the server's `docs/waiting.md`'s is
       stale.
 
-    Design §2, §3, §4, §6, §11, §12, §13, §15 and §16 take it up.
-- **Next: slice 3, the pure core** (design §17), once the owner has ruled on the gate
-  (design §16) and on ADR-0006's `call/1cc` (below).
+    Design §2, §3, §4, §6, §11, §12, §13, §15 and §16 take it up;
+  - **a read-only Opus review** of the spikes and the design's edits (323,209 tokens, 21
+    minutes) found the edits' faults, fixed after: §4 gave the interim's whole reader a
+    coroutine a piece, where the server hands it its body as one piece
+    (`connection.sls:1475`); several of the design's figures came from a rerun not yet
+    recorded, now in S2's Rerun section; the `docs/waiting.md` fix left out
+    `with-exception-handler`'s cost when the code parks; A8 would save 64 B, the two
+    lookups, not the judgement's whole 137–153 B (the 64 B rerun in isolation); §15.4's
+    record of the owner's reasons had lost one, now restored with a note; §4 claimed
+    reads S1 didn't raise inside, and §4 now asks circuit's `read!` to wait only when it
+    holds nothing, which `get-bytevector-some`'s losing nothing needs; the gate's
+    measurability notes (design §16). S2's `show` verdicts for the three coroutine-count
+    cases check only the status, and its findings now say so.
+- **Next: slice 3, the pure core** (design §17), once the owner has ruled on the gate,
+  ADR-0006's `call/1cc` and where the catch helper lives (design §16, and below).
 
 ## Open
 
@@ -85,24 +97,34 @@ close-out under **Close-outs**, newest first.
   word, from the drafts in [upstream/](upstream/): A1 `request-header-list` as #214, A2
   the HTTP version in the facade as #215, A5 a producer with a declared length as #216,
   A6 a call when a response is done as #217. **A4 and A8 are drafted, not filed**:
-  [a4-read-the-body-by-waiting.md](upstream/a4-read-the-body-by-waiting.md) carries S1's
-  guarantees for a port over the verb (a fresh piece, a sticky eof, a sticky close, a
-  raise only before taking a piece), and
-  [a8-request-has-body.md](upstream/a8-request-has-body.md) S2's cost, 143–149 B a
-  request, and a probe: the server keeps `Content-Length: 00` alive as no body, which a
-  copy of its rule that tests for `"0"` takes for one. Held: A3 until the server's
+  [a4-read-the-body-by-waiting.md](upstream/a4-read-the-body-by-waiting.md) carries what
+  S1 found a port over the verb needs (a fresh piece, never empty; a sticky eof and a
+  sticky close; a raise only before taking a piece; a raise before waiting inside a
+  passed deadline), and [a8-request-has-body.md](upstream/a8-request-has-body.md) the
+  lookups' cost, 64 B a request, and a probe: the server keeps `Content-Length: 00`
+  alive as no body, which a copy of its rule that tests for `"0"` takes for one. Held: A3 until the server's
   side is decided, A7 until the adapter's tests are written. Besides the asks, two fixes
   to the server's `docs/waiting.md` (design §12): its stale `guard` figure, and a park's
   running every `dynamic-wind`. Not in the design yet: **publishing chez-http-server on
   the Akku index**, without which circuit can't be installed with Akku (ADR-0003).
 - **The gate on circuit's cost over the raw server** (design §16): S2 proposes G1–G6.
-  The owner decides.
+  The owner decides. The design lists what a suite needs before it can hold them: the
+  case G5 holds, a fixed request count, oha from circuit's own build.
 - **ADR-0006 allows `(only (chezscheme) call/1cc)`, and nothing needs it now.** S2 moved
   the catch helper to `call/cc`, which is plain R6RS. The allowance, its line in
   `global-constraints.md`, `tests/check-imports.sps`'s `chez-names` and its rows could
-  go, leaving the impure libraries nothing from `(chezscheme)`. The owner decides.
-- **ADR-0004 says a request with a body pays for two coroutines.** S2 counts three for a
-  body in one piece, and one more for each further piece (design §4).
+  go, leaving the impure libraries nothing from `(chezscheme)`. ADR-0006's Context, "The
+  catch helper's cheap escape is Chez's `call/1cc`" (`:13`), is now false. Its
+  Consequences (`:32`) test a handler wrapped in the catch helper through the fake
+  shell, which only `wrap-timeout` now needs (design §6, §10). The owner decides.
+- **Where the catch helper lives** (design §15.4, §16): one of the two reasons for
+  `(circuit middleware waits)` over the pure core was `call/1cc`. With `call/cc` it needs
+  only `client-closed?` and `deadline-passed?`. The owner's decision stands until
+  revisited.
+- **ADR-0004 says a request with a body pays for two coroutines**: the interim's
+  `read-whole-body` costs three for a body and two for an empty one, however it
+  arrives, and a streaming reader one a piece and one for its end (design §4). Its "its
+  number sets the gate" also reads stronger than the design's "awaits the owner".
 - **A7's shape**, the fake shell as a supported library (design §16).
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and

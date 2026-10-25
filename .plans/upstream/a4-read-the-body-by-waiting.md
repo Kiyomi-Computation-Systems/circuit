@@ -23,9 +23,10 @@ response. So code that reads a body is split at the body, at v0.8.0
   answered a streaming reader, only `on-end` answers: an answer before then
   is dropped (`on-handler-responded`, `src/http-server/connection.sls:2017`
   and `:2033`: "An answer the core did not ask for changes nothing").
-- A body that is read whole from the thunk costs three coroutines: the
-  thunk's, one for its piece, and the end's. Each further piece costs one
-  more.
+- A body read whole from the thunk costs three coroutines: the thunk's,
+  one for the body, which the core hands a whole reader as its only piece,
+  and the end's. A streaming reader's costs one for each piece, and one for
+  the end.
 
 circuit, a Ring-like layer over the server, gives every app its request
 body as a binary input port, as Ring's `InputStream` and Rack's

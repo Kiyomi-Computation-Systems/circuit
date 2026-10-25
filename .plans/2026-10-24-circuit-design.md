@@ -39,9 +39,9 @@ Middleware = Handler -> Handler
 - **Every handler runs on a coroutine.** The adapter answers each request
   with `awaiting`, so the app, every middleware and the request body's
   reads may all wait. No option calls an app in place. S2 measured what
-  that costs: a GET through the adapter allocates about 1.3–1.4 KB more
-  than the raw server, and answers 93–95% of its requests a second at 50
-  connections (§13, §15).
+  that costs: a GET through an adapter-shaped prototype allocates about
+  1.3–1.4 KB more than the raw server, and answers 93–95% of its requests
+  a second at 50 connections (§13, §15).
 - **Waiting is ambient inside the handler call**, as blocking I/O is in
   Ring and Rack. Circuit defines no async primitive. Handlers wait with the
   server's verbs, and middleware is oblivious: `(handler req)` may park
@@ -108,7 +108,7 @@ does: keep the strings you read, not the request.
   session library exports `req-session`, not a symbol to look up). The
   keys live in an alist in the record; `req-set` copies the record and
   conses the key's pair onto it, so a stack of n middlewares that each set
-  a key costs n record copies and 2n pairs: 80 B a set, 398–403 B for a
+  a key costs n record copies and 2n pairs: 80 B a set, 383–409 B for a
   stack of five (S2).
 - **Core fields update functionally**, for middleware that rewrites them
   (method override, forwarded scheme and address, a mount prefix):
@@ -131,26 +131,32 @@ must wait for the client parks the coroutine.
   closes the connection after that response, as it does today for an
   unread body.
 
-Once A4 lands, a read that must wait parks, so these hold (S1):
+Once A4 lands, a read that must wait parks. S1 showed the first, second,
+fourth and fifth of these under the server, and the third is what A4 must
+add:
 
 - **A read is a wait.** It raises `&client-closed` when the client leaves,
   and `&deadline-passed` once a `with-deadline` around it has passed, out
   of the port procedure. A read the port can serve from bytes it holds
   doesn't wait, so it returns even inside a passed deadline: a deadline
   bounds waits, not reads.
-- **A raise loses what that read had gathered.** `get-bytevector-n` of any
-  size, `get-bytevector-all`, `get-line` and `get-string-all` gather across
-  waits and return at the end, so a raise drops everything the port's
-  `read!` handed them in that call. The port stays open and goes on from
-  the next byte. `get-bytevector-some` waits at most once and loses
-  nothing. A text port loses data even through `get-string-some` when a
-  piece ends inside a character: its decoder drops what it had decoded in
-  that call. So after a raise out of a body read, treat the body as gone:
-  answer, or raise on. A reader that must go on reads with
-  `get-bytevector-some` and decodes the bytes itself.
-- **After the close, every read raises** instead of waiting for bytes that
-  can't come. A4 must make the close stick; today a wait after a caught
-  close parks again.
+- **A raise loses what that read had gathered.** A `get-bytevector-n` of
+  any size gathers across waits and returns at the end, so a raise drops
+  everything the port's `read!` handed it in that call: 2,000 B of a
+  5,000 B and of a 20,000 B read. `get-bytevector-all`, `get-line` and
+  `get-string-all` gather the same way, by Chez's source; S1 didn't raise
+  inside them. The port stays open and goes on from the next byte.
+  `get-bytevector-some` waits at most once and loses nothing, provided the
+  port's `read!` waits only when it holds no bytes, and returns what it
+  holds: circuit's port must keep to that. A text port loses data even
+  through `get-string-some` when a piece ends inside a character: its
+  decoder drops what it had decoded in that call. So after a raise out of
+  a body read, treat the body as gone: answer, or raise on. A reader that
+  must go on reads with `get-bytevector-some` and decodes the bytes
+  itself.
+- **After the close, every read must raise** instead of waiting for bytes
+  that can't come. A4 must make the close stick: S1 saw today's waits do
+  the opposite, a wait after a caught close parking again.
 - **A park leaves every `dynamic-wind` around the read** and re-enters it at
   the resume: the after thunk runs at each park, the before thunk at each
   resume (§6).
@@ -171,10 +177,13 @@ chunked body gets its 413 at the piece that passes the cap.
 The adapter's thunk answers a reader **only when the head announces a
 body**. Otherwise it calls the app itself. An upgrade request has no body,
 so it never goes through a reader (§8), and a bodiless request costs one
-coroutine. A reader costs one more for its end, and one for each piece of
-the body, since the server calls each piece's procedure on a coroutine of
-its own: a body that comes in one piece costs three, and a reader for a
-request with no body two (S2).
+coroutine. The server calls a reader's pieces and its end each on a
+coroutine of its own, and hands a whole reader its body as its only piece,
+however it arrived (`hand-over-whole`, `connection.sls:1475`). So the
+interim's `read-whole-body` costs three coroutines for a body and two for
+an empty one, and a reader answered for a request with no body costs two
+(S2). A streaming reader would cost one for each piece, and one for its
+end.
 
 Whether a request has a body is the server's decision, and the facade
 doesn't say; A8 asks it to. Until then the adapter judges from the
@@ -186,15 +195,22 @@ response. So the adapter answers a reader when there is a
 `Transfer-Encoding` field, or a `Content-Length` field whose value is
 anything but `0`. It calls the app directly only when neither is there, or
 every `Content-Length` reads `0`. By then the server has refused a
-malformed length, and any coding before `chunked`. The judgement costs
-143–149 B a request, about a tenth of circuit's cost over the raw server,
-because the facade turns the header's name into bytes on every lookup
-(`view.sls:85`, `:93`); A8 would save it (S2).
+malformed length, and any coding before `chunked`. The judgement's two
+lookups allocate 64 B a request, the two names turned into bytes on every
+lookup (`view.sls:85`, `:94`), which A8 would save. In the server, the
+prototype with the judgement costs 137–153 B more than one without (S2,
+its rerun and its review). The rest most likely comes with the adapter's
+two paths, which an adapter that asks A8's `request-has-body?` keeps. The
+server's rule and a copy of it differ at the edges: it reads
+`Content-Length: 00` as no body, where this one answers a reader.
 
 Spike S1 ([findings](research/s1-a-port-that-waits.md)) settled the
 interface: the body is a port. Under the real server, a custom port whose
-`read!` waits served every standard read, binary and text, across several
-waits each, with two connections parked in their ports at once. Chez
+`read!` waits served the binary and text reads S1 tried
+(`get-bytevector-n`, `-some` and `-all`, `get-u8`, `lookahead-u8`, and
+`get-line`, `get-char` and `get-string-all` through a UTF-8
+`transcoded-port`), one `get-bytevector-n` across 12 waits, with two
+connections parked in their ports at once. Chez
 10.4.1 calls a custom port's `read!` with no lock, critical section or
 `dynamic-wind` around it, so a park leaves nothing held.
 `(body-read source)` is set aside (§14).
@@ -273,12 +289,12 @@ Rules for middleware authors, each a fact about the server:
   middleware's helper re-raises both before catching the rest.
 - **Catch with `call/cc` around `with-exception-handler`.** S2 measured
   each way to catch on a coroutine, over the app alone. With nothing
-  raised, the helper by `call/cc` costs about 310–365 B, `guard` 340–415 B,
-  and a helper by Chez's `call/1cc` 410–860 B, which grows to 3.4–3.5 KB
-  once the app parks inside it. Catching an `error`, they cost about
-  1.0 KB, 1.2–1.3 KB and 4.1–4.3 KB. A one-shot continuation stays cheap
-  only while nothing captures a full one before it is used. On a coroutine
-  a park does, and so does Chez's `error`, whose condition carries the
+  raised, the helper by `call/cc` costs 309–365 B, `guard` 377–414 B, and
+  a helper by Chez's `call/1cc` 407–860 B, which grows to 3.4–3.5 KB once
+  the app parks inside it. Catching an `error`, parked or not, they cost
+  955–1,038 B, 1,197–1,306 B and 4.1–4.3 KB. On a coroutine the one-shot
+  escape is never the cheaper, and its cost jumps once a full capture
+  falls inside it: a park, or Chez's `error`, whose condition carries the
   raise's continuation. So the catch helper escapes by `call/cc`, which is
   plain R6RS. It re-raises `&client-closed` and `&deadline-passed` from
   where they were raised, before anything unwinds, and turns any other
@@ -290,8 +306,10 @@ Rules for middleware authors, each a fact about the server:
   connection: 7.2–8.3 KB a request, and under a third of the rate at 50
   connections (S2).
 - **Don't free a resource in a `dynamic-wind` after thunk.** A park leaves
-  every `dynamic-wind` around it and re-enters it at the resume (S1; the
-  server's scheduler relies on it to tell a park from a leaving). So an
+  every `dynamic-wind` around it and re-enters it at the resume (S1). The
+  server's own `with-deadline` relies on it: its after thunk asks
+  `coroutine-suspending?` to tell a park from a leaving
+  (`private/waits.sls:385`). So an
   after thunk runs at every wait inside the handler, a body read included.
   Free the resource when the call returns, and on a raise with an exception
   handler that raises on.
@@ -308,8 +326,11 @@ Rules for middleware authors, each a fact about the server:
   (`with-deadline`, `deadline-passed?`, `client-closed?`), and
   `with-deadline` is refused off a coroutine. So they can't live in the
   pure core: they live in `(circuit middleware waits)`, which imports
-  `(http-server)` (§11). A handler wrapped in them can't be called
-  directly in a test; they are tested through the fake shell (§10).
+  `(http-server)` (§11). A handler wrapped in `wrap-timeout` can't be
+  called directly in a test, since `with-deadline` is refused off a
+  coroutine; it is tested through the fake shell (§10). One wrapped only in
+  the catch helper can be, when it doesn't wait: the helper is plain R6RS
+  and needs only the two predicates.
 
 ## 7. When a response is done
 
@@ -381,8 +402,9 @@ libraries that import `(http-server)`.
   `(app (make-test-req 'GET "/health"))`, with no server. Test requests
   take headers and a body (bytevector or string) and supply a view of their
   own (§3).
-- **A handler that waits**, or one wrapped in `wrap-timeout` or the catch
-  helper, needs a host where waits work. The server has one,
+- **A handler that waits**, or one wrapped in `wrap-timeout`, needs a host
+  where waits work; one wrapped only in the catch helper doesn't, unless
+  it waits (§6). The server has one,
   `tests/fake-shell.sls`, with a fake clock and resolver, which
   chez-websocket's tests reach into. A7 asks to ship it as a supported
   library. Until then circuit's tests reach into the vendored server as
@@ -436,7 +458,7 @@ the server's.
 | A1, [#214](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/214) | `request-header-list : Request -> (Listof (Pair String String))`: every header as strings, names as sent, values as `request-header` gives them, wire order. Not `request-headers`: `(http-server request)` exports that name with the span type | `req-headers`; logging, proxying | read the spans from `(http-server request)` with `(http-server span)`, trimmed as `(http-server headers)` trims, imported with `only` |
 | A2, [#215](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/215) | the HTTP version in the facade | `req-http-version` | `request-http-major` and `-minor` from `(http-server request)` |
 | A3 | the peer's and the local address of the connection a request came on | `req-remote-address`; trusting `X-Forwarded-For` only from your own proxy, which the server's deploying guide advises and which needs the peer's address | none: `#f`. It reverses a choice the server made on purpose, so it needs the argument made |
-| A4 | a waiting handler reads its body by waiting: a verb that gives the next piece (a copy) or eof, usable before the handler has answered and refused after; sends `100 Continue` at the first call, after the declared-length check against the caps (a 413 comes with no `100`); reads on credit; takes an optional cap of its own; and an answer before the body's end closes the connection after the response, as an unread body does today; once it has answered eof it answers eof, and once the client has closed or the body has failed it raises, on every later call and without waiting; it raises only before taking a piece, so a raise drops no bytes (S1). Today an answer that arrives while a streaming reader is mid-body is dropped, so this is a new core path | §4's port with backpressure; refusing a body before reading it | `read-whole-body`, capped |
+| A4 | a waiting handler reads its body by waiting: a verb that gives the next piece (a copy, never empty) or eof, usable before the handler has answered and refused after; sends `100 Continue` at the first call, after the declared-length check against the caps (a 413 comes with no `100`); reads on credit; takes an optional cap of its own; and an answer before the body's end closes the connection after the response, as an unread body does today; once it has answered eof it answers eof, and once the client has closed or the body has failed it raises, on every later call and without waiting; it raises only before taking a piece, so a raise drops no bytes (S1). Today an answer that arrives while a streaming reader is mid-body is dropped, so this is a new core path | §4's port with backpressure; refusing a body before reading it | `read-whole-body`, capped |
 | A5, [#216](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/216) | a producer with a declared length: the server writes `Content-Length` and closes on a producer that gives more or less | files with a length, HEAD on files, ranges later | chunked |
 | A6, [#217](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/217) | a call once a response is done, saying how: sent, the client left, a write failed | §7's moment 3; closing a port body when the client leaves | moments 1 and 2 only; a port whose client left is never closed by the adapter |
 | A7 | ship the fake shell as a supported library: run a handler, its waits included, against scripted requests and a fake clock | testing handlers that wait, and the adapter, with no socket | reach into `vendor/chez-http-server/tests/` |
@@ -454,8 +476,9 @@ the spikes:
   nothing. The 3.7 KB is M7.1's 3,756 B a coroutine (decision 0015),
   measured before decision 0025 made the drain's continuation full.
   Through v0.8.0, S2 measured `guard` at 340–415 B with nothing raised and
-  1.2–1.3 KB catching an `error`, as 0025 says, and
-  `with-exception-handler` alone at 150–180 B. An escape by `call/1cc`
+  1.2–1.3 KB catching an `error`, which matches 0025's 1,238–1,304 B, and
+  `with-exception-handler` alone at 150–180 B, or 300–320 B when the code
+  parks inside it. An escape by `call/1cc`
   costs 3.4–4.3 KB once the code parks or Chez's `error` raises inside it,
   where one by `call/cc` costs 0.3–1.0 KB (§6).
 - **It doesn't say that a park runs the after thunk of every
@@ -542,7 +565,11 @@ The owner's answers to this draft's open questions (2026-10-25):
    imports three circuit libraries. Weighed: beside the adapter in
    `(circuit http-server)`, which a second adapter would have to carry;
    and in the pure core with the verbs passed as arguments, which every
-   call site would repeat.
+   call site would repeat, and which the Chez-only `call/1cc` rules out.
+   S2 has since moved the catch helper to `call/cc` (§6), so the second
+   reason no longer holds for it: it needs only `client-closed?` and
+   `deadline-passed?`. The decision stands until the owner revisits it
+   (§16).
 5. **A1 asks for `request-header-list`**, the third of the family
    `request-header`, `request-header-values`, `request-header-list`.
    Weighed: `request-fields`, RFC 9110's term but a stranger beside the
@@ -556,7 +583,19 @@ The owner's answers to this draft's open questions (2026-10-25):
    request for a GET and a POST through the adapter, circuit's own share
    of them, a `req-set`, and the catch helper, each held by a suite; and
    the GET's requests a second at 50 connections, as a smoke. The owner
-   decides.
+   decides. Before a suite can hold them:
+   - G5 must name the case it holds. A `call/1cc` helper passes 512 B at
+     50 connections with nothing raised and no park (407–410 B), and fails
+     it only at 1 connection or once the app parks;
+   - each gate must fix its request count and rounds. The method reads
+     within 5 B at 25,000 requests, and within 30 B at 10,000, against
+     headroom of 59–66 B on G3's POST;
+   - G4's single `req-set` is five sets over five, not measured alone;
+   - oha must come from circuit's own build: today only the server's
+     `make oha` fetches it;
+   - after the rerun the headroom is G1 96 B, G5 147 B and G6 3.0 points.
+     G6's on a shared CI runner is unknown.
+3. **Where the catch helper lives**, now that it needs no Chez (§15.4).
 
 ## 17. Slices
 

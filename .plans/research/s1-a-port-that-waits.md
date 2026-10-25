@@ -397,7 +397,6 @@ besides:
   raise it holds nothing: the bytes item 6 lost were Chez's;
 - `s/io.ss:3633`, the custom binary input port's handler, puts nothing
   around `read!`, where the file ports' handlers take a `critical-section`;
-- the server's scheduler relies on a park's running every `dynamic-wind`'s
-  after thunk: an after thunk on the coroutine's stack reads
-  `coroutine-suspending?` to tell a park from a leaving
-  (`src/http-server/private/scheduler.sls:127`).
+- the server's own `with-deadline` relies on a park's running every
+  `dynamic-wind`'s after thunk: its after thunk asks `coroutine-suspending?`
+  to tell a park from a leaving (`src/http-server/private/waits.sls:385`).

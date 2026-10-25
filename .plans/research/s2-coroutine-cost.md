@@ -320,15 +320,32 @@ baseline:
 At 1 connection the spread was ±10% even on the quiet machine. G6 holds.
 
 **Bytes a request**, `s2-run.sh bytes 1 10000`: one round, so each figure
-is read over 5,000 requests more and is coarser than the tables above. All
-agree with them to about 30 B: the adapter's GET +1,440 / +1,333 B, its
-POST +2,944 / +2,865, five sets +383 / +409; over the unwrapped app,
-nothing raised and after a park, the helper by `call/1cc` +3,424 / +3,525,
-by `call/cc` +324 / +307, `guard` +393 / +341; catching an `error`, +4,216 /
-+4,316, +1,034 / +1,038, +1,306 / +1,295. G1's headroom at 1 connection
-was 96 B.
+is read over 5,000 requests more and is coarser than the tables above; the
+zero control, catch-none-ok over get-adapter, read -30 / -3 B. Over
+baseline, at 1 / 50 connections:
 
-**Show**: the 19 cases as expected. `(guard (e (#t (continuation-condition?
+| variant | rerun | | variant | rerun |
+|:--|--:|:--|:--|--:|
+| get-awaiting | +1,154 / +1,043 | | catch-guard-ok | +414 / +377 |
+| get-adapter-no-check | +1,293 / +1,180 | | catch-helper-ok | +860 / +410 |
+| get-adapter | +1,440 / +1,333 | | catch-helper-cc-ok | +365 / +309 |
+| get-five, over get-adapter | +383 / +409 | | catch-handler-only-ok | +176 / +154 |
+| post-awaiting | +2,493 / +2,413 | | catch-guard-ok-park | +393 / +341 |
+| post-adapter | +2,944 / +2,865 | | catch-helper-ok-park | +3,424 / +3,525 |
+| catch-guard-raise | +1,306 / +1,295 | | catch-helper-cc-ok-park | +324 / +307 |
+| catch-helper-raise | +4,216 / +4,316 | | catch-handler-only-ok-park | +319 / +302 |
+| catch-helper-cc-raise | +1,034 / +1,038 | | catch-guard-raise-park | +1,259 / +1,197 |
+| catch-none-raise | +7,710 / +7,869 | | catch-helper-raise-park | +4,067 / +4,135 |
+| catch-none-raise-park | +7,631 / +8,254 | | catch-helper-cc-raise-park | +970 / +971 |
+
+Each agrees with the tables above to about 30 B, the coarser count's
+precision. The judgement from the head, get-adapter over
+get-adapter-no-check, read +147 / +153 B. After the rerun the gate's
+headroom is G1 96 B (1 connection), G5 147 B, G6 3.0 points.
+
+**Show**: the 19 cases as expected. Three of them, the coroutine counts
+for the POST paths and a reader on a GET, check only the status: their
+evidence is the printed story, read against `shell.sls:961-983`. `(guard (e (#t (continuation-condition?
 e))) X)`, run as a script in the container: `#t` for `(error 'app "boom")`
 and for `assertion-violation`, `#f` for `(raise (make-error))`. The 3.7 KB in
 the server's `docs/waiting.md` traces to its milestone plan before the

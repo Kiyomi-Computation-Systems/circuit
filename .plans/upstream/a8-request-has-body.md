@@ -23,14 +23,13 @@ coroutines, or answer a bodiless request in place.
   response. A copy that tests for the string `"0"` takes `00` for a body.
 - **The copy costs.** Each lookup turns the name into bytes
   (`request-header`, `src/http-server/view.sls:85`, and
-  `request-header-values`, `:93`), so the two lookups cost 143–149 B a
-  request.
+  `request-header-values`, `:94`), so the two lookups allocate 64 B a
+  request, two 32 B bytevectors, on a request that has neither field.
 
 circuit, a Ring-like layer over the server, answers `awaiting` for every
 request. Its thunk answers a reader only when the head announces a body,
-and calls the app itself otherwise. That judgement is about a tenth of
-circuit's cost over the raw server, which is 1.3–1.4 KB a GET. A reader
-answered for a bodiless request costs a second coroutine.
+and calls the app itself otherwise. A reader answered for a bodiless
+request costs a second coroutine.
 
 **What you propose**
 
