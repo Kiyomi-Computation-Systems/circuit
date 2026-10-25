@@ -84,9 +84,13 @@ close-out under **Close-outs**, newest first.
 - **Upstream asks** (design §12). Filed on chez-http-server on 2026-10-25, the owner's
   word, from the drafts in [upstream/](upstream/): A1 `request-header-list` as #214, A2
   the HTTP version in the facade as #215, A5 a producer with a declared length as #216,
-  A6 a call when a response is done as #217. **A4 and A8 can be drafted now:** S1 gives
-  A4's verb three guarantees (a sticky eof, a sticky close, a raise only before taking a
-  piece), and S2 gives A8 its cost, 143–149 B a request. Held: A3 until the server's
+  A6 a call when a response is done as #217. **A4 and A8 are drafted, not filed**:
+  [a4-read-the-body-by-waiting.md](upstream/a4-read-the-body-by-waiting.md) carries S1's
+  guarantees for a port over the verb (a fresh piece, a sticky eof, a sticky close, a
+  raise only before taking a piece), and
+  [a8-request-has-body.md](upstream/a8-request-has-body.md) S2's cost, 143–149 B a
+  request, and a probe: the server keeps `Content-Length: 00` alive as no body, which a
+  copy of its rule that tests for `"0"` takes for one. Held: A3 until the server's
   side is decided, A7 until the adapter's tests are written. Besides the asks, two fixes
   to the server's `docs/waiting.md` (design §12): its stale `guard` figure, and a park's
   running every `dynamic-wind`. Not in the design yet: **publishing chez-http-server on
