@@ -1,0 +1,33 @@
+#!/bin/sh
+# Runs INSIDE the container, as the first command scripts/guix-env starts.
+# Exports what the Makefile, chez-libuv's build and the suites take from
+# the profile, then runs the command:
+#
+#   CHEZ  the profile's scheme, the real binary: a symlink named chez
+#         breaks Chez's boot-file lookup
+#   CC    the profile's gcc, which builds chez-libuv's shim: gcc-toolchain
+#         installs no cc
+#
+# It sets no LD_LIBRARY_PATH. chez-libuv's build bakes the absolute path of
+# the libuv it links into the config.sls it generates, so nothing loads a
+# library by bare name.
+set -eu
+
+die() { printf 'guix-env-enter: %s\n' "$*" >&2; exit 2; }
+
+if [ -z "${GUIX_ENVIRONMENT:-}" ]; then
+  die "not inside a Guix environment; use scripts/guix-env"
+fi
+
+# need FILE: dies unless FILE is a regular file, or a symlink to one.
+need() {
+  [ -f "$1" ] || die "no $1 in the profile; is its package in manifest.scm?"
+}
+
+need "$GUIX_ENVIRONMENT/bin/scheme"
+need "$GUIX_ENVIRONMENT/bin/gcc"
+
+export CHEZ="$GUIX_ENVIRONMENT/bin/scheme"
+export CC="$GUIX_ENVIRONMENT/bin/gcc"
+
+exec "$@"

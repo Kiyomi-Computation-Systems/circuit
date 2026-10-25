@@ -25,9 +25,13 @@
   a submodule under `vendor/` pinned at a release tag. It carries its own
   pins, which circuit uses through it: chez-libuv, chez-httparse (with
   byte-machine), uriparse, and chez-srfi for the tests.
-* `Akku.manifest`'s `depends` names chez-http-server at `^` its vendored
-  version; `make check-pins` holds the pin, its range and `Akku.lock`
-  together, so move all three on one commit.
+* `make submodules`, on the host, clones the server and the pins it
+  carries, not its test clients. `make check-pins`, on the host and in CI,
+  holds the server at `SERVER_PIN` and each pin it carries where the server
+  records it, and refuses a checkout with local edits. Move the gitlink and
+  `SERVER_PIN` on one commit.
+* chez-http-server isn't on the Akku index, so Akku can't install it for
+  circuit: the submodule is the only way in.
 * The server's Akku package leaves out its `tests/`, so its fake shell
   (`tests/fake-shell.sls`) is reached only through the vendored copy.
 
@@ -59,8 +63,8 @@
 * The container exports `CHEZ` (the real `scheme` binary) and `CC` (gcc;
   the toolchain has no `cc`), which builds chez-libuv's shim.
 * Anything that needs the network or git runs on the host: fetches, pushes,
-  downloads, `make check-pins`, and `git submodule update --init`, which a
-  fresh clone needs once before `make deps`. The container has no git.
+  downloads, `make check-pins`, and `make submodules`, which a fresh clone
+  needs once before `make deps`. The container has no git.
 
 ### Testing & mutation discipline
 
