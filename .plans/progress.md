@@ -79,8 +79,17 @@ close-out under **Close-outs**, newest first.
     holds nothing, which `get-bytevector-some`'s losing nothing needs; the gate's
     measurability notes (design §16). S2's `show` verdicts for the three coroutine-count
     cases check only the status, and its findings now say so.
-- **Next: slice 3, the pure core** (design §17), once the owner has ruled on the gate,
-  ADR-0006's `call/1cc` and where the catch helper lives (design §16, and below).
+- **The gate on circuit's cost over the raw server is set** (the owner, 2026-10-25;
+  design §15.6). G3, G4 and G5 fail the build: circuit's own work over the server's
+  `awaiting` path, one `req-set`, and the catch helper with the app waiting inside it
+  and without. G1 and G2 are printed and re-baselined at each pin move; G6, requests a
+  second, is a smoke that never fails CI. `make gate` runs it outside `make test`, with
+  its counts fixed, and CI runs it as a step of its own; `make oha` fetches oha through
+  the vendored `tests/fetch-oha.sh`. The numbers are the prototype's, provisional until
+  slice 4 measures the real adapter and records them in a decision record.
+- **Next: slice 3, the pure core** (design §17), with `make oha` and `make gate` holding
+  the provisional numbers, once the owner has ruled on ADR-0006's `call/1cc` and where
+  the catch helper lives (design §16, and below).
 
 ## Open
 
@@ -115,12 +124,10 @@ close-out under **Close-outs**, newest first.
   tests are written (design §16). Besides the asks, the two fixes to the server's
   `docs/waiting.md` (design §12), its stale costs and a park's running every
   `dynamic-wind`, are filed as one docs issue, #231
-  ([docs-waiting-costs-and-dynamic-wind.md](upstream/docs-waiting-costs-and-dynamic-wind.md)). **chez-http-server is submitted to the Akku index and
+  ([docs-waiting-costs-and-dynamic-wind.md](upstream/docs-waiting-costs-and-dynamic-wind.md)).
+  **chez-http-server is submitted to the Akku index and
   awaits review** (the owner, 2026-10-25). Until it is published, circuit can't be
   installed with Akku, and the submodule stays its only way in (ADR-0003).
-- **The gate on circuit's cost over the raw server** (design §16): S2 proposes G1–G6.
-  The owner decides. The design lists what a suite needs before it can hold them: the
-  case G5 holds, a fixed request count, oha from circuit's own build.
 - **ADR-0006 allows `(only (chezscheme) call/1cc)`, and nothing needs it now.** S2 moved
   the catch helper to `call/cc`, which is plain R6RS. The allowance, its line in
   `global-constraints.md`, `tests/check-imports.sps`'s `chez-names` and its rows could
@@ -134,8 +141,7 @@ close-out under **Close-outs**, newest first.
   revisited.
 - **ADR-0004 says a request with a body pays for two coroutines**: the interim's
   `read-whole-body` costs three for a body and two for an empty one, however it
-  arrives, and a streaming reader one a piece and one for its end (design §4). Its "its
-  number sets the gate" also reads stronger than the design's "awaits the owner".
+  arrives, and a streaming reader one a piece and one for its end (design §4).
 - **A7's shape**, the fake shell as a supported library (design §16).
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and

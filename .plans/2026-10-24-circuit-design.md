@@ -445,7 +445,8 @@ dependency yet (ADR-0003).
 
 On chez-http-server, in the table form of its decision 0008. All eight
 were filed on 2026-10-25, each linked in its row. Each workaround carries
-a probe that goes red when its ask lands, and one that goes red when the library it reaches into changes shape: `(http-server
+a probe that goes red when its ask lands, and one that goes red when the
+library it reaches into changes shape: `(http-server
 request)`, `(http-server span)` and `(http-server headers)` are installed
 and importable, but `docs/reference.md` documents only the facade, so
 nothing holds them stable between releases. The names in this table are
@@ -511,8 +512,8 @@ the spikes, filed as one docs issue on 2026-10-25,
 
   The catch helper escapes by `call/cc`, not `call/1cc` (§6). Circuit runs
   every request on a coroutine whatever the number (§15), so S2 didn't
-  decide that. The gate it proposes on circuit's cost over the raw server
-  awaits the owner (§16).
+  decide that. The owner set the gate it proposed on circuit's cost over
+  the raw server (§15.6).
 
 ## 14. Weighed and set aside
 
@@ -552,8 +553,8 @@ The owner's answers to this draft's open questions (2026-10-25):
 1. **Middleware's data on a request goes under unique keys**, made by
    `make-req-key`, not symbols (§3).
 2. **Every request runs on a coroutine.** The adapter has no option to call
-   an app in place. S2 measured what that costs (§13), and the gate it
-   proposes on circuit's cost over the raw server awaits the owner (§16).
+   an app in place. S2 measured what that costs (§13), and item 6 sets the
+   gate on circuit's cost over the raw server.
 3. **Circuit's names don't clash with `(http-server)`'s.** An app may import
    both libraries without `only` or `rename`, and a suite holds it (§10):
    - requests are `req` and responses `res`: `req-path`, `req-header`,
@@ -575,28 +576,39 @@ The owner's answers to this draft's open questions (2026-10-25):
    `request-header`, `request-header-values`, `request-header-list`.
    Weighed: `request-fields`, RFC 9110's term but a stranger beside the
    others; `request-headers*`, whose star says "variant", not "all".
+6. **The gate on circuit's cost over the raw server**, from S2's G1–G6
+   ([findings](research/s2-coroutine-cost.md#proposed-gate)):
+   - **Its shape is set now, its numbers later.** The numbers below are the
+     prototype's and provisional. Slice 4 measures the real adapter, sets
+     the final numbers, and records them in a decision record.
+   - **Three gates fail the build**, each the part circuit controls:
+     - G3, circuit's own work over the server's `awaiting` path: at most
+       384 B a GET (285–290 measured) and 512 B a POST (447–452);
+     - G4, one `req-set` measured on its own: at most 96 B (80 by five
+       over five);
+     - G5, the catch helper over the unwrapped app, with nothing raised: at
+       most 512 B, held both with the app waiting inside it and without
+       (309–365 B by `call/cc`). A `call/1cc` escape passes without a wait
+       at 50 connections (407–410 B) and fails with one (3.4 KB).
+   - **Two are printed, not held.** G1 and G2, a GET and a POST through the
+     adapter over raw (≤ 1,536 B and ≤ 3,072 B proposed), include the
+     server's own coroutines, so they are printed for context and
+     re-baselined at each move of the server's pin.
+   - **Requests a second are a smoke.** G6, a GET through the adapter at
+     ≥ 90% of raw's rate at 50 connections (93.0–95.1% on a quiet rerun),
+     is printed and never fails CI. It is run locally before a release.
+   - **`make gate` runs it, outside `make test`**, with its counts fixed:
+     5,000 against 25,000 requests, two rounds, at 1 and 50 connections, which
+     reads to within about 5 B. CI runs it as a step of its own: noise
+     doesn't move a byte count.
+   - **`make oha` fetches oha** through the vendored server's
+     `tests/fetch-oha.sh`, which pins its version and sha256, on the host
+     and in CI. The container has no network.
 
 ## 16. Open
 
 1. **A7's shape**: what the fake shell's supported surface should be.
-2. **The gate on circuit's cost over the raw server.** S2 proposes G1–G6
-   ([findings](research/s2-coroutine-cost.md#proposed-gate)): bytes a
-   request for a GET and a POST through the adapter, circuit's own share
-   of them, a `req-set`, and the catch helper, each held by a suite; and
-   the GET's requests a second at 50 connections, as a smoke. The owner
-   decides. Before a suite can hold them:
-   - G5 must name the case it holds. A `call/1cc` helper passes 512 B at
-     50 connections with nothing raised and no park (407–410 B), and fails
-     it only at 1 connection or once the app parks;
-   - each gate must fix its request count and rounds. The method reads
-     within 5 B at 25,000 requests, and within 30 B at 10,000, against
-     headroom of 59–66 B on G3's POST;
-   - G4's single `req-set` is five sets over five, not measured alone;
-   - oha must come from circuit's own build: today only the server's
-     `make oha` fetches it;
-   - after the rerun the headroom is G1 96 B, G5 147 B and G6 3.0 points.
-     G6's on a shared CI runner is unknown.
-3. **Where the catch helper lives**, now that it needs no Chez (§15.4).
+2. **Where the catch helper lives**, now that it needs no Chez (§15.4).
 
 ## 17. Slices
 
@@ -605,9 +617,12 @@ The owner's answers to this draft's open questions (2026-10-25):
    decision records this design settles.
 2. Spikes S1 and S2.
 3. The pure core: `req`, `res`, headers, keys, `make-test-req`, `wrap`,
-   and the suites that hold the names apart and `wrap`'s order.
+   and the suites that hold the names apart and `wrap`'s order. With it,
+   `make oha`, and `make gate` holding the provisional numbers (§15.6).
 4. The adapter with buffered bodies, every body kind but the upgrade, and
-   examples run over loopback: hello, echo, a stream, a long poll.
+   examples run over loopback: hello, echo, a stream, a long poll. The
+   gate's final numbers, from the real adapter, in a decision record
+   (§15.6).
 5. `(circuit middleware waits)`: the catch helper and `wrap-timeout`,
    through the fake shell; request logging.
 6. Each ask as it lands: the workaround dropped, its probe removed.
