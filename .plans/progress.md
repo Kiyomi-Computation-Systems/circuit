@@ -94,9 +94,12 @@ close-out under **Close-outs**, newest first.
   the allowlist changed, and a mutant that keeps `call/1cc` beside `getenv` fails it.
   ADR-0004 counts three coroutines for a body the interim reads whole, and two for an
   empty one.
+- **The catch helper stays in `(circuit middleware waits)`** (the owner, 2026-10-25;
+  design §15.4): its correctness rests on the server's `client-closed?` and
+  `deadline-passed?`, so it lives beside `wrap-timeout` in the library that imports the
+  server. A generic catch in the core was weighed and set aside.
 - **Next: slice 3, the pure core** (design §17), with `make oha` and `make gate` holding
-  the provisional numbers, once the owner has ruled on where the catch helper lives
-  (design §16, and below).
+  the provisional numbers. Nothing the owner must rule on blocks it.
 
 ## Open
 
@@ -138,10 +141,6 @@ close-out under **Close-outs**, newest first.
 - **A clock for request logging** (slice 5): R6RS has none, and the facade exports
   none. The server's own clock, the one its waits use, is the one to read, so A7's fake
   clock would drive it in a test: likely an upstream ask, not a second Chez name.
-- **Where the catch helper lives** (design §15.4, §16): one of the two reasons for
-  `(circuit middleware waits)` over the pure core was `call/1cc`. With `call/cc` it needs
-  only `client-closed?` and `deadline-passed?`. The owner's decision stands until
-  revisited.
 - **A7's shape**, the fake shell as a supported library (design §16).
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and

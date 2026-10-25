@@ -571,10 +571,16 @@ The owner's answers to this draft's open questions (2026-10-25):
    `(circuit http-server)`, which a second adapter would have to carry;
    and in the pure core with the verbs passed as arguments, which every
    call site would repeat, and which the Chez-only `call/1cc` rules out.
-   S2 has since moved the catch helper to `call/cc` (§6), so the second
-   reason no longer holds for it: it needs only `client-closed?` and
-   `deadline-passed?`. The decision stands until the owner revisits it
-   (§16).
+   S2 has since moved the catch helper to `call/cc` (§6), so the
+   `call/1cc` reason no longer holds. The owner revisited it on 2026-10-25
+   and kept the helper here, on the reason that remains: its correctness
+   rests on the server's `client-closed?` and `deadline-passed?`, and what
+   knows the server's conditions lives in the library that imports the
+   server, beside `wrap-timeout`, which must. Weighed then too: a generic
+   catch in the core taking the predicates, bound to the server's in this
+   library. It would serve a second host there isn't, at the cost of two
+   names for one job and a core version that invites the wrong predicate;
+   if a second host comes, it can be factored out then.
 5. **A1 asks for `request-header-list`**, the third of the family
    `request-header`, `request-header-values`, `request-header-list`.
    Weighed: `request-fields`, RFC 9110's term but a stranger beside the
@@ -611,7 +617,6 @@ The owner's answers to this draft's open questions (2026-10-25):
 ## 16. Open
 
 1. **A7's shape**: what the fake shell's supported surface should be.
-2. **Where the catch helper lives**, now that it needs no Chez (§15.4).
 
 ## 17. Slices
 
