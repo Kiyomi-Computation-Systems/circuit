@@ -1,5 +1,5 @@
 Title: Ship a supported way to test a handler that waits, without a socket
-Drafted: 2026-10-25, not filed
+Filed: chez-http-server #230, 2026-10-25
 
 **The problem**
 

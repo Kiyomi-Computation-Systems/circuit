@@ -96,24 +96,25 @@ close-out under **Close-outs**, newest first.
 - **Upstream asks** (design §12). Filed on chez-http-server on 2026-10-25, the owner's
   word, from the drafts in [upstream/](upstream/): A1 `request-header-list` as #214, A2
   the HTTP version in the facade as #215, A5 a producer with a declared length as #216,
-  A6 a call when a response is done as #217, and, after the spikes, A4 reading the body
-  by waiting as #227 and A8 `request-has-body?` as #228:
+  A6 a call when a response is done as #217; after the spikes, A4 reading the body by
+  waiting as #227 and A8 `request-has-body?` as #228; then A3 the connection's
+  addresses as #229 and A7 a supported test host as #230. All eight are filed:
   [a4-read-the-body-by-waiting.md](upstream/a4-read-the-body-by-waiting.md) carries what
   S1 found a port over the verb needs (a fresh piece, never empty; a sticky eof and a
   sticky close; a raise only before taking a piece; a raise before waiting inside a
   passed deadline), and [a8-request-has-body.md](upstream/a8-request-has-body.md) the
   lookups' cost, 64 B a request, and a probe: the server keeps `Content-Length: 00`
-  alive as no body, which a copy of its rule that tests for `"0"` takes for one. **A3
-  and A7 are drafted, not filed**:
+  alive as no body, which a copy of its rule that tests for `"0"` takes for one;
   [a3-the-connections-addresses.md](upstream/a3-the-connections-addresses.md) argues the
   server's own guide needs the peer's address to trust `X-Forwarded-For`, and chez-libuv
   already gives both ends;
   [a7-a-supported-test-host.md](upstream/a7-a-supported-test-host.md) asks for a
   supported, installed host to test a handler that waits, over the fake shell, with the
   surface circuit's tests would use. A7's surface may want revising once the adapter's
-  tests are written (design §16). Besides the asks, two fixes
-  to the server's `docs/waiting.md` (design §12): its stale `guard` figure, and a park's
-  running every `dynamic-wind`. **chez-http-server is submitted to the Akku index and
+  tests are written (design §16). Besides the asks, the two fixes to the server's
+  `docs/waiting.md` (design §12), its stale costs and a park's running every
+  `dynamic-wind`, are drafted as one docs issue, not filed:
+  [docs-waiting-costs-and-dynamic-wind.md](upstream/docs-waiting-costs-and-dynamic-wind.md). **chez-http-server is submitted to the Akku index and
   awaits review** (the owner, 2026-10-25). Until it is published, circuit can't be
   installed with Akku, and the submodule stays its only way in (ADR-0003).
 - **The gate on circuit's cost over the raw server** (design §16): S2 proposes G1–G6.
