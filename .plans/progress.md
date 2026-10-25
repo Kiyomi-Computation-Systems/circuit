@@ -6,11 +6,11 @@ close-out under **Close-outs**, newest first.
 
 ## Now
 
-- **The design** is [2026-10-24-circuit-design.md](2026-10-24-circuit-design.md), on
-  `design/circuit-on-coroutines`, not yet merged. Its §15 records the owner's decisions;
-  ADR-0004 to ADR-0006 take them up.
+- **The design** is [2026-10-24-circuit-design.md](2026-10-24-circuit-design.md). Its §15
+  records the owner's decisions; ADR-0004 to ADR-0006 take them up.
 - **Slice 1, scaffolding (design §17), on `chore/scaffolding`**, stacked on the design
-  branch:
+  branch. Both are in [PR #1](https://github.com/Kiyomi-Computation-Systems/circuit/pull/1),
+  not yet merged:
   - AGENTS.md describes circuit; ADR-0001 (no Windows);
   - the server pinned at v0.8.0 under `vendor/` (ADR-0003), with `make submodules` and
     `make check-pins` on the host;
@@ -20,6 +20,10 @@ close-out under **Close-outs**, newest first.
     under GNU timeout;
   - the import audit (`make check-imports`, ADR-0006) and the Linux CI workflow, each
     built by a Sonnet agent;
+  - **CI's first run, on PR #1, passed** (run 40231893692, 2026-10-25, 6m1s). It built
+    Chez 10.4.1 from the pinned tarball in 5m29s and saved it to the cache (3.29 MiB, keyed
+    on `scripts/ci/build-chez.sh`), so later runs skip the build. The three suites passed
+    with the container's counts: check-imports 39, check-suites 14, circuit-testing 45;
   - ADR-0002 to ADR-0006, this ledger, `global-constraints.md`, `CHANGELOG.md`, README;
   - **a read-only Opus review** (307,746 tokens, 28 minutes) found 15 problems. Fixed,
     each watched failing first:
@@ -47,11 +51,8 @@ close-out under **Close-outs**, newest first.
 
 ## Open
 
-- **CI has never run.** Its first run is the first push of this branch, which waits for the
-  owner. It runs on amd64 alone, as the siblings' do; AGENTS.md asks for arm64 portability,
+- **CI runs on amd64 alone**, as the siblings' do. AGENTS.md asks for arm64 portability,
   and an `ubuntu-24.04-arm` runner would cover it.
-- **The design's §11 fix lives on this branch**: it no longer calls the server an Akku
-  dependency. The design branch, if merged first on its own, lacks it.
 - **Left from the review, not fixed:**
   - outside the container and CI, nothing refuses a Chez below 10.4.1 or without threads:
     this host's own Chez is 10.4.0;
