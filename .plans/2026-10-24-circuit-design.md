@@ -142,11 +142,22 @@ when the app would have refused; a declared length over the cap, or over
 `CHEZ_HTTP_MAX_BODY_BYTES`, is a 413 from the server with no `100`, and a
 chunked body gets its 413 at the piece that passes the cap.
 
-The adapter answers a reader **only when the head announces a body**, a
-`Content-Length` above 0 or a `Transfer-Encoding`. Otherwise it calls the
-app in the thunk itself. An upgrade request has no body, so it never goes
-through a reader (§8), and a bodiless request costs one coroutine, not two
-(S2 counts both paths).
+The adapter's thunk answers a reader **only when the head announces a
+body**. Otherwise it calls the app itself. An upgrade request has no body,
+so it never goes through a reader (§8), and a bodiless request costs one
+coroutine, not two (S2 counts both paths).
+
+Whether a request has a body is the server's decision, and the facade
+doesn't say; A8 asks it to. Until then the adapter judges from the
+headers, and leans towards a reader, because its two mistakes cost
+different amounts. A reader for a request with no body gets its end at
+once, and costs a coroutine. No reader for a request with a body hands the
+app an empty body, and the server closes the connection after the
+response. So the adapter answers a reader when there is a
+`Transfer-Encoding` field, or a `Content-Length` field whose value is
+anything but `0`. It calls the app directly only when neither is there, or
+every `Content-Length` reads `0`. By then the server has refused a
+malformed length, and any coding before `chunked`.
 
 Spike S1 checks that a custom port's read procedure can park on the
 server's coroutine. If it can't, the body is a source read by
@@ -225,8 +236,11 @@ Rules for middleware authors, each a fact about the server:
   `wrap-timeout` goes **outside** the catch middleware, and the catch
   middleware's helper re-raises both before catching the rest.
 - **Catch with an escape, not `guard`.** On a coroutine `guard` costs
-  about twice what the server's own exception handler does (about 1.3 KB
-  against 0.65 KB). The cheap escape is Chez's `call/1cc`; a portable
+  about twice what the server's own exception handler does: 1,238 to
+  1,304 B against 625 to 691 B, as the server's decision 0025 measured
+  them. The server's `docs/waiting.md`, written a week later, says about
+  3.7 KB for `guard` and next to nothing for `with-exception-handler`. The
+  two disagree, and S2 measures both in circuit's own setting. The cheap escape is Chez's `call/1cc`; a portable
   `call/cc` on a coroutine captures the full continuation and costs what
   `guard` does. Circuit's catch helper uses `call/1cc` and is the one
   Chez-only piece in its middleware (§11); S2 measures it.
@@ -282,11 +296,15 @@ belongs to the WebSocket slice, and may be an ask on chez-websocket.
 `(circuit http-server)` and `(circuit middleware waits)` are the only
 libraries that import `(http-server)`.
 
-- `(circuit->handler app [env])` gives a server handler. For a request
-  with no body it answers `(awaiting thunk)`, and the thunk builds the
-  request, calls `app`, and turns the response into the server's answer.
-  For a request with a body it answers `read-whole-body` (§4), and the app
-  runs in the reader's end, which the server calls on a coroutine too.
+- `(circuit->handler app [env])` gives a server handler, which answers
+  `(awaiting thunk)` for every request. For a request with no body the
+  thunk builds the request, calls `app`, and turns the response into the
+  server's answer. For a request with a body the thunk answers
+  `read-whole-body` (§4), and the app runs in the reader's end. The server
+  calls a reader's end, and a response's producer, on a coroutine only for
+  a handler that answered `awaiting`; a reader answered straight from the
+  handler runs in place, where every wait is refused. So the reader always
+  comes from the thunk.
 - `(run-server app [env])` is `(http-server)`'s `serve` over
   `circuit->handler`, as Ring's adapters are `run-jetty` and friends.
 - It re-exports the server's waits and their conditions (`await`,
@@ -367,10 +385,15 @@ the server's.
 | A5 | a producer with a declared length: the server writes `Content-Length` and closes on a producer that gives more or less | files with a length, HEAD on files, ranges later | chunked |
 | A6 | a call once a response is done, saying how: sent, the client left, a write failed | §7's moment 3; closing a port body when the client leaves | moments 1 and 2 only; a port whose client left is never closed by the adapter |
 | A7 | ship the fake shell as a supported library: run a handler, its waits included, against scripted requests and a fake clock | testing handlers that wait, and the adapter, with no socket | reach into `vendor/chez-http-server/tests/` |
+| A8 | `request-has-body? : Request -> Boolean`, the server's own decision that a request has a body: chunked, or a Content-Length above 0 | §4's choice of path without a copy of the server's rule | judge from the headers, leaning towards a reader (§4) |
 
 A1, A2 and A4 matter most: A1 and A2 have workarounds, while A4 changes
 what circuit can be. A3 needs a decision on the server's side before it is
-filed.
+filed. A8 is small, and its workaround errs only towards a spare coroutine.
+
+Besides the asks, a docs fix: the server's `docs/waiting.md` and its
+decision 0025 disagree on what `guard` costs on a coroutine (§6). S2's
+number says which to correct.
 
 ## 13. Spikes before the decision records
 
@@ -381,7 +404,9 @@ filed.
   `get-bytevector-n`; two coroutines parked in two ports at once; and a
   raise after a partial `get-bytevector-n` followed by another read, to
   see what the port has lost. This decides §4's interface. It can run
-  today, with a second request resuming the first.
+  today, with a second request resuming the first. Chez 10.4.1's `s/io.ss`
+  calls a custom binary port's `read!` with no lock or critical section
+  around it, so a park inside it looks safe; S1 checks it under the server.
 - **S2, the cost of a coroutine for every request.** A hello-world GET,
   measured raw, under `awaiting`, and a POST under `awaiting` with
   `read-whole-body`, so both of §4's paths are counted: bytes a request
