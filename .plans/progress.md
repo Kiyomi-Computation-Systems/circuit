@@ -87,9 +87,16 @@ close-out under **Close-outs**, newest first.
   its counts fixed, and CI runs it as a step of its own; `make oha` fetches oha through
   the vendored `tests/fetch-oha.sh`. The numbers are the prototype's, provisional until
   slice 4 measures the real adapter and records them in a decision record.
+- **ADR-0006 and ADR-0004 amended after S2** (the owner, 2026-10-25). The audit's one
+  name from `(chezscheme)` is `getenv`, which the adapter's default environment needs,
+  as `serve`'s does, not `call/1cc`, which nothing needs now. `make check-imports`
+  refuses `call/1cc`: the impure-chezscheme fixture's new row was watched failing before
+  the allowlist changed, and a mutant that keeps `call/1cc` beside `getenv` fails it.
+  ADR-0004 counts three coroutines for a body the interim reads whole, and two for an
+  empty one.
 - **Next: slice 3, the pure core** (design §17), with `make oha` and `make gate` holding
-  the provisional numbers, once the owner has ruled on ADR-0006's `call/1cc` and where
-  the catch helper lives (design §16, and below).
+  the provisional numbers, once the owner has ruled on where the catch helper lives
+  (design §16, and below).
 
 ## Open
 
@@ -128,20 +135,13 @@ close-out under **Close-outs**, newest first.
   **chez-http-server is submitted to the Akku index and
   awaits review** (the owner, 2026-10-25). Until it is published, circuit can't be
   installed with Akku, and the submodule stays its only way in (ADR-0003).
-- **ADR-0006 allows `(only (chezscheme) call/1cc)`, and nothing needs it now.** S2 moved
-  the catch helper to `call/cc`, which is plain R6RS. The allowance, its line in
-  `global-constraints.md`, `tests/check-imports.sps`'s `chez-names` and its rows could
-  go, leaving the impure libraries nothing from `(chezscheme)`. ADR-0006's Context, "The
-  catch helper's cheap escape is Chez's `call/1cc`" (`:13`), is now false. Its
-  Consequences (`:32`) test a handler wrapped in the catch helper through the fake
-  shell, which only `wrap-timeout` now needs (design §6, §10). The owner decides.
+- **A clock for request logging** (slice 5): R6RS has none, and the facade exports
+  none. The server's own clock, the one its waits use, is the one to read, so A7's fake
+  clock would drive it in a test: likely an upstream ask, not a second Chez name.
 - **Where the catch helper lives** (design §15.4, §16): one of the two reasons for
   `(circuit middleware waits)` over the pure core was `call/1cc`. With `call/cc` it needs
   only `client-closed?` and `deadline-passed?`. The owner's decision stands until
   revisited.
-- **ADR-0004 says a request with a body pays for two coroutines**: the interim's
-  `read-whole-body` costs three for a body and two for an empty one, however it
-  arrives, and a streaming reader one a piece and one for its end (design §4).
 - **A7's shape**, the fake shell as a supported library (design §16).
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and

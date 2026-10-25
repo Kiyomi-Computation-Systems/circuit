@@ -49,5 +49,5 @@ provisional. They bind until that record is accepted or amended.
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`
   may import the server's libraries, never `(http-server private ...)`, and they take from
   `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's
-  allowlist, `call/1cc` alone today. `make check-imports` holds it, and `make test` runs it
+  allowlist, `getenv` alone today. `make check-imports` holds it, and `make test` runs it
   once `src/` exists (ADR-0006).

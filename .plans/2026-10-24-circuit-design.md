@@ -386,7 +386,9 @@ libraries that import `(http-server)`.
   clash on them (R6RS §7.1).
 - Settings come from the environment procedure, as the server's do
   (12-factor): `CIRCUIT_MAX_BODY_BYTES` while bodies are buffered,
-  `CIRCUIT_PORT_PIECE_BYTES` for port bodies.
+  `CIRCUIT_PORT_PIECE_BYTES` for port bodies. Given none, the adapter reads
+  the process's environment with Chez's `getenv`, as `serve` does, the one
+  name it takes from `(chezscheme)` (ADR-0006).
 
 | Response body | Server answer |
 |:--|:--|
@@ -434,8 +436,9 @@ later: (circuit router), (circuit websocket), middleware libraries
 ```
 
 The core is plain R6RS and imports nothing of the server's. The two
-impure libraries import `(http-server)`. The catch helper is plain R6RS,
-and lives in `(circuit middleware waits)` because it needs the server's
+impure libraries import `(http-server)`, and take from `(chezscheme)` only
+`getenv`, through `only` (ADR-0006). The catch helper is plain R6RS, and
+lives in `(circuit middleware waits)` because it needs the server's
 `client-closed?` and `deadline-passed?`.
 chez-http-server is a pinned submodule under `vendor/`, as it is in
 chez-websocket. It isn't on the Akku index, so it can't be an Akku

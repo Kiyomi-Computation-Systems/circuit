@@ -68,7 +68,8 @@
 ;; What an impure library may take from (chezscheme). None of them can import,
 ;; evaluate or load: a name that could would let a library's body reach what
 ;; its header may not import. Adding one is a reviewed change (ADR-0006).
-(define chez-names '(call/1cc))
+;; getenv is the adapter's default environment, as it is `serve`'s.
+(define chez-names '(getenv))
 
 ;; wrappers : (Listof Symbol)
 ;; The import-set forms that wrap one import set, in their second element.

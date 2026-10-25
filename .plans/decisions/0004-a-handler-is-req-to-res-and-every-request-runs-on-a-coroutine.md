@@ -2,6 +2,8 @@
 
 - **Status:** Accepted (the owner's decision, 2026-10-25)
 - **Date:** 2026-10-25
+- **Amended:** 2026-10-25, after spike S2: the coroutines a request with a body pays for,
+  and the gate
 - **Scope:** the contract every circuit handler and middleware is written against
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §1, §2, §9, §14, §15 item 2
 
@@ -32,6 +34,7 @@ handler costs about 0.7 KB.
   long the handler parked inside.
 - **A response's producer runs after the handler has returned**, on a coroutine of its own
   for each piece, outside every middleware's dynamic extent.
-- **Every request pays for a coroutine**, and one with a body for two. Spike S2 measures the
-  cost; its number sets the gate on circuit's cost over the raw server. It doesn't reopen
-  item 3.
+- **Every request pays for a coroutine.** One whose body the interim reads whole pays for
+  three: the thunk's, the body's one piece, and the reader's end. An empty body pays for
+  two (spike S2; design §4). S2 measured the cost, and the owner set the gate on circuit's
+  cost over the raw server from it (design §15.6). It doesn't reopen item 3.

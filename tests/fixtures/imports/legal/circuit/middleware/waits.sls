@@ -2,6 +2,6 @@
 (library (circuit middleware waits)
   (export)
   (import (rnrs)
-          (only (chezscheme) call/1cc)
+          (only (chezscheme) getenv)
           (http-server)
           (circuit response)))
