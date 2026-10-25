@@ -60,8 +60,12 @@ close-out under **Close-outs**, newest first.
   - two rows (`test-check-imports`'s and `test-check-suites`'s unreadable cases) hold
     Chez's exact read-error text, so a Chez that words it otherwise fails them;
   - the audit's rule (g) assumes `src` comes first on the library path.
-- **Upstream asks A1 to A8** (design §12) are drafts, not filed. A3 needs the server's side
-  decided first. Not in the design yet: **publishing chez-http-server on the Akku index**,
+- **Upstream asks** (design §12). Filed on chez-http-server on 2026-10-25, the owner's
+  word, from the drafts in [upstream/](upstream/): A1 `request-header-list` as #214, A2
+  the HTTP version in the facade as #215, A5 a producer with a declared length as #216,
+  A6 a call when a response is done as #217. Held: A4 and A8 until spikes S1 and S2
+  report, A3 until the server's side is decided, A7 until the adapter's tests are
+  written. Not in the design yet: **publishing chez-http-server on the Akku index**,
   without which circuit can't be installed with Akku (ADR-0003).
 - **A7's shape**, the fake shell as a supported library (design §16).
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
