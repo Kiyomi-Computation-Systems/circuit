@@ -113,8 +113,8 @@ close-out under **Close-outs**, newest first.
   surface circuit's tests would use. A7's surface may want revising once the adapter's
   tests are written (design §16). Besides the asks, the two fixes to the server's
   `docs/waiting.md` (design §12), its stale costs and a park's running every
-  `dynamic-wind`, are drafted as one docs issue, not filed:
-  [docs-waiting-costs-and-dynamic-wind.md](upstream/docs-waiting-costs-and-dynamic-wind.md). **chez-http-server is submitted to the Akku index and
+  `dynamic-wind`, are filed as one docs issue, #231
+  ([docs-waiting-costs-and-dynamic-wind.md](upstream/docs-waiting-costs-and-dynamic-wind.md)). **chez-http-server is submitted to the Akku index and
   awaits review** (the owner, 2026-10-25). Until it is published, circuit can't be
   installed with Akku, and the submodule stays its only way in (ADR-0003).
 - **The gate on circuit's cost over the raw server** (design §16): S2 proposes G1–G6.

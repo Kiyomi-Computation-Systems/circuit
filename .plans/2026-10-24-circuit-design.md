@@ -468,8 +468,9 @@ rests on the server's own deploying guide. A8 is small, and its workaround
 errs only towards a spare coroutine.
 
 Besides the asks, two fixes to the server's `docs/waiting.md`, both from
-the spikes, drafted as one docs issue
-([upstream/docs-waiting-costs-and-dynamic-wind.md](upstream/docs-waiting-costs-and-dynamic-wind.md)):
+the spikes, filed as one docs issue on 2026-10-25,
+[#231](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/231)
+([draft](upstream/docs-waiting-costs-and-dynamic-wind.md)):
 
 - **Its "Costs to know" is stale.** It says `guard` costs about 3.7 KB
   inside a handler that waits, and `with-exception-handler` next to

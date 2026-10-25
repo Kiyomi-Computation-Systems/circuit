@@ -1,6 +1,6 @@
 Title: docs/waiting.md: stale costs, and what a wait does to dynamic-wind
 Label: documentation
-Drafted: 2026-10-25, not filed
+Filed: chez-http-server #231, 2026-10-25
 
 **The problem**
 
