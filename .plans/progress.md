@@ -103,12 +103,19 @@ close-out under **Close-outs**, newest first.
   sticky close; a raise only before taking a piece; a raise before waiting inside a
   passed deadline), and [a8-request-has-body.md](upstream/a8-request-has-body.md) the
   lookups' cost, 64 B a request, and a probe: the server keeps `Content-Length: 00`
-  alive as no body, which a copy of its rule that tests for `"0"` takes for one. Held:
-  A3 until the server's side is decided, A7 until the adapter's tests are written.
-  Besides the asks, two fixes
+  alive as no body, which a copy of its rule that tests for `"0"` takes for one. **A3
+  and A7 are drafted, not filed**:
+  [a3-the-connections-addresses.md](upstream/a3-the-connections-addresses.md) argues the
+  server's own guide needs the peer's address to trust `X-Forwarded-For`, and chez-libuv
+  already gives both ends;
+  [a7-a-supported-test-host.md](upstream/a7-a-supported-test-host.md) asks for a
+  supported, installed host to test a handler that waits, over the fake shell, with the
+  surface circuit's tests would use. A7's surface may want revising once the adapter's
+  tests are written (design §16). Besides the asks, two fixes
   to the server's `docs/waiting.md` (design §12): its stale `guard` figure, and a park's
-  running every `dynamic-wind`. Not in the design yet: **publishing chez-http-server on
-  the Akku index**, without which circuit can't be installed with Akku (ADR-0003).
+  running every `dynamic-wind`. **chez-http-server is submitted to the Akku index and
+  awaits review** (the owner, 2026-10-25). Until it is published, circuit can't be
+  installed with Akku, and the submodule stays its only way in (ADR-0003).
 - **The gate on circuit's cost over the raw server** (design §16): S2 proposes G1–G6.
   The owner decides. The design lists what a suite needs before it can hold them: the
   case G5 holds, a fixed request count, oha from circuit's own build.
