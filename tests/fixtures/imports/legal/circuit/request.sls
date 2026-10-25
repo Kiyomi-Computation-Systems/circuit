@@ -1,0 +1,13 @@
+#!r6rs
+(library (circuit request)
+  (export)
+  (import (rnrs)
+          (only (rnrs base) define)
+          (except (rnrs lists) fold-left)
+          (prefix (rnrs bytevectors) bv:)
+          (rename (rnrs hashtables) (make-eqv-hashtable make-table))
+          (for (rnrs syntax-case) expand run (meta 2))
+          (library (rnrs control))
+          (for (only (rename (prefix (library (rnrs unicode)) u:) (u:string-upcase up)) up) run expand)
+          (rnrs (6))
+          (circuit response (1))))

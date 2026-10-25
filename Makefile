@@ -75,7 +75,7 @@ TIMEOUT ?= $(or $(shell command -v timeout 2>/dev/null),$(shell command -v gtime
 
 # One physical line: check-help reads it with awk, and fails if it ends in
 # a backslash.
-.PHONY: help check-help check-guix check-guix-inside submodules check-pins deps dev run test check-suites clean
+.PHONY: help check-help check-guix check-guix-inside submodules check-pins deps dev run test check-suites check-imports clean
 
 .DEFAULT_GOAL := help
 
@@ -230,6 +230,17 @@ test: deps check-help check-suites ## Run every tests/test-*.sps under timeout; 
 check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared exit form
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-suites.sps $(SUITES)
+
+# Reads every file under src as data and fails unless each is a .sls library
+# at its name's path, and only (circuit http-server) and (circuit middleware
+# waits) import the server or (chezscheme): the core is plain R6RS, importing
+# its own libraries and (rnrs ...) alone (tests/check-imports.sps). It names
+# each breach on stderr. It is not a prerequisite of test yet: until src/
+# holds a library it fails, for src is missing or holds none. Its own suite,
+# tests/test-check-imports.sps, runs in make test.
+check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), and the core imports nothing else
+	@scripts/require-tools "$(GOAL)" $(CHEZ)
+	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src
 
 # Removes build/, and chez-libuv's own build products inside its checkout.
 # The path is written out, not a variable, so no make command line can

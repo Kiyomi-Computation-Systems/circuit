@@ -60,6 +60,10 @@
 * Edit, commit and push on the host. The container has no git identity,
   agents or tokens, and no network but loopback
 * Verify it with `make check-guix`, run on the host.
+* The container lets in only `TERM`, `COLORTERM` and `LANG`, and its
+  `/tmp` is its own. A variable set on the host, or a file left in the
+  host's `/tmp`, doesn't reach it: put scratch files, mutants and probes
+  under the checkout's `build/`, which is git-ignored.
 * The container exports `CHEZ` (the real `scheme` binary) and `CC` (gcc;
   the toolchain has no `cc`), which builds chez-libuv's shim.
 * Anything that needs the network or git runs on the host: fetches, pushes,
