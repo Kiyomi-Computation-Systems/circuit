@@ -261,6 +261,21 @@ run_require -- test
 check "R6 no tools: exit 2" [ "$status" -eq 2 ]
 check "R6 no tools: usage" [ "$(err_lines)" = "usage: require-tools GOAL TOOL...|" ]
 
+# R7: inside a Guix environment, a missing git means a host-only target:
+# the container has no git, so installing it there is not the answer.
+host_hint="make test needs git, which this container doesn't have: run it on the host."
+reset_stubs guix
+run_require GUIX_ENVIRONMENT=/gnu/store/fake-profile -- test git
+check "R7 git inside an environment: exit 2" [ "$status" -eq 2 ]
+check "R7 git inside an environment: run it on the host" \
+  [ "$(err_lines)" = "make test: git not found.|$host_hint|" ]
+
+# R8: on a host with no git, the answer is still to install it.
+reset_stubs
+run_require -- test git
+check "R8 git on a host without it: install hint" \
+  [ "$(err_lines)" = "make test: git not found.|$install_hint|" ]
+
 # M1: `make check-guix` without guix stops at require-tools, naming the
 # goal the user typed, before any test or container runs. The recipe's
 # next line runs `sh tests/guix-env-launcher.sh`, which would find the
@@ -288,7 +303,7 @@ copy=$tmp/tree
 mkdir "$copy"
 for entry in "$root"/* "$root"/.[!.]* "$root"/..?*; do
   [ -e "$entry" ] || [ -L "$entry" ] || continue
-  case "$entry" in "$root/.git" | "$root/build" | "$root/vendor") continue ;; esac
+  case "$entry" in "$root/.git" | "$root/build" | "$root/vendor" | "$root/.claude") continue ;; esac
   cp -a "$entry" "$copy/" || { echo "guix-env-launcher: could not copy $entry" >&2; exit 2; }
 done
 ( env -i PATH="$PATH" "$make_bin" --no-print-directory -C "$copy" test CHEZ=no-such-chez ) \

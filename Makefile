@@ -24,6 +24,12 @@ export CHEZ
 CC ?= cc
 export CC
 
+# chez-libuv's make, which deps and clean run, gets none of this command
+# line's variables: its clean removes its own $(BUILD_DIR), which
+# `make clean BUILD_DIR=..` would otherwise point outside it. CHEZ and CC
+# reach it through the environment, exported above.
+MAKEOVERRIDES =
+
 # The make target to name in a missing-tool hint (scripts/require-tools):
 # what the user typed, $(MAKECMDGOALS), or, when that is empty, the
 # recipe's own target, $@. Recursively expanded (=, not :=), so each
@@ -196,20 +202,25 @@ run: deps ## Run a program on the library path: make run PROGRAM=examples/hello.
 
 # Runs each suite as its own process under GNU timeout and reports its exit
 # status, or HUNG when timeout killed it (exit 124). It fails if any suite
-# failed or hung, or if none matched. --foreground keeps a suite in make's
-# process group, so Ctrl-C at a terminal reaches it at once, and does not
-# wait out the timeout. The checks come first: check-help and check-suites
-# each stop it.
-test: deps check-help check-suites ## Run every tests/test-*.sps under timeout; fail if one fails or hangs, or none exists
+# failed or hung, or if none matched. At a terminal, --foreground keeps a
+# suite in make's process group, so Ctrl-C reaches it at once; but then
+# timeout kills the suite alone, and a child it started (curl, a server)
+# lives on, holding its port. Anywhere else, CI and pipes included, timeout
+# kills the suite's whole process group. The checks come first:
+# check-help, check-suites and, once src/ exists, check-imports each stop
+# it, so the first library under src/ is audited without anyone
+# remembering to.
+test: deps check-help check-suites $(if $(wildcard src),check-imports) ## Run every tests/test-*.sps under timeout; fail if one fails or hangs, or none exists
 	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
 	@if [ -z "$(SUITES)" ]; then \
 	  echo "test: no suites: nothing matches tests/test-*.sps" >&2; \
 	  exit 1; \
 	fi; \
-	passed=0; failed=0; hung=0; \
+	passed=0; failed=0; hung=0; fg=; \
+	if [ -t 0 ]; then fg=--foreground; fi; \
 	for t in $(SUITES); do \
 	  echo "=== $$t"; \
-	  $(TIMEOUT) --foreground $(TEST_TIMEOUT) $(CHEZ) --libdirs $(TEST_LIBDIRS) --program $$t; \
+	  $(TIMEOUT) $$fg $(TEST_TIMEOUT) $(CHEZ) --libdirs $(TEST_LIBDIRS) --program $$t; \
 	  rc=$$?; \
 	  if [ $$rc -eq 0 ]; then \
 	    echo "test: pass $$t"; passed=$$((passed + 1)); \
@@ -235,16 +246,15 @@ check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared ex
 # at its name's path, and only (circuit http-server) and (circuit middleware
 # waits) import the server or (chezscheme): the core is plain R6RS, importing
 # its own libraries and (rnrs ...) alone (tests/check-imports.sps). It names
-# each breach on stderr. It is not a prerequisite of test yet: until src/
-# holds a library it fails, for src is missing or holds none. Its own suite,
-# tests/test-check-imports.sps, runs in make test.
+# each breach on stderr. make test runs it once src/ exists; an src/ with no
+# library fails it. Its own suite, tests/test-check-imports.sps, runs in
+# make test whether src/ exists or not.
 check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), and the core imports nothing else
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src
 
 # Removes build/, and chez-libuv's own build products inside its checkout.
-# The path is written out, not a variable, so no make command line can
-# point it elsewhere.
+# The path is written out, not a variable.
 clean: ## Remove build/ and chez-libuv's built shim
 	rm -rf build
 	-@[ -f $(LIBUV_DIR)/Makefile ] && $(MAKE) --no-print-directory -C $(LIBUV_DIR) clean

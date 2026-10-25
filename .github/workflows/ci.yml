@@ -70,8 +70,9 @@ jobs:
       - name: Check dependency pins
         run: make check-pins
 
-      # libuv for the shim (pkg-config path); the X11/ncurses/uuid headers are
-      # what Chez's from-source build needs; curl is the client the
+      # libuv for the shim (pkg-config path); a C compiler and make for the
+      # shim and for Chez, which scripts/ci/build-chez.sh configures with no
+      # X11 or curses; curl, which fetches Chez and is the client the
       # integration suites run against the server, over loopback; coreutils
       # is GNU timeout, which `make test` runs every suite under. Most are
       # already on the image: naming them keeps the job from depending on
@@ -80,8 +81,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libuv1-dev \
-            libx11-dev libncurses-dev uuid-dev git curl coreutils
+            build-essential pkg-config libuv1-dev git curl coreutils
 
       # The OS release for the Chez cache key, read off the machine rather than
       # restated from runs-on (which a bump could forget), so a new image misses
@@ -93,26 +93,20 @@ jobs:
           . /etc/os-release
           echo "release=${ID:?}-${VERSION_ID:?}" >> "$GITHUB_OUTPUT"
 
-      # apt's chezscheme is below the floor, so build 10.4.1 from source and
-      # cache it keyed on the exact version, the OS release and the arch (a
-      # change to any must miss, not merge). Threaded, as chez-http-server
-      # needs.
+      # apt's chezscheme is below the floor, so build 10.4.1 from its
+      # sha256-pinned release tarball and cache it, keyed on the build script
+      # (which holds the version, the sum and the configure line), the OS
+      # release and the arch: a change to any must miss, not merge.
       - name: Restore cached Chez Scheme
         id: chez-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/chez
-          key: chez-${{ runner.os }}-${{ steps.os.outputs.release }}-${{ runner.arch }}-${{ env.CHEZ_FLOOR_VERSION }}-threads${{ inputs.chez-cache-salt }}
+          key: chez-${{ runner.os }}-${{ steps.os.outputs.release }}-${{ runner.arch }}-${{ hashFiles('scripts/ci/build-chez.sh') }}${{ inputs.chez-cache-salt }}
 
       - name: Build Chez Scheme from source (apt's is below the floor)
         if: steps.chez-cache.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch "v${CHEZ_FLOOR_VERSION}" \
-            https://github.com/cisco/ChezScheme.git "${RUNNER_TEMP}/ChezScheme"
-          cd "${RUNNER_TEMP}/ChezScheme"
-          ./configure --threads --installprefix="${HOME}/.local/chez"
-          make -j"$(nproc)"
-          make install
+        run: scripts/ci/build-chez.sh "$HOME/.local/chez"
 
       # Saved here, not by the cache action's post-step, so a failed later step
       # never publishes a half-installed prefix under the key.
@@ -123,19 +117,11 @@ jobs:
           path: ~/.local/chez
           key: ${{ steps.chez-cache.outputs.cache-primary-key }}
 
-      - name: Put Chez on PATH
-        run: echo "${HOME}/.local/chez/bin" >> "${GITHUB_PATH}"
-
-      # The from-source install names its binary `scheme`; the Makefile
-      # defaults CHEZ to whichever of `scheme` and `chez` is on PATH. Resolve
-      # whichever exists into the environment so every later `make` step uses
-      # it.
-      - name: Resolve the Chez binary
-        run: |
-          if command -v chez >/dev/null; then echo "CHEZ=chez" >> "$GITHUB_ENV"
-          elif command -v chezscheme >/dev/null; then echo "CHEZ=chezscheme" >> "$GITHUB_ENV"
-          elif command -v scheme >/dev/null; then echo "CHEZ=scheme" >> "$GITHUB_ENV"
-          else echo "no Chez Scheme binary found" >&2; exit 1; fi
+      # CHEZ names the binary just built or restored, by its path: no search
+      # of PATH, where another `scheme` or `chez` could come first. Every
+      # later step and `make` read it.
+      - name: Name the Chez binary
+        run: echo "CHEZ=$HOME/.local/chez/bin/scheme" >> "$GITHUB_ENV"
 
       - name: Assert Chez meets the declared floor
         run: |

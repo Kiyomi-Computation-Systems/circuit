@@ -44,5 +44,6 @@ node's libuv, 1.52.1.
   the server's or chez-libuv's container already has.
 - **Nothing that needs git or the network can run in the container.** A target that does
   says so and runs on the host.
-- **Bumping the pin is changing `channels.scm` and running `make check-guix`.** The Chez
-  recipe stays until the pin packages 10.4.1 itself.
+- **Bumping the pin is changing `channels.scm` and running `make check-guix`**, as is any
+  change to `manifest.scm` or the `guix-env` scripts. The Chez recipe stays until the pin
+  packages 10.4.1 itself.

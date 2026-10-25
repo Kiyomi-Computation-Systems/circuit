@@ -14,7 +14,10 @@
 ;;;       (rnrs eval), and core (circuit ...) libraries. So it imports neither
 ;;;       impure library, nor (chezscheme), nor an (http-server ...) library,
 ;;;       nor anything else;
-;;;   (d) an impure library may also import (chezscheme), and the
+;;;   (d) an impure library may also import (chezscheme), but only through an
+;;;       only right around it that names nothing but chez-names: bare, its
+;;;       body would have import, eval and load, and reach any library, which
+;;;       this check reads only the header to hold. And it may import the
 ;;;       (http-server) and (http-server NAME ...) libraries except the
 ;;;       (http-server private ...) ones. The other impure library is no core
 ;;;       library, so no library imports an impure one;
@@ -60,6 +63,12 @@
     (rnrs mutable-pairs) (rnrs mutable-strings) (rnrs programs) (rnrs r5rs)
     (rnrs records inspection) (rnrs records procedural)
     (rnrs records syntactic) (rnrs sorting) (rnrs syntax-case) (rnrs unicode)))
+
+;; chez-names : (Listof Symbol)
+;; What an impure library may take from (chezscheme). None of them can import,
+;; evaluate or load: a name that could would let a library's body reach what
+;; its header may not import. Adding one is a reviewed change (ADR-0006).
+(define chez-names '(call/1cc))
 
 ;; wrappers : (Listof Symbol)
 ;; The import-set forms that wrap one import set, in their second element.
@@ -156,6 +165,20 @@
      (and (pair? (cdr spec)) (spec-name (cadr spec) (cons spec seen))))
     (else (reference-name spec))))
 
+;; narrow-chez? : Any -> Boolean
+;; Whether SPEC, which imports (chezscheme), takes from it only chez-names:
+;; the import set right around the reference, or around (library ...), is an
+;; only that names nothing else. The wrappers outside it can only drop or
+;; rename what it lets through. spec-name has unwrapped SPEC, so it holds no
+;; cycle.
+(define (narrow-chez? spec)
+  (and (memq (car spec) wrappers)
+       (let ((inner (cadr spec)))
+         (if (and (pair? inner) (memq (car inner) wrappers))
+             (narrow-chez? inner)
+             (and (eq? (car spec) 'only)
+                  (for-all (lambda (id) (memq id chez-names)) (cddr spec)))))))
+
 ;; headed? : Symbol Any -> Boolean
 (define (headed? key form)
   (and (pair? form) (list? form) (eq? (car form) key)))
@@ -214,7 +237,13 @@
        (if (member imported defined)
            '()
            (refuse imported (string-append "no library under " root " defines it"))))
-      ((and impure? (equal? imported '(chezscheme))) '())
+      ((and impure? (equal? imported '(chezscheme)))
+       (if (narrow-chez? spec)
+           '()
+           (refuse imported
+                   (string-append "an impure library imports (chezscheme) only through only, right around it, naming "
+                                  (joined ", " (map symbol->string chez-names))
+                                  " alone: anything wider gives its body import and eval, which reach any library"))))
       ((and (eq? (car imported) 'http-server) (pair? (cdr imported))
             (eq? (cadr imported) 'private))
        (refuse imported "no library may import an (http-server private ...) library"))
@@ -224,7 +253,7 @@
                "only an impure library, (circuit http-server) or (circuit middleware waits), may import (chezscheme) or an (http-server ...) library"))
       (impure?
        (refuse imported
-               "an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme), and the (http-server ...) libraries except (http-server private ...)"))
+               "an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme) through only, and the (http-server ...) libraries except (http-server private ...)"))
       (else
        (refuse imported
                "a core library may import only the (rnrs ...) libraries except (rnrs eval), and core (circuit ...) libraries")))))

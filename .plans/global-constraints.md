@@ -9,7 +9,7 @@ provisional. They bind until that record is accepted or amended.
 
 - **Platforms:** Linux and macOS, on amd64 and arm64. No Windows code paths or CI
   (ADR-0001). CI runs on Linux only (AGENTS.md).
-- **Chez:** 10.4.1 or later, threaded: chez-http-server's floor (ADR-0002, ADR-0003).
+- **Chez:** 10.4.1 or later, threaded: chez-http-server's floor (ADR-0002).
 - **libuv:** 1.48.0 or later, which pkg-config can see, and a C compiler, for chez-libuv's
   shim (ADR-0002).
 
@@ -26,7 +26,7 @@ provisional. They bind until that record is accepted or amended.
   has no network and no git: `make submodules` and `make check-pins` run on the host and
   in CI, and `make deps` never fetches (ADR-0002).
 - **`make check-guix` must pass after any change to `channels.scm`, `manifest.scm` or the
-  `guix-env` scripts** (ADR-0002).
+  `guix-env` scripts** (ADR-0002's consequences, AGENTS.md).
 
 ## The contract
 
@@ -47,5 +47,7 @@ provisional. They bind until that record is accepted or amended.
 - **Middleware's data on a request goes under unique keys** from `make-req-key`, read with
   `req-ref` and set with `req-set` (ADR-0005).
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`
-  may import `(chezscheme)` or the server's libraries, and never `(http-server private
-  ...)`. `make check-imports` holds it (ADR-0006).
+  may import the server's libraries, never `(http-server private ...)`, and they take from
+  `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's
+  allowlist, `call/1cc` alone today. `make check-imports` holds it, and `make test` runs it
+  once `src/` exists (ADR-0006).

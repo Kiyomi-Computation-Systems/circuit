@@ -25,7 +25,7 @@
 (import (rnrs)
         (srfi :64)
         (circuit-testing)
-        (only (chezscheme) getenv library-directories library-list file-directory?
+        (only (chezscheme) getenv iota library-directories library-list file-directory?
               directory-list))
 
 ;; SRFI-64 sets no exit status. This suite's last line turns the runner's
@@ -94,7 +94,10 @@
   "but a core library may import only the (rnrs ...) libraries except (rnrs eval), and core (circuit ...) libraries")
 
 (define impure-tail
-  "but an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme), and the (http-server ...) libraries except (http-server private ...)")
+  "but an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme) through only, and the (http-server ...) libraries except (http-server private ...)")
+
+(define chez-tail
+  "but an impure library imports (chezscheme) only through only, right around it, naming call/1cc alone: anything wider gives its body import and eval, which reach any library")
 
 (define edge-tail
   "but only an impure library, (circuit http-server) or (circuit middleware waits), may import (chezscheme) or an (http-server ...) library")
@@ -144,8 +147,19 @@
 (define cases
   (list
    (list "legal"
-         "a legal tree: core libraries and both impure ones; every wrapper over an (rnrs ...) import, nested; a version reference; (chezscheme) and the (http-server ...) libraries but the private ones, in an impure library; a comment and a string that say what a library must not do; a file with the #!r6rs header and one without"
+         "a legal tree: core libraries and both impure ones; every wrapper over an (rnrs ...) import, nested; a version reference; call/1cc from (chezscheme) through only, and the (http-server ...) libraries but the private ones, in an impure library; a comment and a string that say what a library must not do; a file with the #!r6rs header and one without"
          (ok 6))
+   (list "impure-chezscheme"
+         "rule (d): an impure library takes from (chezscheme) only call/1cc, through only right around it: bare, eval, call/1cc with import, except, prefix, rename, for, library, only around for, and only around a wider only are named; prefix, rename and for around the narrow only, only around (library (chezscheme)), and a version reference are not"
+         (apply refused
+                (map (lambda (i)
+                       (imports "impure-chezscheme" "circuit/http-server.sls" "(circuit http-server)"
+                                "(chezscheme)" chez-tail))
+                     (iota 10))))
+   (list "case-mismatch"
+         "rule (a): a library's path matches its name letter for letter: (circuit request) in circuit/Request.sls is at the wrong path"
+         (refused (misplaced "case-mismatch" "circuit/Request.sls" "(circuit request)"
+                             "circuit/request.sls")))
    (list "rnrs-libraries"
          "every (rnrs ...) library but (rnrs eval), imported by one core library"
          (ok 1))
