@@ -3,7 +3,9 @@
 - **Status:** Accepted (the owner's decision, 2026-10-25)
 - **Date:** 2026-10-25
 - **Amended:** 2026-10-25, after spike S2: the allowlist's one name is `getenv`, not
-  `call/1cc` (the owner's decision)
+  `call/1cc` (the owner's decision); 2026-10-26, once the server's asks landed: the catch
+  helper needs `body-failed?` and `body-failed-status` too, and the waiting middleware is
+  tested through the server's `(http-server testing)`, not its fake shell
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
@@ -12,7 +14,8 @@
 The core (requests, responses, headers, middleware that doesn't wait) needs nothing of the
 server's, and a test calls a handler built from it directly, with no server. `wrap-timeout`
 and the catch helper need the server's verbs (`with-deadline`, `deadline-passed?`,
-`client-closed?`), and `with-deadline` is refused off a coroutine. The catch helper escapes
+`client-closed?`, `body-failed?`, `body-failed-status`), and `with-deadline` is refused off
+a coroutine. The catch helper escapes
 by `call/cc`, which is plain R6RS (spike S2). R6RS has no `getenv`, and the adapter reads its
 settings from the process's environment when it is given no environment procedure, as
 `serve` does with Chez's `getenv`.
@@ -35,7 +38,9 @@ settings from the process's environment when it is given no environment procedur
 
 - **A handler built from the core alone is tested by calling it**, and so is one wrapped
   only in the catch helper, if it doesn't wait. One wrapped in `wrap-timeout` is tested
-  through the server's fake shell.
+  through the server's test host, `(http-server testing)`, a public library the server's
+  package installs; its fake shell is `(http-server private fake-shell)`, which item 2
+  keeps out.
 - **An app that uses `wrap-timeout` imports three circuit libraries.**
 - **A second adapter would carry its own copy of the waiting middleware**, or import this one.
 - **Taking another name from `(chezscheme)` is a reviewed change** to the audit's
