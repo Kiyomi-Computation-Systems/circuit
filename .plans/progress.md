@@ -15,15 +15,17 @@ close-out under **Close-outs**, newest first.
   [PR #2](https://github.com/Kiyomi-Computation-Systems/circuit/pull/2) on 2026-10-26
   (c057b03); its close-out is below. The pin is at v0.9.0 (d928e41), and the owner's
   answers since are design §15.7–§15.11.
-- **Slice 3, the pure core, is in review** in
-  [PR #3](https://github.com/Kiyomi-Computation-Systems/circuit/pull/3); its close-out
-  is below.
-- **Next: slice 4, the adapter** (design §17): `(circuit http-server)` on the pin at
-  v0.9.0, sending every body kind but the upgrade through `res-body-stream`, port bodies
-  sized and closed by `request-on-done!` through its `on-port`, ADR-0006's allowlist
-  amended for `port-has-port-length?` and `port-length`, examples over loopback, and the
-  gate's final numbers from the real adapter in a decision record (design §15.6): G2's
-  POST re-measured, and G4's bound set off a record's size step.
+- **Slice 3, the pure core and the cost gate, is merged**, squashed from
+  [PR #3](https://github.com/Kiyomi-Computation-Systems/circuit/pull/3) on 2026-10-26
+  (9720d90); its close-out is below.
+- **Slice 4, the adapter, is merged**, squashed from
+  [PR #4](https://github.com/Kiyomi-Computation-Systems/circuit/pull/4) on 2026-10-26;
+  its close-out is below. The owner's answers in it are design §15.12 and ADR-0007.
+- **Next: slice 5, `(circuit middleware waits)`** (design §17): the catch helper and
+  `wrap-timeout`, through `(http-server testing)`, and request logging on
+  `req-on-done!`, with G5 re-measured on the real helper. Two things to weigh first
+  (Open): the server's cost for each `request-on-done!` procedure, which logging pays
+  on every request, and a clock for the log.
 
 ## Open
 
@@ -46,11 +48,33 @@ close-out under **Close-outs**, newest first.
   exports none. The server's own clock, the one its waits use, is the one to read, so
   `(http-server testing)`'s clock would drive it in a test: likely an upstream ask, not a
   second Chez name.
-- **G2 reads 9.5 KB against its proposed 3,072 B** (printed, not held): the pulled POST
-  reads its body with `get-bytevector-all`, about 8.2 KB of Chez's (design §4, §15.6).
-  Slice 4 re-measures the POST and sets G2's final bound.
-- **G4's bound, 96 B, sits on a record's size step** (design §15.6): a six-field request
-  record failed it by 1 B. Slice 4 should set it off a step.
+- **The test host logs a line the server doesn't**: `handler-failed` for a `&body-failed`
+  the app lets out, where `serve` logs nothing. The libuv shell skips a failure the
+  request's notice already told (`private/shell.sls`, `told-failure?`), and the fake shell
+  doesn't. `tests/test-http-server.sps` pins the test host's line, so a fix upstream
+  changes that row. Found by slice 4's review; filed as
+  [chez-http-server #243](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/243)
+  on 2026-10-26, reproduced on v0.9.0 in the test host and over loopback.
+- **A wrap's `f` can meet a closed port** once the client has gone while the app waited
+  (design §6, §9). The test host drops `f`'s raise there; whether the real server logs
+  it `handler-failed` is unverified, since curl closes with a FIN, not a reset.
+- **Unverified off Linux:** the adapter suite's FIFO row opens a FIFO read-write, which
+  POSIX leaves undefined; it works on Linux. CI runs Linux alone.
+- **A `request-on-done!` procedure costs about 1 KB a request** of the server's (slice 4,
+  outside the gate): its `tell-done!` runs each one under `call/1cc` and
+  `with-exception-handler`. Request logging (slice 5) would pay it on every request:
+  likely an upstream ask before slice 5.
+- **Left from the owner's `/code-review` of slice 4, not fixed:**
+  - a procfs file such as `/proc/self/status` reports a length of 0, so it is measured at
+    0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
+    measured 0 as unknown would stream it, at the cost of an empty file's
+    `Content-Length: 0`;
+  - `res-body->bytevector` reads a port whole at 64 KiB whatever the app's
+    `CIRCUIT_PORT_PIECE_BYTES`, so for a smaller setting a file that shrinks after it is
+    measured passes its test and ends short in production;
+  - `examples/long-poll.sps` may wake a waiter whose deadline fired in the same instant,
+    answering "woke 1" and logging `late-resume`, as the server's example would.
+    Unverified.
 - **A cap of circuit's own on the request body** (design §16.1): the revision has none,
   and the server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by default.
 - **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
@@ -65,6 +89,54 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-26: slice 4, the adapter, in PR #4
+
+Five commits on `slice/4-adapter`: the import audit's allowlist (63d26c9), the adapter
+and small port bodies read whole (81e710a), the examples and the loopback suite
+(8a8079e), the gate on the real adapter with G7 (f1ec23f), and the records with this
+close-out. Built, reviewed and fixed on 2026-10-26. `make test` passes 11 suites, 425
+rows (check-imports 48, check-suites 14, circuit-testing 45, examples 37, headers 24,
+http-server 64, middleware 9, names 16, request 47, response 79, test 42), and `make
+gate` passes:
+
+- **the adapter** (Opus 5.5; 445,883 tokens over three rounds, 35, 4 and 16 minutes):
+  `(circuit http-server)`, its suite through the test host, the audit's two names, and
+  the names suite. Its first round watched 55 mutant runs fail; the session reran 13
+  mutants, three of them its own, and the builder's four Chez traps;
+- **the gate** (Opus 5.5; 182,650 tokens, 20 minutes): the real adapter, the pulled
+  POST, and final bounds from eight runs, each held gate watched failing (ADR-0007). The
+  session reran the gate and its G3 and G4 mutants, and the port-body probe;
+- **the examples** (Opus 5.5; 267,072 tokens over two rounds, 36 and 3 minutes): hello,
+  echo, a stream, a long poll, and `tests/loopback-app.sps`, run as processes over
+  loopback. 31 mutants were watched failing, and no process outlives a run; the session
+  reran six mutants;
+- **a read-only Opus review** (Opus 5.5; 342,005 tokens, 24 minutes) found no defect in
+  what the adapter does, and found tests that passed with it wrong. The session
+  reproduced each, and the builders fixed them:
+  - three mutants passed every suite: `run-server`'s env not reaching `serve`, the
+    Latin-1 bound at 257, and the measure's length guard dropped. Each now fails a row;
+  - the long poll's 504 and the server's cap were claimed, not held: each is a row now;
+  - a wrap's `f` meets a closed port once the client has gone while the app waited
+    (design §6, §9);
+  - the test host logs `handler-failed` for a let-out `&body-failed`, which `serve`
+    doesn't: filed as chez-http-server #243;
+- **the owner's decisions** (design §15.12): ADR-0007's bounds accepted; a port body of
+  a piece or less read whole, which took a 6-byte port body from about 5.1 KB a request
+  over a bytevector to about 300 B; and G7 held at 384 B, watched failing on the
+  streamed code (5,098 B) and with the `guard`s back (658 B);
+- **the owner's `/code-review`** (Opus 5.5; 112,540 tokens, 5 minutes) found nine. Two
+  were fixed, each watched failing first: the README's threshold read "smaller", and
+  `stream.sps` took `+3` for digits. Three are Open, and four are design-recorded
+  limits or deliberate (a pipe's 500, a producer's `req-body`, the gate's
+  `get-bytevector-n`, the adapter's fast paths);
+- **traps, reproduced by the session:**
+  - Chez gives no custom port a length;
+  - `get-bytevector-n` refuses a count past `(greatest-fixnum)`;
+  - a bytevector port refuses a position past its end;
+  - a FIFO reports a length of 0 and its `port-position` raises;
+  - a declared body past the server's cap is answered 413 before the handler runs;
+  - a child of `open-process-ports` stays a zombie while its parent lives.
 
 ### 2026-10-26: slice 3, the pure core and the cost gate, in PR #3
 

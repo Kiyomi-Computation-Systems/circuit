@@ -50,6 +50,14 @@ provisional. They bind until that record is accepted or amended.
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`
   may import the server's libraries, never `(http-server private ...)`, and they take from
   `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's
-  allowlist, `getenv` alone today. Every file under `src/` begins with the line `#!r6rs`
-  and holds `#!` nowhere else. `make check-imports` holds it, and `make test` runs it once
-  `src/` exists (ADR-0006).
+  allowlist, `getenv`, `port-has-port-length?` and `port-length` today. Every file under
+  `src/` begins with the line `#!r6rs` and holds `#!` nowhere else. `make check-imports`
+  holds it, and `make test` runs it once `src/` exists (ADR-0006).
+
+## Cost
+
+- **`make gate`'s held gates bind**: circuit's own work over the server's `awaiting` path
+  at most 384 B a GET and 352 B a POST (G3); one `req-set` at most 88 B, and five at most
+  440 B (G4); the catch helper over the app, with nothing raised, at most 512 B, with a
+  park and without (G5); a 6-byte port body over the same bytes as a bytevector at most
+  384 B (G7). CI fails over any of them (ADR-0007).
