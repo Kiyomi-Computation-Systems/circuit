@@ -73,11 +73,17 @@
 
 (define (ignore-port port) #f)
 
-;; streamed : Body (Port -> (U Nat #f)) Nat Nat -> (List (Listof Any) (U Nat #f))
-;; res-body-stream's producer, drained CALLS times, and its length.
+;; streamed : Body (Port -> (U Nat #f)) Nat Nat -> (List Any (U Nat #f))
+;; res-body-stream's answer and its length: whole bytes shown as (whole
+;; TEXT), a producer drained CALLS times.
 (define (streamed body measure size calls)
-  (let-values (((producer length) (body-stream body measure size)))
-    (list (drain producer calls) length)))
+  (let-values (((answer length) (body-stream body measure size)))
+    (list (answered answer calls) length)))
+
+;; answered : (U Bytevector Producer) Nat -> Any
+;; Whole bytes as (whole TEXT); a producer drained CALLS times.
+(define (answered answer calls)
+  (if (bytevector? answer) (list 'whole (shown answer)) (drain answer calls)))
 
 (define no-length (lambda (port) #f))
 
@@ -428,16 +434,17 @@
 
 ;; --- res-body-stream: bodies with no port --------------------------------------------------
 
-(test-equal "res-body-stream: #f, an empty bytevector and an empty string answer eof at once, length 0"
-  '(((eof eof) 0) ((eof eof) 0) ((eof eof) 0))
+(test-equal "res-body-stream: #f, an empty bytevector and an empty string answer empty bytes, length 0"
+  '(((whole "") 0) ((whole "") 0) ((whole "") 0))
   (map (lambda (body) (streamed body no-length 4 2)) (list #f #vu8() "")))
 
-(test-equal "res-body-stream: a bytevector is one piece, whatever the piece size, then eof"
-  '(("0123456789" eof eof) 10)
-  (streamed digits no-length 4 3))
+(test-equal "res-body-stream: a bytevector answers itself, whatever the piece size, its length its own"
+  '(#t 10)
+  (let-values (((answer n) (body-stream digits no-length 4)))
+    (list (eq? answer digits) n)))
 
-(test-equal "res-body-stream: a string is one piece of its UTF-8, its length its bytes'"
-  (list (list (string #\h (integer->char #xE9) #\l #\l #\o) 'eof) 6)
+(test-equal "res-body-stream: a string answers its UTF-8, whole, its length its bytes'"
+  (list (list 'whole (string #\h (integer->char #xE9) #\l #\l #\o)) 6)
   (streamed (string #\h (integer->char #xE9) #\l #\l #\o) no-length 4 2))
 
 (test-equal "res-body-stream: a producer is itself, with no length"
@@ -727,6 +734,99 @@
   '((measure on-port) (assertion-violation res-body-stream (not-a-producer)) #f)
   (let ((port (digits-port)))
     (ordered (wrapped port (lambda (q) 'not-a-producer) #f) port (lambda () 10))))
+
+;; --- res-body-stream: a port of one piece or less is read whole -------------------------------
+;; A bare port, not under a sized body, that the measure gives no more than
+;; the piece size is read whole, by one get-bytevector-n of its length, and
+;; closed, before any f: its bytes are the body, and on-port is not called.
+
+;; whole-or-not : Body (BinaryInputPort -> (U Nat #f)) Nat BinaryInputPort
+;;                -> (List Any (U Nat #f) Boolean (Listof Any))
+;; res-body-stream's answer, shown, and its length; whether PORT was closed
+;; when it answered; and the calls noted, on-port's among them.
+(define (whole-or-not body measure size port)
+  (take-log!)
+  (let-values (((answer n) (res-body-stream body measure (lambda (q) (note! 'on-port)) size)))
+    (let* ((closed (port-closed? port))
+           (log (take-log!)))
+      (list (answered answer 3) n closed log))))
+
+(test-equal "a bare port of exactly one piece is read whole: one read of its length, closed before the answer, no on-port"
+  '(((whole "0123") 4 #t ()) ((4) 4))
+  (let-values (((port reads) (recording-port digits)))
+    (let ((result (whole-or-not port (lambda (q) 4) 4 port)))
+      (list result (reads)))))
+
+(test-equal "a bare port of one byte more than a piece streams: on-port, then pieces, open until its last byte"
+  '((("0123" #f) ("4" #t) (eof #t)) 5 #f (on-port))
+  (let ((port (digits-port)))
+    (take-log!)
+    (let-values (((p n) (res-body-stream port (lambda (q) 5) (lambda (q) (note! 'on-port)) 4)))
+      (let* ((closed (port-closed? port))
+             (log (take-log!))
+             (answers (drain-watching p port 3)))
+        (list answers n closed log)))))
+
+(test-equal "a port measured at 0 is read not at all: empty bytes, closed, no on-port"
+  '(((whole "") 0 #t ()) (() 0))
+  (let-values (((port reads) (recording-port digits)))
+    (let ((result (whole-or-not port (lambda (q) 0) 4 port)))
+      (list result (reads)))))
+
+(test-equal "a whole port goes out at the count read: fewer when it holds less than measured, none at its eof, never more"
+  '(((whole "012345") 6 #t ()) ((whole "") 0 #t ()) ((whole "0123") 4 #t ()))
+  (let* ((short (open-bytevector-input-port (string->utf8 "012345")))
+         (spent (let ((p (digits-port))) (get-bytevector-all p) p))
+         (long (digits-port))
+         (a (whole-or-not short (lambda (q) 9) 16 short))
+         (b (whole-or-not spent (lambda (q) 3) 16 spent))
+         (c (whole-or-not long (lambda (q) 4) 16 long)))
+    (list a b c)))
+
+(test-equal "a whole port under wraps: read before f, closed when f is handed one piece; same? keeps its length"
+  '((((inner #t) (outer #t)) ("0123456789" eof eof) #f)
+    (((only #t)) ("0123456789" eof) 10))
+  (let* ((port (digits-port))
+         (other (digits-port))
+         (noting (lambda (name watched) (lambda (q) (note! (list name (port-closed? watched))) q)))
+         (nested (begin
+                   (take-log!)
+                   (let-values (((p n) (res-body-stream
+                                        (wrapped (wrapped port (noting 'inner port) #t) (noting 'outer port) #f)
+                                        (lambda (q) 10) (lambda (q) (note! 'on-port)) 16)))
+                     (let ((log (take-log!)))
+                       (list log (drain p 3) n)))))
+         (kept (let-values (((p n) (res-body-stream (wrapped other (noting 'only other) #t)
+                                                    (lambda (q) 10) (lambda (q) (note! 'on-port)) 16)))
+                 (let ((log (take-log!)))
+                   (list log (drain p 2) n)))))
+    (list nested kept)))
+
+(test-equal "a raise from the read closes the port and goes on: no on-port, no f"
+  '((measure) (other-raise read-failed) #t)
+  (let ((port (make-custom-binary-input-port "raising" (lambda (bv start count) (raise 'read-failed))
+                                             #f #f #f)))
+    (take-log!)
+    (let ((outcome (raised (lambda ()
+                             (res-body-stream (noting-wrap port 'f #f)
+                                              (lambda (q) (note! 'measure) 3)
+                                              (lambda (q) (note! 'on-port))
+                                              4)))))
+      (list (take-log!) outcome (port-closed? port)))))
+
+(test-equal "a sized port of no more than a piece still streams: not measured, on-port, then a producer"
+  '(#t 3 #f (on-port) (("012" #t) (eof #t)))
+  (let ((port (digits-port)))
+    (take-log!)
+    (let-values (((p n) (res-body-stream (make-sized-body 3 port)
+                                         (lambda (q) (note! 'measure) 3)
+                                         (lambda (q) (note! 'on-port))
+                                         4)))
+      (let* ((producer? (procedure? p))
+             (closed (port-closed? port))
+             (log (take-log!))
+             (answers (drain-watching p port 2)))
+        (list producer? n closed log answers)))))
 
 (test-equal "a wrap whose f answers no producer is refused"
   '(assertion-violation res-body-stream (not-a-producer))

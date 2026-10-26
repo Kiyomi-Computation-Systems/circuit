@@ -3,13 +3,16 @@
 ;;; with no only, except, prefix or rename, as an app may import them
 ;;; (design §10, ADR-0005). An export of circuit's that names a binding the
 ;;; server's libraries export is a clash, and Chez refuses this program
-;;; before any test runs, so the suite fails. (circuit http-server) joins it
-;;; in slice 4.
+;;; before any test runs, so the suite fails. The adapter, (circuit
+;;; http-server), re-exports the server's waits and conditions, which the
+;;; import takes from both libraries at once only because each is the
+;;; server's own binding.
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
 ;;; its list, so the (circuit) facade keeps the adapter's and the tests'
-;;; names out, and that the like-named bindings of the two make different
-;;; things.
+;;; names out, that the adapter's re-exports are the server's own bindings,
+;;; compared through a prefixed import of each, and that the like-named
+;;; bindings of the two make different things.
 (import (rnrs)
         (srfi :64)
         (only (chezscheme) library-exports)
@@ -23,7 +26,10 @@
         (circuit response)
         (circuit headers)
         (circuit middleware)
-        (circuit test))
+        (circuit test)
+        (circuit http-server)
+        (prefix (http-server) server:)
+        (prefix (circuit http-server) adapter:))
 
 (define runner (test-runner-simple))
 (test-runner-current runner)
@@ -70,6 +76,13 @@
     header-value header-values header-set header-add header-remove header-names-downcase
     wrap))
 
+;; The server's waits and conditions, which (circuit http-server) re-exports.
+(define server-reexports
+  '(await sleep-ms with-deadline resolve
+    &deadline-passed deadline-passed? &client-closed client-closed?
+    &resolve-error resolve-error? resolve-error-reason
+    &body-failed body-failed? body-failed-reason body-failed-status))
+
 ;; What the adapter and the tests need, which an app does not.
 (define kept-out-of-the-facade
   '(make-req-view make-req req-body-made test-req-done!
@@ -80,8 +93,8 @@
 (test-begin "names")
 
 (test-equal "the server's libraries and circuit's are all loaded, side by side"
-  '(#t #t #t #t #t #t)
-  (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap)))
+  '(#t #t #t #t #t #t #t)
+  (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler)))
 
 (test-equal "(circuit request) exports its list exactly"
   (sorted request-names)
@@ -102,6 +115,40 @@
 (test-equal "(circuit test) exports its three"
   '(make-test-req res-body->bytevector test-req-done!)
   (sorted-exports '(circuit test)))
+
+(test-equal "(circuit http-server) exports its two and the server's waits and conditions, exactly"
+  (sorted (append '(circuit->handler run-server) server-reexports))
+  (sorted-exports '(circuit http-server)))
+
+(test-equal "(circuit http-server) leaves out the server's pull and its port: req-body is the body's one port"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit http-server))))
+          '(next-body-piece body-input-port)))
+
+(test-equal "(circuit http-server)'s re-exported procedures are the server's own"
+  '(#t #t #t #t #t #t #t #t #t #t #t)
+  (map (lambda (pair) (eq? (car pair) (cdr pair)))
+       (list (cons adapter:await server:await) (cons adapter:sleep-ms server:sleep-ms)
+             (cons adapter:with-deadline server:with-deadline) (cons adapter:resolve server:resolve)
+             (cons adapter:deadline-passed? server:deadline-passed?)
+             (cons adapter:client-closed? server:client-closed?)
+             (cons adapter:resolve-error? server:resolve-error?)
+             (cons adapter:resolve-error-reason server:resolve-error-reason)
+             (cons adapter:body-failed? server:body-failed?)
+             (cons adapter:body-failed-reason server:body-failed-reason)
+             (cons adapter:body-failed-status server:body-failed-status))))
+
+(test-equal "(circuit http-server)'s re-exported condition types are the server's own"
+  '(#t #t #t #t)
+  (map (lambda (pair) (eq? (car pair) (cdr pair)))
+       (list (cons (record-type-descriptor adapter:&deadline-passed)
+                   (record-type-descriptor server:&deadline-passed))
+             (cons (record-type-descriptor adapter:&client-closed)
+                   (record-type-descriptor server:&client-closed))
+             (cons (record-type-descriptor adapter:&resolve-error)
+                   (record-type-descriptor server:&resolve-error))
+             (cons (record-type-descriptor adapter:&body-failed)
+                   (record-type-descriptor server:&body-failed)))))
 
 (test-equal "(circuit) exports what an app uses, exactly"
   (sorted facade-names)

@@ -8,7 +8,8 @@
 ;;;   Bytevector
 ;;;   String              sent as UTF-8
 ;;;   Producer            (-> (U Bytevector Eof)), called for each piece
-;;;   BinaryInputPort     streamed, and closed once read
+;;;   BinaryInputPort     read whole when its length is one piece or less,
+;;;                       streamed otherwise, and closed once read
 ;;;   SizedBody           (make-sized-body n body): a producer or a port of
 ;;;                       n bytes, sent with that length
 ;;;   WrappedBody         (res-wrap-body res f [same?]): another body, its
@@ -218,30 +219,39 @@
   ;; --- sending a body ---------------------------------------------------------------
 
   ;; res-body-stream : Body (BinaryInputPort -> (U Nat #f)) (BinaryInputPort -> Any) Nat
-  ;;                   -> (Values Producer (U Nat #f))
-  ;; The producer that sends BODY, and its length, or #f for none. SIZE is
-  ;; the most a port's piece holds. No producer answers an empty piece.
+  ;;                   -> (Values (U Bytevector Producer) (U Nat #f))
+  ;; What sends BODY, and its length, or #f for none: a bytevector when its
+  ;; bytes are whole, otherwise a producer. SIZE is the most a port's piece
+  ;; holds. No producer answers an empty piece.
+  ;;
+  ;; #f answers #vu8(), a bytevector itself, a string its UTF-8, each with
+  ;; its own length. A producer answers itself, with no length.
   ;;
   ;; A body that holds a port is first made the caller's, before any wrap's
-  ;; f runs: MEASURE is called once with the port, unless a sized body says
-  ;; its length, and answers that length or #f; then ON-PORT is called once
-  ;; with the port, where the adapter registers its close (design §9). If
-  ;; MEASURE or ON-PORT raises, or MEASURE answers no count, the port is
+  ;; f runs. A bare port, not under a sized body though it may be under
+  ;; wraps, is measured: MEASURE is called once with it, and answers its
+  ;; length or #f. When that length is no more than SIZE, the port is read
+  ;; whole, by one get-bytevector-n of it (none for 0), and closed: its bytes,
+  ;; as many as the read gave, fewer when the port held fewer and never more,
+  ;; are the body from then on, and ON-PORT is not called, since nothing is
+  ;; left open. Otherwise ON-PORT is called once with the port, where the
+  ;; adapter registers its close (design §9), and the port streams: in
+  ;; pieces of at most SIZE, never past the length MEASURE gave, answering
+  ;; eof, the port closed, at its eof, and closed as its last byte is read.
+  ;; A port under a sized body is not measured, and always streams: ON-PORT,
+  ;; then its producer, read as far as the sized body's n. If MEASURE, the
+  ;; read or ON-PORT raises, or MEASURE answers no count, the port is
   ;; closed, the raise goes on, and no f runs. After ON-PORT the port is the
   ;; caller's to close: a raise from f closes nothing. A body that holds no
   ;; port calls neither.
   ;;
-  ;; #f, a bytevector or a string is one piece, its UTF-8 for a string, or
-  ;; eof at once when it is empty; its length its bytes'. A producer is
-  ;; itself, with no length. A port is read in pieces of at most SIZE, and
-  ;; never past the length MEASURE gives: it answers eof, the port closed,
-  ;; at the port's eof, and is closed as its last byte is read. A sized
-  ;; body is its inner body's producer, a port's read as far as its n, with
-  ;; length n. A wrap streams the body under it first, then calls its f: with
-  ;; same?, on that producer, keeping that length; without, on a producer
-  ;; that stops at the length the body under it had, if any, raising at a
-  ;; piece that would pass it, and with no length. F's answer must be a
-  ;; procedure.
+  ;; A sized body answers its inner body's producer, with length n. A wrap
+  ;; answers f's producer: f is handed the body under it as a producer,
+  ;; whole bytes as one piece, or eof at once when empty. With same?, f is
+  ;; handed that producer and the wrap keeps its length; without, f is
+  ;; handed a producer that stops at the length the body under it had, if
+  ;; any, raising at a piece that would pass it, and the wrap has no
+  ;; length. F's answer must be a procedure.
   (define (res-body-stream body measure on-port size)
     (check-body 'res-body-stream body)
     (unless (procedure? measure)
@@ -251,11 +261,10 @@
     (unless (and (count? size) (> size 0))
       (assertion-violation 'res-body-stream "a piece size is a positive count of bytes" size))
     (let-values (((port sized?) (port-place body)))
-      (let ((n (and port (not sized?)
-                    (closing-on-raise port (lambda () (measured port measure))))))
-        (when port
-          (closing-on-raise port (lambda () (on-port port))))
-        (stream body n size))))
+      (let ((got (cond ((not port) #f)
+                       (sized? (closing-on-raise port (lambda () (on-port port))) #f)
+                       (else (closing-on-raise port (lambda () (taken port measure on-port size)))))))
+        (stream body got size))))
 
   ;; port-place : Body -> (Values (U BinaryInputPort #f) Boolean)
   ;; The port BODY holds, or #f, and whether a sized body holds it.
@@ -267,6 +276,19 @@
           ((res-wrapped-body? body) (port-place (res-wrapped-body-inner body)))
           (else (values #f #f))))
 
+  ;; taken : BinaryInputPort (BinaryInputPort -> (U Nat #f)) (BinaryInputPort -> Any) Nat
+  ;;         -> (U Bytevector Nat #f)
+  ;; A bare PORT made the caller's. Measured at SIZE or less, it is read
+  ;; whole and closed, and its bytes answered; otherwise it is handed to
+  ;; ON-PORT, and its length, or #f, answered.
+  (define (taken port measure on-port size)
+    (let ((n (measured port measure)))
+      (if (and n (<= n size))
+          (let ((bytes (if (= n 0) #vu8() (get-bytevector-n port n))))
+            (close-port port)
+            (if (eof-object? bytes) #vu8() bytes))
+          (begin (on-port port) n))))
+
   (define (measured port measure)
     (let ((n (measure port)))
       (unless (or (not n) (count? n))
@@ -274,45 +296,51 @@
       n))
 
   ;; closing-on-raise : BinaryInputPort (-> Any) -> Any
-  ;; THUNK's answer; if it raises, PORT is closed and the raise goes on.
+  ;; THUNK's answer; if it raises, PORT is closed and the raise goes on. The
+  ;; handler closes the port where the raise is, and raises on from there:
+  ;; with-exception-handler costs less than guard, which unwinds first.
   (define (closing-on-raise port thunk)
-    (guard (e (#t (close-port port) (raise e)))
-      (thunk)))
+    (with-exception-handler
+     (lambda (e) (close-port port) (raise e))
+     thunk))
 
-  ;; stream : Body (U Nat #f) Nat -> (Values Producer (U Nat #f))
-  ;; As res-body-stream, the port measured already: N is a bare port's
-  ;; length, or #f.
-  (define (stream body n size)
+  ;; stream : Body (U Bytevector Nat #f) Nat -> (Values (U Bytevector Producer) (U Nat #f))
+  ;; As res-body-stream, a bare port taken already: GOT is its bytes, read
+  ;; whole, or its length, or #f.
+  (define (stream body got size)
     (cond
-      ((not body) (bytes-stream #vu8()))
-      ((bytevector? body) (bytes-stream body))
-      ((string? body) (bytes-stream (string->utf8 body)))
+      ((not body) (values #vu8() 0))
+      ((bytevector? body) (values body (bytevector-length body)))
+      ((string? body) (let ((bytes (string->utf8 body))) (values bytes (bytevector-length bytes))))
       ((procedure? body) (values body #f))
-      ((binary-input-port? body) (values (port-producer body n size) n))
+      ((binary-input-port? body)
+       (if (bytevector? got)
+           (values got (bytevector-length got))
+           (values (port-producer body got size) got)))
       ((res-sized-body? body)
        (let ((length (res-sized-body-length body))
              (inner (res-sized-body-inner body)))
          (values (if (procedure? inner) inner (port-producer inner length size)) length)))
       (else
-       (let-values (((inner length) (stream (res-wrapped-body-inner body) n size)))
+       (let-values (((inner length) (stream (res-wrapped-body-inner body) got size)))
          (let* ((same? (res-wrapped-body-same? body))
-                (handed (if (or same? (not length)) inner (counting-producer inner length)))
+                (producer (if (bytevector? inner) (bytes-producer inner) inner))
+                (handed (if (or same? (not length)) producer (counting-producer producer length)))
                 (out ((res-wrapped-body-proc body) handed)))
            (unless (procedure? out)
              (assertion-violation 'res-body-stream "a wrap's f answered no producer" out))
            (values out (and same? length)))))))
 
-  ;; bytes-stream : Bytevector -> (Values Producer Nat)
+  ;; bytes-producer : Bytevector -> Producer
   ;; BYTES as one piece, then eof; eof at once when BYTES is empty.
-  (define (bytes-stream bytes)
-    (values (if (= (bytevector-length bytes) 0)
-                (lambda () (eof-object))
-                (let ((sent? #f))
-                  (lambda ()
-                    (if sent?
-                        (eof-object)
-                        (begin (set! sent? #t) bytes)))))
-            (bytevector-length bytes)))
+  (define (bytes-producer bytes)
+    (if (= (bytevector-length bytes) 0)
+        (lambda () (eof-object))
+        (let ((sent? #f))
+          (lambda ()
+            (if sent?
+                (eof-object)
+                (begin (set! sent? #t) bytes))))))
 
   ;; port-producer : BinaryInputPort (U Nat #f) Nat -> Producer
   ;; PORT in pieces of at most SIZE, and at most what is left of N. It
