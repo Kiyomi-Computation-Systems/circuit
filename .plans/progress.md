@@ -15,12 +15,15 @@ close-out under **Close-outs**, newest first.
   [PR #2](https://github.com/Kiyomi-Computation-Systems/circuit/pull/2) on 2026-10-26
   (c057b03); its close-out is below. The pin is at v0.9.0 (d928e41), and the owner's
   answers since are design §15.7–§15.11.
-- **Now: slice 3, the pure core** (design §17), on `slice/3-pure-core`: `req` with its
-  new accessors, shared cells and required view procedures, `res` with the sized and
-  wrapped bodies (`res-wrap-body` provisional), headers, keys, `make-test-req` and
-  `test-req-done!`, the exports the adapter and the tests need, `wrap`, and the suites
-  that hold the names apart and `wrap`'s order; with them `make oha`, and `make gate`
-  holding the provisional numbers (design §15.6).
+- **Slice 3, the pure core, is in review** in
+  [PR #3](https://github.com/Kiyomi-Computation-Systems/circuit/pull/3); its close-out
+  is below.
+- **Next: slice 4, the adapter** (design §17): `(circuit http-server)` on the pin at
+  v0.9.0, sending every body kind but the upgrade through `res-body-stream`, port bodies
+  sized and closed by `request-on-done!` through its `on-port`, ADR-0006's allowlist
+  amended for `port-has-port-length?` and `port-length`, examples over loopback, and the
+  gate's final numbers from the real adapter in a decision record (design §15.6): G2's
+  POST re-measured, and G4's bound set off a record's size step.
 
 ## Open
 
@@ -43,6 +46,11 @@ close-out under **Close-outs**, newest first.
   exports none. The server's own clock, the one its waits use, is the one to read, so
   `(http-server testing)`'s clock would drive it in a test: likely an upstream ask, not a
   second Chez name.
+- **G2 reads 9.5 KB against its proposed 3,072 B** (printed, not held): the pulled POST
+  reads its body with `get-bytevector-all`, about 8.2 KB of Chez's (design §4, §15.6).
+  Slice 4 re-measures the POST and sets G2's final bound.
+- **G4's bound, 96 B, sits on a record's size step** (design §15.6): a six-field request
+  record failed it by 1 B. Slice 4 should set it off a step.
 - **A cap of circuit's own on the request body** (design §16.1): the revision has none,
   and the server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by default.
 - **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
@@ -57,6 +65,48 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-26: slice 3, the pure core and the cost gate, in PR #3
+
+Six commits on `slice/3-pure-core`: the ledger's close-out of PR #2 (edf8605), the core
+and its suites (4e4d500), the audit's `#!r6rs` rule (13a8d5d), the gate (d4f38c9), the
+design's records of what the slice settled and measured (6591e03), and this close-out.
+Built, reviewed and fixed on 2026-10-26:
+
+- **the core** (Opus 5.5; 297,770 tokens, 29 minutes): `(circuit)` and its five
+  libraries, `(circuit test)`, and six suites, among them the names suite. `make test`
+  passes 9 suites. 52 mutants were watched failing; the session reran 13 and a
+  name clash of its own. What it settled is in design §3, §5, §10 and §11;
+- **the gate** (Opus 5.5; 216,433 tokens, 23 minutes): `make oha`, `make gate`,
+  `make gate-rps` and CI's "Cost gate" step, with a stand-in adapter and catch helper
+  over the real core. The held gates pass, each watched failing (design §15.6). The
+  session reran the gate and its G4 mutant;
+- **a read-only Opus review** (Opus 5.5; 318,604 tokens, 20 minutes) found nine
+  problems, each reproduced by the session, and the core's builder fixed them (Opus 5.5;
+  15 minutes, 415,113 tokens over both of its rounds):
+  - `res-body-stream` gave the adapter no point between measuring a port and a wrap's
+    `f` to register its close: it now takes an `on-port`, called after `measure` and
+    before any `f`, and a raise from either closes the port (design §9, §11);
+  - `res-body->bytevector` read a port body to eof where the adapter sends it sized, so
+    a counter wrap passed its test and failed in production: it now measures a port by
+    reading ahead and setting it back, and, given the request, refuses the natural echo
+    as the adapter does (design §11);
+  - four weak tests, each with a surviving mutant: `on-done` through a `req-with-`
+    copy, `req-headers`' own list, a binary output port as a body, an inexact port;
+  - `make-test-req` read an absolute-form target and padded header values otherwise than
+    the server: it now refuses a target not beginning with `/`, and trims values' spaces
+    and tabs as the server does (design §10);
+  - the import audit passed a `#!chezscheme` library using Chez's reader syntax: it now
+    requires `#!r6rs` and no other `#!` (rule (h); ADR-0006, amended);
+  - the records: a stale "not yet filed", the gate's "within about 5 B", and its ranges,
+    now from four runs, with what the gate doesn't hold yet (design §15.6).
+
+  `make test` passes 9 suites (46, 14, 45, 24, 9, 12, 47, 72, 41), `make gate` passes,
+  and 73 mutants are watched failing; the session reran the review's mutants and probes;
+- **traps, reproduced by the session:** in compiled library code an operand can run
+  before the operator's check (AGENTS.md's order rule now says so); Chez asks a
+  custom port's `read!` for 8 KiB at a time; and each `get-bytevector-all` or
+  `get-bytevector-some` on a custom port allocates about 8.2 KB (design §4).
 
 ### 2026-10-26: the server's v0.9.0, the pin and the design's revision, in PR #2
 
