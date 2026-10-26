@@ -282,14 +282,14 @@ check-imports: deps ## Fail unless only the two impure libraries import the serv
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src
 
-# The cost gate (design §15.6), outside `make test`: bytes a request through
-# an adapter-shaped handler on the core, against the raw server and its
+# The cost gate (design §15.6, ADR-0007), outside `make test`: bytes a
+# request through circuit's adapter, against the raw server and its
 # `awaiting` path, in one process, with the counts fixed (tests/gate.sps).
-# It prints G1 and G2, and fails when a held gate, G3 to G5, is over its
-# bound, naming it. CI runs it as a step of its own: noise doesn't move a
+# It prints G1 and G2, and fails when a held gate, G3 to G5 or G7, is over
+# its bound, naming it. CI runs it as a step of its own: noise doesn't move a
 # byte count. At a terminal, timeout runs with --foreground, as in `make
 # test`, and an oha it started may outlive a HUNG gate.
-gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5) is over its bound
+gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5, G7) is over its bound
 	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
 	@[ -x $(OHA) ] || { echo "gate: $(OHA) not found. Run 'make oha' on the host: it fetches oha, and the container has no network." >&2; exit 1; }
 	@fg=; if [ -t 0 ]; then fg=--foreground; fi; \
@@ -298,7 +298,7 @@ gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a 
 	[ $$rc -ne 124 ] || echo "gate: HUNG (no exit within $(GATE_TIMEOUT)s)" >&2; \
 	exit $$rc
 
-# G6, the smoke: requests a second, the adapter-shaped GET against raw, oha
+# G6, the smoke: requests a second, a GET through the adapter against raw, oha
 # -z 5s, two rounds at 1 and 50 connections, alternating. It prints the
 # rate at 50 connections against 90% of raw's and never fails on it: a rate
 # is noise-bound. Not in CI; run it before a release.

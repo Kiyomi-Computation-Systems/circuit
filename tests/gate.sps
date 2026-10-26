@@ -32,15 +32,18 @@
 ;;; through the adapter; through the adapter under five middlewares that
 ;;; each `req-set` a key; through the adapter with the app parked once,
 ;;; `(sleep-ms 0)`; the adapter's app, and the parked one, inside the catch
-;;; helper, nothing raised; and a 13-byte POST read raw, from an `awaiting`
-;;; thunk, and through the adapter.
+;;; helper, nothing raised; through the adapter as a bytevector body, and
+;;; as a bytevector port body, which the adapter reads whole, a port of
+;;; one piece or less (design §5); and a 13-byte POST read raw, by
+;;; read-whole-body, and from an `awaiting` thunk and through the adapter,
+;;; each by get-bytevector-n of its declared length, the cheapest read
+;;; (design §4), so G3 POST is circuit's work over the same read.
 ;;;
-;;; The adapter here is a stand-in for slice 4's (circuit http-server) over
-;;; the real core: a view made once over the server's accessors, and per
-;;; request (awaiting (lambda () (convert (app (make-req view request))))).
-;;; The catch helper is S2's, by call/cc, a stand-in for slice 5's in
-;;; (circuit middleware waits). Slice 4 replaces the one, and sets the
-;;; gate's final numbers; slice 5 replaces the other.
+;;; The adapter is circuit's own, (circuit http-server)'s circuit->handler,
+;;; given an environment that answers #f for every name, so the process's
+;;; environment moves no figure: the server under it is started with a
+;;; lookup of its own. The catch helper is S2's, by call/cc, a stand-in for
+;;; slice 5's in (circuit middleware waits), until slice 5 brings it.
 ;;;
 ;;; Run from the checkout's root, inside the Guix container, through make,
 ;;; once `make oha` has fetched oha on the host:
@@ -56,17 +59,21 @@
         (only (http-server awaiting) make-deadline-passed make-client-closed)
         (only (http-server private shell) shell-run-turns!)
         (only (http-server private serve) start-server)
-        (only (circuit request) make-req-view make-req req-body req-ref req-set make-req-key)
-        (only (circuit response) make-res res? res-status res-headers res-body)
-        (only (circuit middleware) wrap))
+        (only (circuit request) make-req-view make-req req-body req-header req-ref req-set
+              make-req-key)
+        (only (circuit response) make-res res? res-status)
+        (only (circuit middleware) wrap)
+        (only (circuit http-server) circuit->handler))
 
 ;;; ------------------------------------------------------------------------
-;;; The counts and the gates: design §15.6, its numbers provisional, from
-;;; S2's proposal. Slice 4 measures the real adapter, sets the final
-;;; numbers, and records them in a decision record.
+;;; The counts and the gates: design §15.6. The bounds are slice 4's,
+;;; measured through the real adapter, each with headroom over the worst
+;;; figure eight runs read and under what a known regression reads
+;;; (ADR-0007).
 
 ;; Fixed: 5,000 against 25,000 requests, two rounds, at 1 and 50 keep-alive
-;; connections, which reads to within about 5 B.
+;; connections, which reads a gate's worst figure to within about 10 B from
+;; run to run, and 25 B where the app parks.
 (define small-count 5000)
 (define large-count 25000)
 (define rounds 2)
@@ -88,69 +95,30 @@
   (list
    (make-gate "G1" "get-adapter" "get-raw" 1 1536 #f
               "a GET through the adapter over raw, the server's coroutine included")
-   (make-gate "G2" "post-adapter" "post-raw" 1 3072 #f
-              "a 13-byte POST read whole through the adapter over raw; the bound is the interim's three-coroutine path's, and slice 4 measures the pulled POST again")
+   (make-gate "G2" "post-adapter" "post-raw" 1 1536 #f
+              "a 13-byte POST through the adapter, pulled by get-bytevector-n of its length, over raw's read-whole-body, the server's coroutine and port included")
    (make-gate "G3 GET" "get-adapter" "get-awaiting" 1 384 #t
               "circuit's own work over the server's awaiting path, a GET")
-   (make-gate "G3 POST" "post-adapter" "post-awaiting" 1 512 #t
-              "circuit's own work over the server's awaiting path, a POST read whole")
-   (make-gate "G4 one" "get-five" "get-adapter" 5 96 #t
-              "one req-set, five middlewares' cost over five")
-   (make-gate "G4 five" "get-five" "get-adapter" 1 480 #t
-              "five req-set middlewares")
+   (make-gate "G3 POST" "post-adapter" "post-awaiting" 1 352 #t
+              "circuit's own work over the server's awaiting path, a POST pulled by get-bytevector-n of its length")
+   (make-gate "G4 one" "get-five" "get-adapter" 5 88 #t
+              "one req-set, five middlewares' cost over five, its bound between a record's 16 B size steps")
+   (make-gate "G4 five" "get-five" "get-adapter" 1 440 #t
+              "five req-set middlewares, five times G4 one's bound")
    (make-gate "G5" "catch-none" "get-adapter" 1 512 #t
               "the catch helper over the unwrapped app, nothing raised")
    (make-gate "G5 park" "catch-none-park" "get-adapter-park" 1 512 #t
-              "the catch helper over the unwrapped app, nothing raised, the app parked once inside it")))
+              "the catch helper over the unwrapped app, nothing raised, the app parked once inside it")
+   (make-gate "G7" "get-adapter-port" "get-adapter-bytes" 1 384 #t
+              "a 6-byte bytevector port body over the same bytes as a bytevector, through the adapter, the port made per request and read whole")))
 
 ;;; ------------------------------------------------------------------------
-;;; The stand-in adapter, over the real core.
+;;; The adapter's environment, and the stand-in catch helper.
 
-;; server-view : View — the view over the server's accessors, made once.
-;; Each procedure takes the server's request. The body is the server's port
-;; over it, which pulls on the thunk's coroutine.
-(define server-view
-  (make-req-view request-method request-host request-path request-query
-                 (lambda (request) (cons (request-http-major request) (request-http-minor request)))
-                 request-header request-header-values request-header-list
-                 (lambda (request) (body-input-port))
-                 request-remote-address request-remote-port request-local-address request-local-port
-                 request-on-done!))
-
-;; latin-1 : String -> Bytevector — one byte a character; above 255 is an
-;; assertion violation.
-(define (latin-1 s)
-  (let* ((n (string-length s)) (bv (make-bytevector n)))
-    (let loop ((i 0))
-      (if (fx=? i n)
-          bv
-          (let ((c (char->integer (string-ref s i))))
-            (unless (fx<? c 256) (assertion-violation 'convert "a header character above 255" s))
-            (bytevector-u8-set! bv i c)
-            (loop (fx+ i 1)))))))
-
-;; encode-headers : (Listof (Pair String String)) -> (Listof (Pair Bytevector Bytevector))
-(define (encode-headers hs)
-  (if (null? hs)
-      '()
-      (let* ((name (latin-1 (caar hs))) (value (latin-1 (cdar hs))))
-        (cons (cons name value) (encode-headers (cdr hs))))))
-
-;; convert : Res -> Response — S2's conversion: the headers as Latin-1, a
-;; string body as UTF-8, #f and a bytevector as they are; anything but a res
-;; is an assertion violation.
-(define (convert r)
-  (unless (res? r) (assertion-violation 'convert "not a res" r))
-  (let ((body (res-body r)))
-    (make-response (res-status r) #f (encode-headers (res-headers r))
-                   (if (string? body) (string->utf8 body) body))))
-
-;; adapter : (Req -> Res) -> (Request -> Awaiting)
-;; A stand-in for slice 4's circuit->handler: every request answered
-;; `awaiting`, the app called on the thunk's coroutine.
-(define (adapter app)
-  (lambda (request)
-    (awaiting (lambda () (convert (app (make-req server-view request)))))))
+;; no-env : String -> #f — every adapter's environment: no setting is set,
+;; so circuit->handler takes its defaults whatever the process's
+;; environment holds.
+(define (no-env name) #f)
 
 ;; wrap-catch : Handler -> Handler
 ;; S2's catch helper, a stand-in for slice 5's in (circuit middleware
@@ -181,15 +149,28 @@
 ;; sent? : (U Bytevector Eof) -> Boolean — whether `got` is oha's body.
 (define (sent? got) (and (bytevector? got) (bytevector=? got post-bytes)))
 
+;; declared : (U String #f) -> Nat — a content-length's count, or 0 for
+;; none or a malformed one, which reads nothing and so answers 400.
+(define (declared value)
+  (let ((n (and value (string->number value 10))))
+    (if (and n (exact? n) (integer? n) (>= n 0)) n 0)))
+
 ;; hello : Req -> Res — the app.
 (define (hello req) (make-res 200 text-headers "hello\n"))
 
 ;; parked-hello : Req -> Res — hello, after one park.
 (define (parked-hello req) (sleep-ms 0) (make-res 200 text-headers "hello\n"))
 
-;; post-hello : Req -> Res — hello, once the body is read whole.
+;; bytes-hello, port-hello : Req -> Res — hello's 6 bytes as a bytevector
+;; body, and as a bytevector port body, a port made per request.
+(define (bytes-hello req) (make-res 200 text-headers hello-bytes))
+(define (port-hello req) (make-res 200 text-headers (open-bytevector-input-port hello-bytes)))
+
+;; post-hello : Req -> Res — hello, once the body is read by
+;; get-bytevector-n of its declared length.
 (define (post-hello req)
-  (make-res (if (sent? (get-bytevector-all (req-body req))) 200 400) text-headers "hello\n"))
+  (let ((body (get-bytevector-n (req-body req) (declared (req-header req "content-length")))))
+    (make-res (if (sent? body) 200 400) text-headers "hello\n")))
 
 ;; key-setter : Key -> Middleware — sets `key` on every request.
 (define (key-setter key)
@@ -218,10 +199,14 @@
 ;; post-raw : Request -> BodyReader — the body read whole, in place.
 (define (post-raw request) (read-whole-body body-answer))
 
-;; post-awaited : Request -> Awaiting — the body read whole from the
-;; thunk, through the server's port, then raw's response.
+;; post-awaited : Request -> Awaiting — the body read from the thunk,
+;; through the server's port, by get-bytevector-n of its declared length,
+;; then raw's response.
 (define (post-awaited request)
-  (awaiting (lambda () (body-answer (get-bytevector-all (body-input-port))))))
+  (awaiting
+   (lambda ()
+     (body-answer
+      (get-bytevector-n (body-input-port) (declared (request-header request "content-length")))))))
 
 ;;; ------------------------------------------------------------------------
 ;;; The variants.
@@ -235,14 +220,17 @@
 (define variants
   (list (make-variant "get-raw" #f 'GET raw)
         (make-variant "get-awaiting" "get-raw" 'GET awaited)
-        (make-variant "get-adapter" "get-raw" 'GET (adapter hello))
-        (make-variant "get-five" "get-adapter" 'GET (adapter five))
-        (make-variant "get-adapter-park" "get-adapter" 'GET (adapter parked-hello))
-        (make-variant "catch-none" "get-adapter" 'GET (adapter (wrap-catch hello)))
-        (make-variant "catch-none-park" "get-adapter-park" 'GET (adapter (wrap-catch parked-hello)))
+        (make-variant "get-adapter" "get-raw" 'GET (circuit->handler hello no-env))
+        (make-variant "get-five" "get-adapter" 'GET (circuit->handler five no-env))
+        (make-variant "get-adapter-park" "get-adapter" 'GET (circuit->handler parked-hello no-env))
+        (make-variant "catch-none" "get-adapter" 'GET (circuit->handler (wrap-catch hello) no-env))
+        (make-variant "catch-none-park" "get-adapter-park" 'GET
+                      (circuit->handler (wrap-catch parked-hello) no-env))
+        (make-variant "get-adapter-bytes" "get-adapter" 'GET (circuit->handler bytes-hello no-env))
+        (make-variant "get-adapter-port" "get-adapter-bytes" 'GET (circuit->handler port-hello no-env))
         (make-variant "post-raw" #f 'POST post-raw)
         (make-variant "post-awaiting" "post-raw" 'POST post-awaited)
-        (make-variant "post-adapter" "post-raw" 'POST (adapter post-hello))))
+        (make-variant "post-adapter" "post-raw" 'POST (circuit->handler post-hello no-env))))
 
 ;; variant-named : String -> Variant
 (define (variant-named name) (find (lambda (v) (string=? (variant-name v) name)) variants))
@@ -516,7 +504,7 @@
 ;; gate-table : -> (Listof Gate) — prints each gate's figure, bound and
 ;; headroom, and answers the held gates that failed.
 (define (gate-table)
-  (printf "\nThe gates, design §15.6 (provisional numbers; slice 4 sets the final ones). Worst is over the rounds and both connection counts; a held gate fails over its bound.\n")
+  (printf "\nThe gates, design §15.6. Worst is over the rounds and both connection counts; a held gate fails over its bound.\n")
   (printf "\n| gate | figure | 1 conn | 50 conns | worst | bound | headroom | |\n")
   (printf "|:--|:--|--:|--:|--:|--:|--:|:--|\n")
   (fold-left
