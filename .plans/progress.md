@@ -92,13 +92,16 @@ close-out under **Close-outs**, newest first.
 
 ### 2026-10-26: slice 4, the adapter, in PR #4
 
-Five commits on `slice/4-adapter`: the import audit's allowlist (63d26c9), the adapter
+Six commits on `slice/4-adapter`: the import audit's allowlist (63d26c9), the adapter
 and small port bodies read whole (81e710a), the examples and the loopback suite
-(8a8079e), the gate on the real adapter with G7 (f1ec23f), and the records with this
-close-out. Built, reviewed and fixed on 2026-10-26. `make test` passes 11 suites, 425
-rows (check-imports 48, check-suites 14, circuit-testing 45, examples 37, headers 24,
-http-server 64, middleware 9, names 16, request 47, response 79, test 42), and `make
-gate` passes:
+(8a8079e), the gate on the real adapter with G7 (f1ec23f), the records with this
+close-out (8e6b6b2), and its CI run named here. Built, reviewed and fixed on
+2026-10-26. `make test` passes 11 suites, 425 rows (check-imports 48, check-suites 14,
+circuit-testing 45, examples 37, headers 24, http-server 64, middleware 9, names 16,
+request 47, response 79, test 42), and `make gate` passes. CI passed on the PR (run 40410155928, 2m22s), its first run of
+the loopback suite: 11 suites, and the gate's worst figures within ADR-0007's ranges
+(G1 1,441, G2 1,440, G3 307 a GET and 276 a POST, G4 81 and 403, G5 365 and 343 with a
+park, G7 305):
 
 - **the adapter** (Opus 5.5; 445,883 tokens over three rounds, 35, 4 and 16 minutes):
   `(circuit http-server)`, its suite through the test host, the audit's two names, and
