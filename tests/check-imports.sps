@@ -33,7 +33,15 @@
 ;;;   (g) a (circuit ...) library is imported only when a library under the
 ;;;       directory defines it. Chez would load any other from elsewhere on its
 ;;;       library path, and the suites' path holds tests/, which this check
-;;;       does not read.
+;;;       does not read;
+;;;   (h) every .sls file begins with the line #!r6rs, and holds #! nowhere
+;;;       else. Chez reads a file with no directive, or after #!chezscheme,
+;;;       with its own syntax ('#3(0), '#vfx(1 2)), which R6RS lacks and the
+;;;       rules above, reading only the data, never see. It fails closed:
+;;;       this check cannot tell a directive from text, so a #! in a comment
+;;;       or a string is refused too, and the complaint says so. The file is
+;;;       read as bytes: the line is #!r6rs and a line feed, with no space,
+;;;       carriage return or byte order mark.
 ;;;
 ;;; The lists are allowlists: a library that is not on one is refused, so a
 ;;; route nobody thought of is closed until a reviewer opens it. Exports are
@@ -126,6 +134,65 @@
             (if (eof-object? datum)
                 (list 'data (reverse found))
                 (loop (cons datum found)))))))))
+
+;; header-complaints : String String -> (Listof String)
+;; Rule (h) for the file at PATH below ROOT: that it does not begin with the
+;; line #!r6rs, and the lines that hold #! anywhere but its first two bytes.
+;; A file it cannot read as bytes is left to read-data, which names it.
+(define (header-complaints path root)
+  (let ((bytes (guard (e (#t #f))
+                 (let ((all (call-with-port (open-file-input-port path) get-bytevector-all)))
+                   (if (eof-object? all) #vu8() all)))))
+    (if (not bytes)
+        '()
+        (let ((lines (directive-lines bytes)))
+          (append
+           (if (begins-with-header? bytes)
+               '()
+               (list (string-append path ": its first line is not #!r6rs, which every .sls file under "
+                                    root " begins with, so that Chez reads it as R6RS and not with its own syntax")))
+           (if (null? lines)
+               '()
+               (list (string-append path ": it holds #! on " (line-list lines)
+                                    ", and only the #!r6rs it begins with may: a #! may switch Chez's reader to its own syntax, and this check, which cannot tell a directive from text, refuses one in a comment or a string too"))))))))
+
+(define header (string->utf8 "#!r6rs\n"))
+
+;; begins-with-header? : Bytevector -> Boolean
+;; Whether BYTES begin with #!r6rs and a line feed.
+(define (begins-with-header? bytes)
+  (let ((n (bytevector-length header)))
+    (and (>= (bytevector-length bytes) n)
+         (let loop ((i 0))
+           (or (= i n)
+               (and (= (bytevector-u8-ref bytes i) (bytevector-u8-ref header i))
+                    (loop (+ i 1))))))))
+
+;; directive-lines : Bytevector -> (Listof Natural)
+;; The lines, counted from 1, that hold #! at any byte but the first: each
+;; line once, in order.
+(define (directive-lines bytes)
+  (let ((n (bytevector-length bytes)))
+    (let loop ((i 0) (line 1) (found '()))
+      (cond
+        ((>= (+ i 1) n) (reverse found))
+        ((= (bytevector-u8-ref bytes i) 10) (loop (+ i 1) (+ line 1) found))
+        ((and (> i 0)
+              (= (bytevector-u8-ref bytes i) 35)
+              (= (bytevector-u8-ref bytes (+ i 1)) 33))
+         (loop (+ i 2) line (if (and (pair? found) (= (car found) line)) found (cons line found))))
+        (else (loop (+ i 1) line found))))))
+
+;; line-list : (Pairof Natural (Listof Natural)) -> String
+;; "line 3", "lines 3 and 5", "lines 2, 6 and 7".
+(define (line-list lines)
+  (let ((names (map number->string lines)))
+    (cond
+      ((null? (cdr names)) (string-append "line " (car names)))
+      (else
+       (let ((last (list-ref names (- (length names) 1)))
+             (rest (reverse (cdr (reverse names)))))
+         (string-append "lines " (joined ", " rest) " and " last))))))
 
 ;; walk : String -> (Listof (Pair String (U 'file 'directory-link)))
 ;; Everything under DIR, as paths: the files, and the symbolic links to
@@ -319,11 +386,13 @@
                                   root))
              0))
       (else
-       (let ((found (cdr (assoc path reads))))
+       (let ((found (cdr (assoc path reads)))
+             (header (header-complaints path root)))
          (if (eq? (car found) 'data)
-             (cons (data-complaints path root (cadr found) defined)
+             (cons (append header (data-complaints path root (cadr found) defined))
                    (length (filter library-form? (cadr found))))
-             (cons (list (string-append path ": it cannot be read as data: " (cadr found)))
+             (cons (append header
+                           (list (string-append path ": it cannot be read as data: " (cadr found))))
                    0)))))))
 
 ;; main : (Listof String) -> Unit
