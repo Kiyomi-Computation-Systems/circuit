@@ -173,11 +173,16 @@ must wait for the client parks the coroutine.
   `get-bytevector-n`, `get-bytevector-some`, or a parser that reads ports.
 - A request with no body reads eof at once.
 - The body is read **only as the app reads it**: the server sends
-  `100 Continue` at the first read, after it has checked the declared
-  length against its cap, and reads from the socket on credit, so a slow
-  consumer stops the reads. An app that answers without reading, such as a
-  401 to an upload, never takes the body in. The server sends that answer
-  at once and closes the connection after it.
+  `100 Continue` at the first read, and reads from the socket on credit,
+  so a slow consumer stops the reads. An app that answers without reading,
+  such as a 401 to an upload, never takes the body in. The server sends
+  that answer at once and closes the connection after it.
+- **A body past the server's cap**: a declared `Content-Length` past it
+  never reaches the app, the server answering 413 before the handler
+  (§7), even for an app that wouldn't read it. A chunked body reaches the
+  app, and fails at the read that passes the cap, with `&body-failed`'s
+  413. An app that doesn't read it gets its own answer sent. The
+  loopback suite holds both (§10).
 - **It is the server's port, and there is one.** `req-body` answers
   `body-input-port`'s port (the server's decision 0036), made the first
   time it is asked for and kept in a cell of the request's record, so
@@ -335,7 +340,23 @@ Body = #f                          no body
   bytevector of one byte or more, never empty; the eof object ends the
   body; a raise after the head is on the wire closes the connection with
   nothing more said, logged `handler-failed`.
-- **A port body** is read by a producer the adapter makes, in pieces of
+- **A small port body is read whole** (the owner's choice, 2026-10-26).
+  A bare port whose length Chez knows, a file or a bytevector port, of
+  `CIRCUIT_PORT_PIECE_BYTES` or less, is read by one `get-bytevector-n`
+  of that length as the response is built, before any wrap's `f`, and
+  closed then. It goes out as a bytevector, at the count read: fewer when
+  the file shrank since it was measured, never more, so it never ends
+  short of its head. No producer runs and no `request-on-done!` is
+  registered, a HEAD, a 204 and a 304 included, which read it and close
+  it. Streamed, a 6-byte port cost about 5.1 KB a request over the same
+  bytes as a bytevector: the server's producer and its on-done call were
+  4 KB of it. Read whole it costs about 300 B, which G7 holds (§15.6). A
+  sized body is never read whole: its `n` is the app's, and a port under
+  one may wait.
+  It was weighed to keep streaming every port, with cheaper close
+  handling alone: that saved about 634 B of the 5.1 KB.
+- **A port body of more than one piece**, a port Chez gives no length,
+  and a sized one are read by a producer the adapter makes, in pieces of
   `CIRCUIT_PORT_PIECE_BYTES`, 64 KiB by default, with `get-bytevector-n`:
   one coroutine per piece, so bigger pieces cost less. Chez asks a custom
   port's `read!` for at most 8 KiB at a time, so a 64 KiB piece of a
@@ -364,17 +385,23 @@ Body = #f                          no body
   - **Check `file-regular?` before opening a path as a body**, as the
     server's file-server example does. It refuses `/dev/zero`, which
     reports 0 too, and a FIFO.
+  - **A custom port is never measured.** Chez gives no custom port a
+    length, so it goes out chunked, and its measuring never raises. A
+    bytevector port refuses a position past its end, so only a file can
+    sit past its length (slice 4 reproduced both).
 - **A port body goes out with its length when Chez knows it.** For a port
-  with a position and a length, a file or a bytevector port, the adapter
-  answers the server's `sized-body` of the bytes from its position to its
-  length, or of none when the position is past the length. A HEAD then
+  with a position and a length, a file or a bytevector port, the length
+  is the bytes from its position to its length, or none when the position
+  is past the length. One of a piece or less goes out as its bytes (above);
+  a longer one as the server's `sized-body` of that length. A HEAD then
   announces the GET's length, and an HTTP/1.0 client that asked to keep
   its connection keeps it. Any other port goes out chunked, or
   close-delimited to an HTTP/1.0 client. `port-has-port-length?` and
   `port-length` are Chez's, so the adapter takes them through ADR-0006's
-  allowlist (§11, §15.8). The adapter's producer reads no more than the
-  length left, so a file that grows while it is sent goes out as long as
-  it was. One that shrinks ends short of the length the head announced:
+  allowlist (§11, §15.8). For a port of more than one piece, the
+  adapter's producer reads no more than the length left, so a file that
+  grows while it is sent goes out as long as it was. One that shrinks ends
+  short of the length the head announced:
   the server closes the connection after what it sent, and logs
   `body-length-mismatch` (decision 0033).
 - **`(make-sized-body n body)`** declares a producer's length, or a
@@ -490,7 +517,13 @@ Rules for middleware authors, each a fact about the server:
     the app has returned. So it may wait, and may read `req-body`. But no
     middleware's dynamic extent covers it, so a raise from it gets the
     server's empty 500, not the catch helper's answer. The producer it
-    gives back runs as any producer does (§2).
+    gives back runs as any producer does (§2). Once the client has gone
+    while the app waited, the request is done, and the close the adapter
+    registers for a port of more than one piece runs at once, before `f`
+    (§9): `f` is handed a
+    producer over a closed port, so an `f` that reads a piece eagerly
+    raises. The response goes nowhere, but the server may log the raise
+    (slice 4 saw it in the test host, which doesn't log it).
   - **The wrapped producer keeps the server's rules**: never an empty
     piece, so a compressor loops until it has bytes or reaches eof. A
     sized body's producer is never asked past its length, so under a
@@ -602,17 +635,23 @@ libraries that import `(http-server)`.
   thunk never answers a reader. The server calls a response's producer on
   a coroutine only for a handler that answered `awaiting`, so a producer
   may wait too.
-- **A port body is measured, then its close registered, then the rest
-  done.** The thunk reads the port's position and length first, closing
-  the port and raising on if that raises. It registers the close at
-  once, and only then does what else can raise: the headers' encoding,
-  and `f` for a wrapped body. A close registered before the measuring
+- **A port body is measured, then read whole or its close registered,
+  then the rest done.** The thunk reads the port's position and length
+  first, closing the port and raising on if that raises. A port of a
+  piece or less it reads whole and closes there (§5). For any other it
+  registers the close at once. Only then does it do what else can raise:
+  the headers' encoding, and `f` for a wrapped body. A close registered
+  before the measuring
   would run at once if the client had left while the app waited, and the
   measuring would meet a closed port; anything that raised between the
   measuring and the registration would leak the port. `res-body-stream`
   keeps the order for it: it calls the adapter's `measure`, then its
   `on-port`, where the adapter registers the close, and only then any
-  `f`; a raise from either closes the port (§11).
+  `f`; a raise from either, or from the read, closes the port (§11). On
+  a request already done, a client that left while the app waited, the
+  registration runs the close at once, so `f` then meets a closed port
+  (§6). A port read whole leaves `f` its bytes, so this is only a longer
+  port's.
 - **A response whose body is its request's `req-body`** is an assertion
   violation in the thunk, so the server answers 500 before the head. Its
   producer couldn't read the port (§4). The adapter looks through sized
@@ -639,16 +678,30 @@ libraries that import `(http-server)`.
   is the server's `CHEZ_HTTP_MAX_BODY_BYTES` (§4). Given no environment
   procedure, the adapter reads the process's environment with Chez's
   `getenv`, as `serve` does (ADR-0006).
+  - **`circuit->handler` reads them once, when it is called**, not per
+    request, so `run-server` refuses a bad one before anything listens.
+  - **A number is the server's**: ASCII digits alone, leading zeros
+    allowed, at least 1; unset or empty keeps the default, 65,536. There
+    is no maximum, but a count past `(greatest-fixnum)` is taken as it:
+    Chez's `get-bytevector-n` refuses a count that is no fixnum.
+  - **A malformed one is a config error of the server's kind**: a
+    condition type of circuit's, unexported, whose parent is
+    `&http-server-config-error`, composed with a `&who`, a `&message` and
+    `&irritants` naming the variable and its value, so
+    `http-server-config-error?` answers `#t` as it does for `serve`'s own.
+    Unlike `serve`'s, it is no `&assertion`. A value that is no string is
+    malformed too.
 
 | Response body | Server answer |
 |:--|:--|
 | `#f`, bytevector | `(make-response status #f headers body)` |
 | string | the same, with `(string->utf8 body)` |
 | producer | the same, with the producer |
-| port with a length | the same, with `(sized-body n producer)`: `n` from the port's position to its length, or 0 past it; the producer reading no more than is left, answering eof at the last byte and closing the port then; the port closed by a `request-on-done!` procedure too (§5) |
+| port with a length of a piece or less | the same, with the bytes one `get-bytevector-n` reads, from the port's position to its length, or none past it; the port closed then, with no producer and no `request-on-done!` (§5) |
+| port with a longer length | the same, with `(sized-body n producer)`: `n` from the port's position to its length; the producer reading no more than is left, answering eof at the last byte and closing the port then; the port closed by a `request-on-done!` procedure too (§5) |
 | any other port | the same, with a producer of `get-bytevector-n`, the port closed at its eof and by a `request-on-done!` procedure |
-| sized body | `(sized-body n producer)`, a port's producer as above |
-| wrapped body | the body under it as a producer, passed through `f`. Sized when the wrap keeps the bytes and the body under it has a length (§5). Otherwise sent as a producer, the one handed to `f` stopping at the length the body under it had. A port's close as above (§6) |
+| sized body | `(sized-body n producer)`, a port's producer as above, never read whole |
+| wrapped body | the body under it as a producer, passed through `f`: whole bytes, a small port's included, as one piece. Sized when the wrap keeps the bytes and the body under it has a length (§5). Otherwise sent as a producer, the one handed to `f` stopping at the length the body under it had. A port read whole or closed as above (§6) |
 | the request's `req-body`, bare, sized or wrapped | refused: an assertion violation, a 500 before the head |
 | upgrade | `(switch-protocols headers take-over)` |
 
@@ -675,12 +728,31 @@ libraries that import `(http-server)`.
   bytes, a body in pieces among them, and closes or resets, the test
   moves the clock and answers lookups, and it reads back the responses,
   the raw bytes and the server's log. Nothing hangs: a handler still
-  waiting is reported.
+  waiting is reported. Slice 4's `tests/test-http-server.sps` runs the
+  adapter this way. A row that asserts a response asserts it whole, as
+  its wire bytes, with whether the connection ended and the server's log;
+  the rest assert what the app read, or the chunks and bytes sent (the
+  suite's header lists which). It holds that `res-body->bytevector`
+  reads, body kind by body kind, the bytes the test host's client reads.
 - **What the test host leaves out, a loopback lane runs.** It has no
   socket, so no addresses, and no slow reader or write timeout; its
   timeouts fire at their earliest instant, where the server's fire up to
   `CHEZ_HTTP_TICK_MS` later (docs/testing.md). An integration lane runs
-  the adapter over loopback with curl for those.
+  the adapter over loopback with curl for those. Slice 4's
+  `tests/test-examples.sps` runs each example, and a test-only program,
+  `tests/loopback-app.sps`, as processes of their own, on the kernel's
+  choice of port and an environment of the suite's own (`env -i`), and
+  asks them with curl. It holds the examples' answers, read whole; the
+  four addresses through a real connection, from 127.0.0.2 too, where
+  curl can bind it; `run-server` reading `CIRCUIT_PORT_PIECE_BYTES` and
+  the server's settings from the process's environment; a malformed
+  setting ending the process before it listens; a 300,000-byte chunked
+  body read whole; the server's cap, a declared body past it refused
+  before the app and a chunked one past it answered by the app; and the
+  long poll's wake, one send waking every waiter, and a leaving client
+  forgotten, each ordered by the example's `GET /waiting`. The long
+  poll's 504, 30 s away, is held in its shape by the adapter's suite: an
+  app that awaits inside `with-deadline`.
 - **Names don't clash, by test.** A suite imports `(http-server)`,
   `(http-server testing)`, `(circuit)`, `(circuit http-server)` and
   `(circuit test)` together with no `only` or `rename`, so an export that
@@ -732,10 +804,12 @@ it**, through `res-body-stream` in 64 KiB pieces.
   so it stops at the length the body under it had.
 - A bare port: measured as the adapter measures it, in plain R6RS. A
   port with a position it can set is read ahead to its eof and set back,
-  and sent sized, from its position; any other is read to its eof. A
-  custom port with position procedures is sized here, though Chez gives
-  it no length and the adapter sends it chunked, so there the test is
-  the stricter.
+  and sent sized, from its position, read whole when it is 64 KiB or
+  less; any other is read to its eof. A custom port with position
+  procedures is sized here, though Chez gives it no length and the
+  adapter sends it chunked, so there the test is the stricter.
+- Bytes whole are answered as they are: a bytevector body is the app's
+  own bytevector, not a copy.
 - Given the request, it refuses a body that holds that request's
   `req-body`, bare, sized or wrapped, as the adapter does (§9), so the
   natural echo fails its test as it would fail in production.
@@ -765,12 +839,17 @@ server's too (ADR-0005). Slice 3 settled the names:
   one at most. The adapter measures it and registers its close, and the
   `req-body` refusal compares it (§9);
 - `res-body-stream`, `Body (BinaryInputPort -> (U Nat #f))
-  (BinaryInputPort -> Any) Nat -> (Values Producer (U Nat #f))`: the
-  producer that sends a body, and its length or `#f`, by §5's and §6's
-  rules. For a body that holds a port, it calls `measure` once with it,
-  unless the port is under a sized body, then `on-port` once, before any
-  `f`. A raise from either closes the port and goes on, and no `f` runs;
-  a raise from `f` closes nothing, the port by then the adapter's. The
+  (BinaryInputPort -> Any) Nat -> (Values (U Bytevector Producer) (U Nat
+  #f))`: what sends a body, and its length or `#f`, by §5's and §6's
+  rules: a bytevector when the bytes are whole (`#f` as `#vu8()`, a
+  bytevector itself, a string's UTF-8, a port read whole), otherwise a
+  producer. For a bare port, it calls `measure` once with it; a length of
+  the piece size or less it reads whole and closes, calling no `on-port`.
+  Any other port, a sized body's included, it hands to `on-port` once,
+  before any `f`. A raise from either, or from the read, closes the port
+  and goes on, and no `f` runs; a raise from `f` closes nothing, the port
+  by then the adapter's. One `with-exception-handler` closes the port on
+  a raise, where two `guard`s did: about 634 B less a port. The
   last argument is the piece size. The adapter passes Chez's port
   length, a registration of the port's close, and
   `CIRCUIT_PORT_PIECE_BYTES`. It is the one place a wrap's `f` is called,
@@ -780,9 +859,9 @@ server's too (ADR-0005). Slice 3 settled the names:
 
 The core is plain R6RS and imports nothing of the server's. The two
 impure libraries import `(http-server)`, and take from `(chezscheme)` only
-what ADR-0006's allowlist names, through `only`: `getenv` today. The
-adapter adds `port-has-port-length?` and `port-length`, to size a port
-body (§5, §15.8), and slice 4 amends the allowlist and ADR-0006 with the
+what ADR-0006's allowlist names, through `only`: `getenv`, and
+`port-has-port-length?` and `port-length`, which the adapter sizes a port
+body with (§5, §15.8). Slice 4 amended the allowlist and ADR-0006 with the
 code that needs them. The catch helper is plain R6RS, and lives in
 `(circuit middleware waits)` because it needs the server's
 `client-closed?`, `deadline-passed?`, `body-failed?` and
@@ -870,7 +949,9 @@ and the resume its before thunk.
     replaces (§4). For a 16-byte body the server measured 10,610 B a
     request under `awaiting` with `read-whole-body`, 8,466 B pulled, and
     13,071 B through its port into a 4 KiB buffer, the buffer included
-    (decision 0036, Darwin arm64). So slice 4 measures the POST again;
+    (decision 0036, Darwin arm64). Slice 4 measured the pulled POST
+    through the real adapter: 1,433–1,443 B over raw, read by
+    `get-bytevector-n` of its length (§15.6);
   - five `req-set` middlewares add 383–409 B.
 
   The catch helper escapes by `call/cc`, not `call/1cc` (§6). Circuit runs
@@ -965,34 +1046,39 @@ The owner's answers to this draft's open questions (2026-10-25):
    others; `request-headers*`, whose star says "variant", not "all".
 6. **The gate on circuit's cost over the raw server**, from S2's G1–G6
    ([findings](research/s2-coroutine-cost.md#proposed-gate)):
-   - **Its shape is set now, its numbers later.** The numbers below are the
-     prototype's and provisional. Slice 4 measures the real adapter, sets
-     the final numbers, and records them in a decision record.
-   - **Three gates fail the build**, each the part circuit controls:
+   - **Its shape is the owner's, its numbers slice 4's.** S2's prototype
+     numbers were provisional until slice 4 measured the real adapter;
+     [ADR-0007](decisions/0007-the-cost-gates-final-numbers.md) records the
+     final ones, which the owner accepted on 2026-10-26.
+   - **Four gates fail the build**, each the part circuit controls:
      - G3, circuit's own work over the server's `awaiting` path: at most
-       384 B a GET (285–290 measured) and 512 B a POST (447–452);
-     - G4, one `req-set` measured on its own: at most 96 B (80 by five
-       over five);
+       384 B a GET and 352 B a POST (S2's prototype: 285–290 B and, on
+       the interim's POST, 447–452 B against a proposed 512);
+     - G4, one `req-set` measured on its own: at most 88 B, and 440 B for
+       five (S2 proposed 96 B; 80 by five over five);
      - G5, the catch helper over the unwrapped app, with nothing raised: at
        most 512 B, held both with the app waiting inside it and without
        (309–365 B by `call/cc`). A `call/1cc` escape passes without a wait
-       at 50 connections (407–410 B) and fails with one (3.4 KB).
+       at 50 connections (407–410 B) and fails with one (3.4 KB);
+     - G7, a 6-byte bytevector port body over the same bytes as a
+       bytevector, through the adapter, the port made per request: at most
+       384 B (§15.12).
    - **Two are printed, not held.** G1 and G2, a GET and a POST through the
-     adapter over raw (≤ 1,536 B and ≤ 3,072 B proposed), include the
-     server's own coroutines, so they are printed for context and
-     re-baselined at each move of the server's pin.
-   - A note since (2026-10-26): the POST figures, G2's and G3's, were
-     measured on the interim's three-coroutine path, which is never built
-     (§4). Slice 4 measures the pulled POST (§13).
+     adapter over raw, at most 1,536 B each (S2 proposed 3,072 B for G2,
+     on the interim's POST), include the server's own coroutines, so they
+     are printed for context and re-baselined at each move of the server's
+     pin.
+   - **The POST is pulled** (slice 4): the app reads its 13-byte body by
+     `get-bytevector-n` of its declared length, the cheapest read (§4),
+     and costs about what a GET does over raw.
    - **Requests a second are a smoke.** G6, a GET through the adapter at
      ≥ 90% of raw's rate at 50 connections (93.0–95.1% on a quiet rerun),
      is printed and never fails CI. It is run locally before a release.
    - **`make gate` runs it, outside `make test`**, with its counts fixed:
      5,000 against 25,000 requests, two rounds, at 1 and 50 connections.
-     A gate's worst figure reads to within about 6 B from run to run,
-     though a variant that parks spreads by up to 45 B between rounds at
-     50 connections (slice 3). CI runs it as a step of its own: noise
-     moves a byte count far less than a rate.
+     A gate's worst figure moves by about 10 B from run to run, and by up
+     to 25 B where the app parks (slice 4). CI runs it as a step of its
+     own: noise moves a byte count far less than a rate.
    - **`make oha` fetches oha** through the vendored server's
      `tests/fetch-oha.sh`, which pins its version and sha256, on the host
      and in CI. The container has no network.
@@ -1010,17 +1096,32 @@ The owner's answers to this draft's open questions (2026-10-25):
      that copies the view (G3, 423 B), a request record of eight fields
      (G4, 113 B), and a `call/1cc` catch helper (G5, 853 B, and 3,523 B
      with a park).
-   - **What the gate doesn't hold yet.** G3's stand-in adapter converts a
-     string body alone: it calls neither `res-body-stream` nor the
-     `req-body` refusal (§9), so no held gate measures them, and a
-     regression there passes until slice 4 measures the real adapter. G5
-     holds the stand-in catch helper, which no change under `src/` moves
-     until slice 5. Per-connection costs cancel under keep-alive, so the
-     gate doesn't see them.
-   - **G4's bound sits on a record's size step.** Chez sizes a record in
+   - **Slice 4 moved it onto the real adapter** (2026-10-26):
+     `circuit->handler`, its environment answering `#f` for every name.
+     Eight runs, six by the gate's builder and two by the session, read
+     G1 1,439–1,447 B, G2 1,433–1,443 B, G3 305–311 B a GET and 273–280
+     B a POST, G4 80–81 B and 400–406 B for five, and G5 364–374 B and
+     319–343 B with a park. G6 read 93.9–95.5% at 50 connections, on a
+     shared machine. Each held gate was watched failing: a view made per
+     request (G3, 419–425 B a GET and 384–385 B a POST), a six-field
+     request record (G4, 97 B), and a `call/1cc` catch helper (G5, 849
+     B, and 3,657 B with a park).
+   - **G4's bound is off a record's size step.** Chez sizes a record in
      16 B steps, so a `req-set` costs 80 B at four or five fields and 96 B
-     at six, where 1 B of noise failed it (97 B). Slice 4's final numbers
-     should put the bound off a step, at 88 or 104 B.
+     at six, where 1 B of noise failed the old 96 B bound (97 B). Slice 4
+     set it at 88 B, between the steps.
+   - **G7 holds a port body** (§15.12). Streamed, a 6-byte bytevector
+     port cost 5,096–5,103 B a request over the same bytes as a
+     bytevector (slice 4, outside the gate): about 3 KB the server's
+     sized producer from `awaiting`, about 1 KB its running of the
+     `request-on-done!` procedure, and about 1,040 B `res-body-stream`'s
+     two `guard`s. Read whole (§5), with one `with-exception-handler` for
+     the guards, it reads 300–310 B. G7 was watched failing on the
+     streamed code (5,098 B) and with the `guard`s back (658 B).
+   - **What the gate doesn't hold.** A port of more than one piece, which
+     streams, and a sized body. G5 holds the stand-in catch helper, which
+     no change under `src/` moves until slice 5. Per-connection costs
+     cancel under keep-alive, so the gate doesn't see them.
 
 The owner's answers once the asks had landed (2026-10-26):
 
@@ -1054,6 +1155,15 @@ The owner's answers after the revision's second review (2026-10-26):
     core isn't held up by its shape. Weighed: slice 3 waiting for the
     answer.
 
+The owner's answers in slice 4 (2026-10-26):
+
+12. **A port body of a piece or less is read whole** (§5), and a held
+    gate, G7, holds its cost (§15.6, ADR-0007). A 6-byte port body cost
+    about 5.1 KB a request over a bytevector streamed, and costs about
+    300 B read whole. Weighed: keeping every port streamed, with
+    `res-body-stream`'s close on a raise made cheaper alone, which saved
+    about 634 B.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body.** This draft has none
@@ -1076,7 +1186,6 @@ The owner's answers after the revision's second review (2026-10-26):
    and awaits the owner: a lazy wrap the adapter runs, and a flag for a
    wrap that keeps the bytes. Slice 3 builds it as provisional (§15.11),
    and changes it if the owner's answer on the shape differs.
-
 ## 17. Slices
 
 1. Scaffolding: Makefile with `help`, the server pinned under `vendor/`, CI

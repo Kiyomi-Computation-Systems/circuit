@@ -16,3 +16,13 @@ release before 1.0.
   and wrapped bodies (`res-wrap-body` provisional); header helpers; and `wrap`.
 - `(circuit test)`: `make-test-req`, `test-req-done!` and `res-body->bytevector`, for
   testing a handler with no server.
+- `(circuit http-server)`, the adapter: `circuit->handler` and `run-server`, with every
+  body kind but the upgrade, a port body of one piece or less read whole and sent as its
+  bytes, a longer one sized from its length and closed however the response ends, the
+  server's waits and conditions re-exported, and `CIRCUIT_PORT_PIECE_BYTES`. The import
+  audit allows `port-has-port-length?` and `port-length`.
+- Examples under `examples/`: hello, echo, a stream with server-sent events, and a long
+  poll, each a plain R6RS program on `(circuit)` and `(circuit http-server)`, run over
+  loopback by `make test`.
+- The cost gate measures the real adapter, with its final bounds, and holds a port
+  body's cost, G7 (ADR-0007).

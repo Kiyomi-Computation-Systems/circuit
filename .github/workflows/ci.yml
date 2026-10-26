@@ -167,9 +167,9 @@ jobs:
 
       # The cost gate (design §15.6), a step of its own: `make oha` fetches
       # oha, the gate's load client, at the version and sha256 the server's
-      # tests/fetch-oha.sh pins; `make gate` reads bytes a request through a
-      # stand-in adapter on the core against the raw server, prints G1
-      # and G2, and fails when a held gate, G3 to G5, is over its bound. A
+      # tests/fetch-oha.sh pins; `make gate` reads bytes a request through
+      # circuit's adapter against the raw server, prints G1 and G2, and
+      # fails when a held gate, G3 to G5 or G7, is over its bound (ADR-0007). A
       # byte count is not noise-bound, so CI holds it. Requests a second are,
       # so `make gate-rps` (G6) runs locally before a release, not here.
       - name: Cost gate

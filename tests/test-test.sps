@@ -255,6 +255,19 @@
                                     sizes #f)))))
       (list (bytevector-length bytes) (take-log!)))))
 
+(test-equal "res-body->bytevector reads a port of one piece, 65,536 bytes, whole before f, as the adapter does; one byte more streams"
+  '((65536 #t #t) (65537 #f #t))
+  (let ((closed-when-f-runs
+         (lambda (n)
+           (let* ((port (open-bytevector-input-port (make-bytevector n 7)))
+                  (seen 'f-not-called)
+                  (bytes (res-body->bytevector
+                          (res-of (wrapped port (lambda (q) (set! seen (port-closed? port)) q) #t)))))
+             (list (bytevector-length bytes) seen (port-closed? port))))))
+    (let* ((one (closed-when-f-runs 65536))
+           (more (closed-when-f-runs 65537)))
+      (list one more))))
+
 (test-equal "res-body->bytevector: a sized port to its length, read no further, closed there"
   (list (string->utf8 "01234") '((5) 5) #t)
   (let-values (((port reads) (recording-port digits)))

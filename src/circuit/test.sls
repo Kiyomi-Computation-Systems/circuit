@@ -113,7 +113,8 @@
 
   ;; res-body->bytevector : Res [Req] -> Bytevector
   ;; R's body, read as the adapter sends it: through res-body-stream, in
-  ;; pieces of 65,536 bytes, a bare port measured by port-read-ahead-length.
+  ;; pieces of 65,536 bytes, a bare port measured by port-read-ahead-length,
+  ;; so one of a piece or less is read whole, and its bytes are the answer.
   ;; A body with a length is read to it, never asking past it, and one that
   ;; runs long or ends short is an assertion violation naming both counts,
   ;; where the server would close the connection. A piece that is no
@@ -138,9 +139,15 @@
           (assertion-violation 'res-body->bytevector
                                "the body holds its request's body port, which the adapter refuses"
                                own))))
-    (let-values (((produce n) (res-body-stream (res-body r) port-read-ahead-length
-                                               (lambda (port) #f) 65536))
-                 ((out extract) (open-bytevector-output-port)))
+    (let-values (((sent n) (res-body-stream (res-body r) port-read-ahead-length
+                                            (lambda (port) #f) 65536)))
+      (if (bytevector? sent) sent (drained sent n))))
+
+  ;; drained : Producer (U Nat #f) -> Bytevector
+  ;; PRODUCE's pieces, to N when there is one, else to its eof, each piece
+  ;; held to the server's rules.
+  (define (drained produce n)
+    (let-values (((out extract) (open-bytevector-output-port)))
       (let loop ((count 0))
         (if (and n (= count n))
             (extract)

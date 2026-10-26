@@ -19,7 +19,8 @@ Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server
 
 ** Status
 
-Early. The build and its tests are in place; the library is not yet.
+Early. Requests, responses, middleware and the adapter onto the server work. The waiting
+middleware (a timeout, a catch for errors), upgrades and a router are still to come.
 
 ** Build and test
 
@@ -35,7 +36,30 @@ On a Guix host, run builds and tests in the pinned container:
 
 ** Quick start
 
+A handler takes a request and gives back a response:
+
+#+begin_src scheme
+(import (rnrs) (circuit) (circuit http-server))
+
+(run-server
+ (lambda (req)
+   (make-res 200 '(("content-type" . "text/plain")) "hello\n")))
+#+end_src
+
+~make run PROGRAM=examples/hello.sps~ runs it on ~127.0.0.1:8080~. [[file:examples/README.md][examples/]] has more:
+reading a body, streaming, and a handler that waits.
+
 ** Configuration
+
+Settings come from the environment. The server's are its own ~CHEZ_HTTP_~ variables
+(where it listens, its limits; see its [[https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.0/docs/configuration.md][configuration]]). Circuit adds one:
+
+| Variable                   | Default | What it sets                                                               |
+|----------------------------+---------+----------------------------------------------------------------------------|
+| ~CIRCUIT_PORT_PIECE_BYTES~ |   65536 | the most a piece of a port body holds; a port this size or less goes whole |
+
+The server caps no request body by default: an app that reads one whole should set
+~CHEZ_HTTP_MAX_BODY_BYTES~.
 
 ** License
 
