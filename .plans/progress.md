@@ -71,7 +71,11 @@ close-out under **Close-outs**, newest first.
 Six commits on `slice/3-pure-core`: the ledger's close-out of PR #2 (edf8605), the core
 and its suites (4e4d500), the audit's `#!r6rs` rule (13a8d5d), the gate (d4f38c9), the
 design's records of what the slice settled and measured (6591e03), and this close-out.
-Built, reviewed and fixed on 2026-10-26:
+Built, reviewed and fixed on 2026-10-26. CI passed on the PR (run 40371240814, 2m6s):
+`make test` ran its 9 suites in 17 s, and the Cost gate step's first run fetched oha and
+passed in 78 s, its held gates' worst figures within the local runs' or a few bytes past
+them (G3 288 B a GET and 279 a POST, G4 81, G5 346 and 330 with a park; G1 1,425 and
+G2 9,544, printed):
 
 - **the core** (Opus 5.5; 297,770 tokens, 29 minutes): `(circuit)` and its five
   libraries, `(circuit test)`, and six suites, among them the names suite. `make test`
