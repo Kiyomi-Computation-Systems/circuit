@@ -110,8 +110,10 @@ does: keep the strings you read, not the request.
 | `req-on-done!` | `Req (Symbol -> Any) -> Void` | `request-on-done!`, §7 | v0.9.0 (A6) |
 
 - `req-headers` gives names in lower case, in wire order, duplicates
-  kept: the view folds the names the server gives as sent. `req-header`
-  matches any case and reads the first.
+  kept: it folds the names the view gives, as sent, and gives the view's
+  own list back when no name needs folding. `req-header` matches any case
+  and reads the first. Case is ASCII's, A–Z to a–z and nothing else, as
+  the server folds names, so the Kelvin sign doesn't match `k`.
 - **The addresses are the connection's**, read once as the server took
   it, and `#f` where it can't say. Behind a proxy the remote end is the
   proxy, so trust `X-Forwarded-For` only when `req-remote-address` is your
@@ -124,8 +126,10 @@ does: keep the strings you read, not the request.
   supplies (`method`, `host`, `path`, `query`, `http-version`, `header`,
   `header-values`, `headers`, `body`, `remote-address`, `remote-port`,
   `local-address`, `local-port`, `on-done`), each taking the host's
-  request. The adapter's view wraps the server's accessors; a test
-  request's view reads a plain alist and its body.
+  request. `make-req-view` takes them in that order, and `make-req` makes
+  a request from a view and the host's request (§11). The adapter's view
+  wraps the server's accessors; a test request's view reads a record of
+  what the test gave.
   - **Four are required**: `method`, `host`, `path` and `http-version`,
     whose accessors' types have no `#f`. The view's constructor refuses
     `#f` for any of them with an assertion violation. A test request
@@ -146,13 +150,18 @@ does: keep the strings you read, not the request.
   stack of five (S2).
 - **Core fields update functionally**, for middleware that rewrites them
   (method override, forwarded scheme and address, a mount prefix):
-  `req-with-path`, `req-with-method` and so on, each giving a new request
-  whose view answers the new value for that field.
-- **Every copy shares two cells.** The record holds the body's port, made
-  at the first `req-body` (§4), and the procedures `req-on-done!` keeps
-  when the view has no `on-done`, each in a cell made with the request.
-  `req-set` and the `req-with-` helpers copy the cells, not what they
-  hold, so a port made through one copy is the port every copy answers.
+  `req-with-method`, `req-with-scheme`, `req-with-host`, `req-with-path`,
+  `req-with-query`, `req-with-remote-address` and `req-with-remote-port`,
+  each giving a new request whose view answers the new value for that
+  field. A value of another type is an assertion violation.
+- **Every copy shares one cell.** The record holds a cell, made with the
+  request, holding the body's port once the first `req-body` has made it
+  (§4), and the procedures `req-on-done!` keeps when the view has no
+  `on-done`, with the ending once `test-req-done!` has given one.
+  `req-set` and the `req-with-` helpers copy the record, not the cell, so
+  a port made through one copy is the port every copy answers. The record
+  has four fields, the view, the host's request, the keys and the cell,
+  so a `req-set` stays the 80 B S2 measured (G4, §15.6).
 
 ## 4. The request body: a port that waits
 
@@ -247,6 +256,14 @@ are the server's, decision 0036's items 9 and 7.
   a time, and finishes a character split between pieces before it returns,
   so `get-line` can wait for more of the body than its line. A body the
   client sends whole doesn't notice.
+- **A read that gathers costs a buffer.** On a Chez custom port, the
+  server's included, each `get-bytevector-all` and `get-bytevector-some`
+  call allocates about 8.2 KB, whatever the body's size, while a
+  `get-bytevector-n` of a known count costs about 30 B. Chez asks a custom
+  port's `read!` for 8 KiB at a time. Slice 3 measured it, off the server
+  and in it: a 13-byte body read whole costs 8,705 B with the port's 496,
+  and 16,913 B read to eof by `get-bytevector-some`. So a small body is
+  cheapest read by `get-bytevector-n` of its declared length.
 
 **One path, one coroutine.** The adapter's thunk calls the app for every
 request, with a body or without, and answers no reader. The pull runs on
@@ -290,7 +307,10 @@ Body = #f                          no body
 
 - **Headers** are a list of `(name . value)` string pairs, in order, with
   duplicates kept (`set-cookie`). Lookups match any case. The helpers write
-  names in lower case. The constructor rewrites nothing. The adapter
+  names in lower case. The constructor rewrites nothing, and checks only
+  the kinds: an exact integer status, a list of headers, a body of a kind
+  above. It leaves a 1xx status to the server, which answers it 500; only
+  `res-with-status` refuses one (below). The adapter
   encodes names and values as Latin-1, one byte per character, as the
   server reads request headers; a character above 255 is an assertion
   violation in the adapter, which the server answers 500. Bodies are
@@ -317,7 +337,10 @@ Body = #f                          no body
   nothing more said, logged `handler-failed`.
 - **A port body** is read by a producer the adapter makes, in pieces of
   `CIRCUIT_PORT_PIECE_BYTES`, 64 KiB by default, with `get-bytevector-n`:
-  one coroutine per piece, so bigger pieces cost less. The producer
+  one coroutine per piece, so bigger pieces cost less. Chez asks a custom
+  port's `read!` for at most 8 KiB at a time, so a 64 KiB piece of a
+  custom port is up to eight reads, and one that waits may wait at each
+  (slice 3 measured it). The producer
   answers eof once it has read the port's last byte, at the port's eof or,
   for a sized port, at its length, and closes the port then. It never
   reads 0 bytes: Chez's `get-bytevector-n` of 0 answers an empty
@@ -586,7 +609,10 @@ libraries that import `(http-server)`.
   and `f` for a wrapped body. A close registered before the measuring
   would run at once if the client had left while the app waited, and the
   measuring would meet a closed port; anything that raised between the
-  measuring and the registration would leak the port.
+  measuring and the registration would leak the port. `res-body-stream`
+  keeps the order for it: it calls the adapter's `measure`, then its
+  `on-port`, where the adapter registers the close, and only then any
+  `f`; a raise from either closes the port (§11).
 - **A response whose body is its request's `req-body`** is an assertion
   violation in the thunk, so the server answers 500 before the head. Its
   producer couldn't read the port (§4). The adapter looks through sized
@@ -629,9 +655,16 @@ libraries that import `(http-server)`.
 ## 10. Testing
 
 - **A handler that doesn't wait** is called directly:
-  `(app (make-test-req 'GET "/health"))`, with no server. Test requests
-  take headers and a body (bytevector or string) and supply a view of their
-  own (§3).
+  `(app (make-test-req 'GET "/health"))`, with no server.
+  `(make-test-req method target [headers [body]])` splits the target at
+  its first `?` into the path and the query, takes a header list and a
+  body (a bytevector, a string as its UTF-8, or `#f` for none), and
+  supplies a view of its own (§3): the host is the first `host` field's,
+  or `""` without one; HTTP/1.1; no addresses and no `on-done`. It reads
+  as the server reads an origin-form request. A target must begin with
+  `/`: an absolute-form or asterisk-form one, whose host and path the
+  server reads differently, belongs in the test host. Each header value
+  loses its spaces and tabs at either end, as the server's do.
 - **A handler that waits**, or one wrapped in `wrap-timeout`, or one that
   reads the server's body, its credit, `100 Continue` and `&body-failed`,
   needs a host where waits work. A test request's own body is a
@@ -678,7 +711,9 @@ libraries that import `(http-server)`.
 (circuit)               facade: the core's exports
 (circuit request)       the req record, view, keys
 (circuit response)      the res record, body kinds, helpers
-(circuit headers)       header lists: lookup, set, add
+(circuit headers)       header lists: header-value, header-values,
+                        header-set, header-add, header-remove,
+                        header-names-downcase
 (circuit middleware)    wrap, and the pure middleware
 (circuit middleware waits)
                         wrap-timeout and the catch helper; imports (http-server)
@@ -688,14 +723,22 @@ libraries that import `(http-server)`.
 later: (circuit router), (circuit websocket), middleware libraries
 ```
 
-**`res-body->bytevector` reads a body as the adapter sends it.**
+**`(res-body->bytevector res [req])` reads a body as the adapter sends
+it**, through `res-body-stream` in 64 KiB pieces.
 - A sized body: to its `n`, never asking past it. One that runs long or
   ends short is an assertion violation naming both counts, where the
   server would close the connection.
 - A wrap: through its `f`, handed the producer the adapter would hand it,
   so it stops at the length the body under it had.
-- A bare port: to its eof, which for a test's bytevector port is its
-  length.
+- A bare port: measured as the adapter measures it, in plain R6RS. A
+  port with a position it can set is read ahead to its eof and set back,
+  and sent sized, from its position; any other is read to its eof. A
+  custom port with position procedures is sized here, though Chez gives
+  it no length and the adapter sends it chunked, so there the test is
+  the stricter.
+- Given the request, it refuses a body that holds that request's
+  `req-body`, bare, sized or wrapped, as the adapter does (§9), so the
+  natural echo fails its test as it would fail in production.
 
 So a counter that reports only at eof fails its test, as it would fail
 in production (§6).
@@ -704,11 +747,12 @@ in production (§6).
 the core than an app does, and R6RS has no friend libraries. So
 `(circuit request)` and `(circuit response)` export it, and the
 `(circuit)` facade doesn't. The names suite holds these apart from the
-server's too (ADR-0005). The names are slice 3's to settle:
-- `make-req-view`, the view's constructor, which refuses `#f` for the
-  four required procedures, and `make-req`, which makes a request from a
-  view and the host's request (§3);
-- `req-body-made`, `Req -> (U BinaryInputPort #f)`: the port in the body
+server's too (ADR-0005). Slice 3 settled the names:
+- `make-req-view`, the view's constructor, its fourteen procedures in
+  §3's order, which refuses `#f` for the four required ones, and
+  `make-req`, which makes a request from a view and the host's request
+  (§3);
+- `req-body-made`, `Req -> (U BinaryInputPort #f)`: the port in the
   cell, or `#f` when nothing has made it, without making one. The
   refusal of `req-body` as a response body reads it (§9), and asking
   `req-body` instead would spend 432 B on every request;
@@ -716,6 +760,21 @@ server's too (ADR-0005). The names are slice 3's to settle:
   and `res-sized-body-inner`; `res-wrapped-body?`,
   `res-wrapped-body-inner`, `res-wrapped-body-proc` and
   `res-wrapped-body-same?`;
+- `res-body-port`, `Body -> (U BinaryInputPort #f)`: the port a body
+  holds, bare, under a sized body or under wraps, or `#f`. A body holds
+  one at most. The adapter measures it and registers its close, and the
+  `req-body` refusal compares it (§9);
+- `res-body-stream`, `Body (BinaryInputPort -> (U Nat #f))
+  (BinaryInputPort -> Any) Nat -> (Values Producer (U Nat #f))`: the
+  producer that sends a body, and its length or `#f`, by §5's and §6's
+  rules. For a body that holds a port, it calls `measure` once with it,
+  unless the port is under a sized body, then `on-port` once, before any
+  `f`. A raise from either closes the port and goes on, and no `f` runs;
+  a raise from `f` closes nothing, the port by then the adapter's. The
+  last argument is the piece size. The adapter passes Chez's port
+  length, a registration of the port's close, and
+  `CIRCUIT_PORT_PIECE_BYTES`. It is the one place a wrap's `f` is called,
+  so the adapter and the tests send a body the same way;
 - `test-req-done!`, which lives in `(circuit request)` beside the cell
   it reads, and which `(circuit test)` re-exports.
 
@@ -761,7 +820,9 @@ Where the server went past the ask, or set rules of its own:
   the last for a chunked body's trailers past the header limits (its
   decision 0036 item 7, its `decisions.sls`, and `connection.sls`'s
   trailers). The server's `docs/waiting.md`
-  lists only the first three: a docs note upstream, not yet filed.
+  lists only the first three: a docs note upstream, filed after the
+  revision as
+  [#241](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/241).
 - **A5 refuses a piece past the length**, none of it written. That and a
   body that ends short both end the response short, close the connection
   after it, staged, and log `body-length-mismatch n given`. A length of 0
@@ -927,12 +988,39 @@ The owner's answers to this draft's open questions (2026-10-25):
      ≥ 90% of raw's rate at 50 connections (93.0–95.1% on a quiet rerun),
      is printed and never fails CI. It is run locally before a release.
    - **`make gate` runs it, outside `make test`**, with its counts fixed:
-     5,000 against 25,000 requests, two rounds, at 1 and 50 connections, which
-     reads to within about 5 B. CI runs it as a step of its own: noise
-     doesn't move a byte count.
+     5,000 against 25,000 requests, two rounds, at 1 and 50 connections.
+     A gate's worst figure reads to within about 6 B from run to run,
+     though a variant that parks spreads by up to 45 B between rounds at
+     50 connections (slice 3). CI runs it as a step of its own: noise
+     moves a byte count far less than a rate.
    - **`make oha` fetches oha** through the vendored server's
      `tests/fetch-oha.sh`, which pins its version and sha256, on the host
      and in CI. The container has no network.
+   - **Slice 3 built it** (2026-10-26). `tests/gate.sps` measures a
+     stand-in adapter over the real core, and a stand-in catch helper by
+     `call/cc`, until slices 4 and 5 bring the real ones. It runs in about
+     30 s. The held gates' worst figures in four runs of the final
+     program, the builder's, the session's and the reviewer's two: G3
+     291–294 B a GET and 272–276 B a POST, G4 80–81 B, G5 343–345 B and
+     328–332 B with a park. G1 reads 1,422–1,428 B. G2 reads 9,544–9,549
+     B, over its
+     proposed 3,072, printed and not held: the pulled POST reads its body
+     with `get-bytevector-all`, 8.2 KB of Chez's (§4). G6 read 93.4–95.7%
+     at 50 connections. Each held gate was watched failing: a `make-req`
+     that copies the view (G3, 423 B), a request record of eight fields
+     (G4, 113 B), and a `call/1cc` catch helper (G5, 853 B, and 3,523 B
+     with a park).
+   - **What the gate doesn't hold yet.** G3's stand-in adapter converts a
+     string body alone: it calls neither `res-body-stream` nor the
+     `req-body` refusal (§9), so no held gate measures them, and a
+     regression there passes until slice 4 measures the real adapter. G5
+     holds the stand-in catch helper, which no change under `src/` moves
+     until slice 5. Per-connection costs cancel under keep-alive, so the
+     gate doesn't see them.
+   - **G4's bound sits on a record's size step.** Chez sizes a record in
+     16 B steps, so a `req-set` costs 80 B at four or five fields and 96 B
+     at six, where 1 B of noise failed it (97 B). Slice 4's final numbers
+     should put the bound off a step, at 88 or 104 B.
 
 The owner's answers once the asks had landed (2026-10-26):
 
