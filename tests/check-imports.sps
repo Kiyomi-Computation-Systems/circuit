@@ -76,8 +76,10 @@
 ;; What an impure library may take from (chezscheme). None of them can import,
 ;; evaluate or load: a name that could would let a library's body reach what
 ;; its header may not import. Adding one is a reviewed change (ADR-0006).
-;; getenv is the adapter's default environment, as it is `serve`'s.
-(define chez-names '(getenv))
+;; getenv is the adapter's default environment, as it is `serve`'s;
+;; port-has-port-length? and port-length size a port body from Chez's own
+;; length of it, which plain R6RS can't ask (design §5, §15.8).
+(define chez-names '(getenv port-has-port-length? port-length))
 
 ;; wrappers : (Listof Symbol)
 ;; The import-set forms that wrap one import set, in their second element.
