@@ -11,6 +11,61 @@ close-out under **Close-outs**, newest first.
   their close-out is below. The design is
   [2026-10-24-circuit-design.md](2026-10-24-circuit-design.md): its §15 records the
   owner's decisions, ADR-0004 to ADR-0006 take them up, and §16 holds what is open.
+- **The revision to the server's v0.9.0 and the pin's move are merged**, squashed from
+  [PR #2](https://github.com/Kiyomi-Computation-Systems/circuit/pull/2) on 2026-10-26
+  (c057b03); its close-out is below. The pin is at v0.9.0 (d928e41), and the owner's
+  answers since are design §15.7–§15.11.
+- **Now: slice 3, the pure core** (design §17), on `slice/3-pure-core`: `req` with its
+  new accessors, shared cells and required view procedures, `res` with the sized and
+  wrapped bodies (`res-wrap-body` provisional), headers, keys, `make-test-req` and
+  `test-req-done!`, the exports the adapter and the tests need, `wrap`, and the suites
+  that hold the names apart and `wrap`'s order; with them `make oha`, and `make gate`
+  holding the provisional numbers (design §15.6).
+
+## Open
+
+- **CI runs on amd64 alone**, as the siblings' do. AGENTS.md asks for arm64 portability,
+  and an `ubuntu-24.04-arm` runner would cover it.
+- **Left from the review, not fixed:**
+  - outside the container and CI, nothing refuses a Chez below 10.4.1 or without threads:
+    this host's own Chez is 10.4.0;
+  - the Makefile's default `CHEZ` prefers `scheme` to `chez`, as chez-curl's does; on a
+    Mac where another Scheme owns `scheme` it picks that one. Unverified;
+  - two rows (`test-check-imports`'s and `test-check-suites`'s unreadable cases) hold
+    Chez's exact read-error text, so a Chez that words it otherwise fails them;
+  - the audit's rule (g) assumes `src` comes first on the library path.
+- **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
+  2026-10-26, with the docs fix; see PR #2's close-out. **chez-http-server is submitted
+  to the Akku index and awaits review** (the owner, 2026-10-25). Until it is published,
+  circuit can't be installed with Akku, and the submodule stays its only way in
+  (ADR-0003).
+- **A clock for request logging** (slice 5; design §16.2): R6RS has none, and the facade
+  exports none. The server's own clock, the one its waits use, is the one to read, so
+  `(http-server testing)`'s clock would drive it in a test: likely an upstream ask, not a
+  second Chez name.
+- **A cap of circuit's own on the request body** (design §16.1): the revision has none,
+  and the server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by default.
+- **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
+  provisional.
+- **The server's `docs/waiting.md` lists `&body-failed`'s statuses as 413, 400 and 408**,
+  leaving out 431, a chunked body's trailers past the header limits (design §12). Filed
+  as [chez-http-server #241](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/241)
+  on 2026-10-26, reproduced through `(http-server testing)` at v0.9.0, with a note that
+  no server test hands a pull a header reason or `chunk-extensions-too-large`.
+- **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
+  uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and
+  `chez-http1`. It stays as background; the design supersedes it where they differ.
+
+## Close-outs
+
+### 2026-10-26: the server's v0.9.0, the pin and the design's revision, in PR #2
+
+Two commits, squashed as c057b03: the pin's move (65a24f1) and the design's revision
+after two reviews (fce9dbf). CI passed on the PR's one push (run 40335116614,
+2026-10-26, 59s): every pin ok at d928e41 and the pins it carries, and the three suites
+with the container's counts, 39, 14 and 45. The docs note the revision left open was
+filed after the merge, as chez-http-server #241.
+
 - **Every upstream ask has landed** on chez-http-server's main, at 9195305 by
   2026-10-26, and the server tagged them as v0.9.0 that day (d928e41): A1 #219, A2
   #218, A3 #238, A4 #234–#237, A5 #221–#223, A6 #224–#226, A7 #239, A8 #232, and the
@@ -65,45 +120,6 @@ close-out under **Close-outs**, newest first.
   - the owner's answers (2026-10-26; design §15.10 and §15.11): a view must supply
     `method`, `host`, `path` and `http-version`, and slice 3 builds `res-wrap-body` as
     provisional (design §16.4).
-- **Next: slice 3, the pure core** (design §17): `req` with its new accessors, shared
-  cells and required view procedures, `res` with the sized and wrapped bodies
-  (`res-wrap-body` provisional), headers, keys, `make-test-req` and `test-req-done!`, the
-  exports the adapter and the tests need, `wrap`, and the suites that hold the names
-  apart and `wrap`'s order; with them `make oha`, and `make gate` holding the provisional
-  numbers (design §15.6).
-
-## Open
-
-- **CI runs on amd64 alone**, as the siblings' do. AGENTS.md asks for arm64 portability,
-  and an `ubuntu-24.04-arm` runner would cover it.
-- **Left from the review, not fixed:**
-  - outside the container and CI, nothing refuses a Chez below 10.4.1 or without threads:
-    this host's own Chez is 10.4.0;
-  - the Makefile's default `CHEZ` prefers `scheme` to `chez`, as chez-curl's does; on a
-    Mac where another Scheme owns `scheme` it picks that one. Unverified;
-  - two rows (`test-check-imports`'s and `test-check-suites`'s unreadable cases) hold
-    Chez's exact read-error text, so a Chez that words it otherwise fails them;
-  - the audit's rule (g) assumes `src` comes first on the library path.
-- **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
-  2026-10-26, with the docs fix; see **Now**. **chez-http-server is submitted to the Akku
-  index and awaits review** (the owner, 2026-10-25). Until it is published, circuit can't
-  be installed with Akku, and the submodule stays its only way in (ADR-0003).
-- **A clock for request logging** (slice 5; design §16.2): R6RS has none, and the facade
-  exports none. The server's own clock, the one its waits use, is the one to read, so
-  `(http-server testing)`'s clock would drive it in a test: likely an upstream ask, not a
-  second Chez name.
-- **A cap of circuit's own on the request body** (design §16.1): the revision has none,
-  and the server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by default.
-- **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
-  provisional.
-- **The server's `docs/waiting.md` lists `&body-failed`'s statuses as 413, 400 and 408**,
-  leaving out 431, a chunked body's trailers past the header limits (design §12). A docs
-  note upstream, not yet filed.
-- **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
-  uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and
-  `chez-http1`. It stays as background; the design supersedes it where they differ.
-
-## Close-outs
 
 ### 2026-10-25: the design, slice 1 and slice 2, in PR #1
 
