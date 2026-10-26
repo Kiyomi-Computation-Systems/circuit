@@ -5,7 +5,8 @@
 - **Amended:** 2026-10-25, after spike S2: the allowlist's one name is `getenv`, not
   `call/1cc` (the owner's decision); 2026-10-26, once the server's asks landed: the catch
   helper needs `body-failed?` and `body-failed-status` too, and the waiting middleware is
-  tested through the server's `(http-server testing)`, not its fake shell
+  tested through the server's `(http-server testing)`, not its fake shell; 2026-10-26, in
+  slice 3, after its review: the audit requires `#!r6rs` (item 3)
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
@@ -32,7 +33,10 @@ settings from the process's environment when it is given no environment procedur
    which reach any library, the private ones included, whatever its header says.
 3. **`make check-imports` holds both rules**, reading every file under `src/` as data.
    It reads the header's imports alone, which is enough because neither rule lets a
-   library's body import anything. `make test` runs it once `src/` exists.
+   library's body import anything. It also requires every file to begin with the line
+   `#!r6rs` and hold `#!` nowhere else: without it, or after `#!chezscheme`, Chez reads a
+   file with its own syntax (`'#3(0)`, `'#vfx(1 2)`), which no import shows. `make test`
+   runs it once `src/` exists.
 
 ## Consequences
 

@@ -1,0 +1,142 @@
+#!r6rs
+;;; The names suite: circuit's libraries and the server's, imported together
+;;; with no only, except, prefix or rename, as an app may import them
+;;; (design §10, ADR-0005). An export of circuit's that names a binding the
+;;; server's libraries export is a clash, and Chez refuses this program
+;;; before any test runs, so the suite fails. (circuit http-server) joins it
+;;; in slice 4.
+;;;
+;;; Its tests hold what the import cannot: that each library exports exactly
+;;; its list, so the (circuit) facade keeps the adapter's and the tests'
+;;; names out, and that the like-named bindings of the two make different
+;;; things.
+(import (rnrs)
+        (srfi :64)
+        (only (chezscheme) library-exports)
+        (circuit-testing)
+        (http-server)
+        (http-server testing)
+        (http-server headers)
+        (http-server response)
+        (circuit)
+        (circuit request)
+        (circuit response)
+        (circuit headers)
+        (circuit middleware)
+        (circuit test))
+
+(define runner (test-runner-simple))
+(test-runner-current runner)
+
+;; sorted-exports : (Listof Symbol) -> (Listof Symbol)
+;; LIBRARY's exports, sorted by name.
+(define (sorted-exports library)
+  (list-sort (lambda (a b) (string<? (symbol->string a) (symbol->string b)))
+             (library-exports library)))
+
+(define (sorted names)
+  (list-sort (lambda (a b) (string<? (symbol->string a) (symbol->string b))) names))
+
+(define request-names
+  '(make-req-view make-req req? req-method req-scheme req-host req-path req-query
+    req-http-version req-header req-header-values req-headers req-body
+    req-remote-address req-remote-port req-local-address req-local-port
+    req-on-done! req-body-made make-req-key req-key? req-ref req-set
+    req-with-method req-with-scheme req-with-host req-with-path req-with-query
+    req-with-remote-address req-with-remote-port test-req-done!))
+
+(define response-names
+  '(make-res res? res-status res-headers res-body res-header res-set-header res-add-header
+    res-with-status res-with-body make-sized-body res-sized-body? res-sized-body-length
+    res-sized-body-inner res-wrap-body res-wrapped-body? res-wrapped-body-inner
+    res-wrapped-body-proc res-wrapped-body-same? res-body-length res-body-port
+    res-body-stream))
+
+(define header-names
+  '(header-value header-values header-set header-add header-remove header-names-downcase))
+
+;; What an app uses: the request's accessors, keys and req-with- helpers,
+;; req-on-done!; the response's constructor, accessors and helpers; the
+;; header helpers; wrap.
+(define facade-names
+  '(req? req-method req-scheme req-host req-path req-query req-http-version req-header
+    req-header-values req-headers req-body req-remote-address req-remote-port
+    req-local-address req-local-port req-on-done!
+    make-req-key req-key? req-ref req-set
+    req-with-method req-with-scheme req-with-host req-with-path req-with-query
+    req-with-remote-address req-with-remote-port
+    make-res res? res-status res-headers res-body res-header res-set-header res-add-header
+    res-with-status res-with-body make-sized-body res-wrap-body res-body-length
+    header-value header-values header-set header-add header-remove header-names-downcase
+    wrap))
+
+;; What the adapter and the tests need, which an app does not.
+(define kept-out-of-the-facade
+  '(make-req-view make-req req-body-made test-req-done!
+    res-sized-body? res-sized-body-length res-sized-body-inner
+    res-wrapped-body? res-wrapped-body-inner res-wrapped-body-proc res-wrapped-body-same?
+    res-body-port res-body-stream))
+
+(test-begin "names")
+
+(test-equal "the server's libraries and circuit's are all loaded, side by side"
+  '(#t #t #t #t #t #t)
+  (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap)))
+
+(test-equal "(circuit request) exports its list exactly"
+  (sorted request-names)
+  (sorted-exports '(circuit request)))
+
+(test-equal "(circuit response) exports its list exactly"
+  (sorted response-names)
+  (sorted-exports '(circuit response)))
+
+(test-equal "(circuit headers) exports its list exactly"
+  (sorted header-names)
+  (sorted-exports '(circuit headers)))
+
+(test-equal "(circuit middleware) exports wrap alone"
+  '(wrap)
+  (sorted-exports '(circuit middleware)))
+
+(test-equal "(circuit test) exports its three"
+  '(make-test-req res-body->bytevector test-req-done!)
+  (sorted-exports '(circuit test)))
+
+(test-equal "(circuit) exports what an app uses, exactly"
+  (sorted facade-names)
+  (sorted-exports '(circuit)))
+
+(test-equal "(circuit) exports none of the adapter's and the tests' names"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit)))) kept-out-of-the-facade))
+
+(test-equal "a circuit response is no server response, and a server response no circuit one"
+  '(#t #f #f #t)
+  (let ((ours (make-res 200 '() #f))
+        (theirs (make-response 200 #f '() #f)))
+    (list (res? ours) (response? ours) (res? theirs) (response? theirs))))
+
+(test-equal "a circuit sized body is no server sized body, and the other way round"
+  '(#t #f #f #t)
+  (let* ((producer (lambda () (eof-object)))
+         (ours (make-sized-body 1 producer))
+         (theirs (sized-body 1 producer)))
+    (list (res-sized-body? ours) (sized-body? ours) (res-sized-body? theirs) (sized-body? theirs))))
+
+(test-equal "a circuit test request is no server request"
+  '(#t #f)
+  (let ((r (make-test-req 'GET "/")))
+    (list (req? r) (request? r))))
+
+(test-equal "the like-named bindings are distinct"
+  '(#f #f #f #f #f #f #f #f)
+  (map (lambda (pair) (eq? (car pair) (cdr pair)))
+       (list (cons make-res make-response) (cons res? response?)
+             (cons make-sized-body sized-body) (cons res-sized-body? sized-body?)
+             (cons req-header request-header) (cons req-header-values request-header-values)
+             (cons req-on-done! request-on-done!) (cons header-values headers-ref-all))))
+
+(test-end "names")
+
+(exit (suite-exit-status runner))

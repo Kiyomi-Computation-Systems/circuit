@@ -112,8 +112,11 @@
   shared form.
 * Chez evaluates arguments right to left in compiled library code, left to
   right when interpreted, and `map` calls its procedure in no fixed order. A
-  `let`'s inits are arguments too. No assertion may depend on either order;
-  use `for-each` for effects, and `let*` when one init must follow another.
+  `let`'s inits are arguments too, and so is the operator: in
+  `((view-proc (check r)) (field r))` an operand can run before the
+  operator's check. No assertion may depend on either order; use
+  `for-each` for effects, bind a check's result with `let` before the
+  call that needs it, and use `let*` when one init must follow another.
 * A setter that refuses a value keeps the one it had. Give each round trip
   its own sentinel, and assert every return code.
 * An assertion passes whenever *another* rule can produce its expected value.

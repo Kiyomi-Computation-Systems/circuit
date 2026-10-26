@@ -5,7 +5,7 @@ name: CI
 # `make submodules`, holds them at their pins with `make check-pins`, builds
 # Chez at its floor (once, then cached), and runs `make test`, which builds
 # chez-libuv's shim against the system libuv and runs check-help,
-# check-suites and every suite.
+# check-suites and every suite, then the cost gate, `make gate`.
 #
 # Every action is pinned to a full commit SHA, with its tag in a comment: a tag
 # can be moved to other code, a commit cannot.
@@ -72,11 +72,12 @@ jobs:
 
       # libuv for the shim (pkg-config path); a C compiler and make for the
       # shim and for Chez, which scripts/ci/build-chez.sh configures with no
-      # X11 or curses; curl, which fetches Chez and is the client the
+      # X11 or curses; curl, which fetches Chez and oha and is the client the
       # integration suites run against the server, over loopback; coreutils
-      # is GNU timeout, which `make test` runs every suite under. Most are
-      # already on the image: naming them keeps the job from depending on
-      # that. No cmake: with libuv at its floor the shim links the system one.
+      # is GNU timeout, which `make test` and `make gate` run under, and
+      # sha256sum, which checks oha's fetch. Most are already on the image:
+      # naming them keeps the job from depending on that. No cmake: with
+      # libuv at its floor the shim links the system one.
       - name: Install toolchain
         run: |
           sudo apt-get update -qq
@@ -163,3 +164,15 @@ jobs:
       # timeout. `deps` builds chez-libuv's shim and links SRFI-64 first.
       - name: Test
         run: make test
+
+      # The cost gate (design §15.6), a step of its own: `make oha` fetches
+      # oha, the gate's load client, at the version and sha256 the server's
+      # tests/fetch-oha.sh pins; `make gate` reads bytes a request through a
+      # stand-in adapter on the core against the raw server, prints G1
+      # and G2, and fails when a held gate, G3 to G5, is over its bound. A
+      # byte count is not noise-bound, so CI holds it. Requests a second are,
+      # so `make gate-rps` (G6) runs locally before a release, not here.
+      - name: Cost gate
+        run: |
+          make oha
+          make gate

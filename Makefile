@@ -79,9 +79,28 @@ TEST_TIMEOUT ?= 300
 # GNU timeout. Homebrew's coreutils installs it as gtimeout on macOS.
 TIMEOUT ?= $(or $(shell command -v timeout 2>/dev/null),$(shell command -v gtimeout 2>/dev/null),timeout)
 
+# --- the cost gate ------------------------------------------------------------
+# oha, the gate's load client: the server's pinned release, which `make oha`
+# fetches on the host, where the network is, into build/, where the
+# container sees it.
+OHA := $(BUILD_DIR)/oha
+
+# The gate's program, and its path: LIBDIRS, then chez-libuv's tests/, which
+# holds (uv-testing), whose byte collector takes oha's report. GATE_FIRST,
+# empty unless given, goes before them, so a mutant of a core library under
+# build/ runs as `make gate GATE_FIRST=build/mutant`; a mutant of the
+# program runs as `make gate GATE=build/mutant/gate.sps`.
+GATE := tests/gate.sps
+GATE_LIBDIRS = $(if $(GATE_FIRST),$(GATE_FIRST):)$(LIBDIRS):$(LIBUV_DIR)/tests
+
+# Seconds `make gate` or `make gate-rps` may run before timeout kills it
+# and make names it HUNG. Each takes under a minute here; under CI's
+# 30-minute job timeout, so the job names a hang rather than being killed.
+GATE_TIMEOUT ?= 600
+
 # One physical line: check-help reads it with awk, and fails if it ends in
 # a backslash.
-.PHONY: help check-help check-guix check-guix-inside submodules check-pins deps dev run test check-suites check-imports clean
+.PHONY: help check-help check-guix check-guix-inside submodules check-pins oha deps dev run test check-suites check-imports gate gate-rps clean
 
 .DEFAULT_GOAL := help
 
@@ -166,6 +185,16 @@ check-pins: ## (host) Fail unless the server sits at its pin, and each pin it ca
 	    echo "PIN DIRTY: $$d has local edits to tracked files" >&2; fail=1; fi; \
 	done; \
 	exit $$fail
+
+# The server's tests/fetch-oha.sh pins oha's version and each platform's
+# sha256, and keeps a build/oha that already matches. It needs the network,
+# so it runs on the host, and refuses in the container at once.
+oha: ## (host) Fetch oha, the gate's load client, into build/oha: the server's pinned release, its sha256 checked
+	@if [ -n "$${GUIX_ENVIRONMENT:-}" ]; then \
+	  echo "make oha fetches oha from GitHub, and this container has no network: run it on the host." >&2; \
+	  exit 2; \
+	fi
+	sh $(SERVER_DIR)/tests/fetch-oha.sh $(OHA)
 
 # Never fetches: the container has no network, so an empty submodule is
 # filled on the host. chez-srfi ships Akku's percent-encoded filenames
@@ -252,6 +281,35 @@ check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared ex
 check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), and the core imports nothing else
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src
+
+# The cost gate (design §15.6), outside `make test`: bytes a request through
+# an adapter-shaped handler on the core, against the raw server and its
+# `awaiting` path, in one process, with the counts fixed (tests/gate.sps).
+# It prints G1 and G2, and fails when a held gate, G3 to G5, is over its
+# bound, naming it. CI runs it as a step of its own: noise doesn't move a
+# byte count. At a terminal, timeout runs with --foreground, as in `make
+# test`, and an oha it started may outlive a HUNG gate.
+gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5) is over its bound
+	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
+	@[ -x $(OHA) ] || { echo "gate: $(OHA) not found. Run 'make oha' on the host: it fetches oha, and the container has no network." >&2; exit 1; }
+	@fg=; if [ -t 0 ]; then fg=--foreground; fi; \
+	$(TIMEOUT) $$fg $(GATE_TIMEOUT) $(CHEZ) --libdirs $(GATE_LIBDIRS) --program $(GATE) bytes $(OHA); \
+	rc=$$?; \
+	[ $$rc -ne 124 ] || echo "gate: HUNG (no exit within $(GATE_TIMEOUT)s)" >&2; \
+	exit $$rc
+
+# G6, the smoke: requests a second, the adapter-shaped GET against raw, oha
+# -z 5s, two rounds at 1 and 50 connections, alternating. It prints the
+# rate at 50 connections against 90% of raw's and never fails on it: a rate
+# is noise-bound. Not in CI; run it before a release.
+gate-rps: deps ## (before a release) Print requests a second through the adapter against raw's (G6); never fails on the ratio
+	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
+	@[ -x $(OHA) ] || { echo "gate-rps: $(OHA) not found. Run 'make oha' on the host: it fetches oha, and the container has no network." >&2; exit 1; }
+	@fg=; if [ -t 0 ]; then fg=--foreground; fi; \
+	$(TIMEOUT) $$fg $(GATE_TIMEOUT) $(CHEZ) --libdirs $(GATE_LIBDIRS) --program $(GATE) rps $(OHA); \
+	rc=$$?; \
+	[ $$rc -ne 124 ] || echo "gate-rps: HUNG (no exit within $(GATE_TIMEOUT)s)" >&2; \
+	exit $$rc
 
 # Removes build/, and chez-libuv's own build products inside its checkout.
 # The path is written out, not a variable.

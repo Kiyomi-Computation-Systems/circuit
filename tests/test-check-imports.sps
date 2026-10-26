@@ -142,12 +142,25 @@
   (string-append (at case file) ": " lib " imports " imported ", but no library under "
                  (root case) " defines it"))
 
+;; no-header : String String -> String
+;; Rule (h): the file at PATH, under ROOT, does not begin with the line #!r6rs.
+(define (no-header path root)
+  (string-append path ": its first line is not #!r6rs, which every .sls file under " root
+                 " begins with, so that Chez reads it as R6RS and not with its own syntax"))
+
+;; stray-directive : String String -> String
+;; Rule (h): the file at PATH holds #! on LINES, past the #!r6rs it begins
+;; with, or where it has none.
+(define (stray-directive path lines)
+  (string-append path ": it holds #! on " lines
+                 ", and only the #!r6rs it begins with may: a #! may switch Chez's reader to its own syntax, and this check, which cannot tell a directive from text, refuses one in a comment or a string too"))
+
 ;; cases : (Listof (List String String Expected))
 ;; The fixture directory, what it holds, and the program's whole answer for it.
 (define cases
   (list
    (list "legal"
-         "a legal tree: core libraries and both impure ones; every wrapper over an (rnrs ...) import, nested; a version reference; getenv from (chezscheme) through only, and the (http-server ...) libraries but the private ones, in an impure library; a comment and a string that say what a library must not do; a file with the #!r6rs header and one without"
+         "a legal tree: core libraries and both impure ones; every wrapper over an (rnrs ...) import, nested; a version reference; getenv from (chezscheme) through only, and the (http-server ...) libraries but the private ones, in an impure library; a comment and a string that say what a library must not do; every file headed #!r6rs"
          (ok 6))
    (list "impure-chezscheme"
          "rule (d): an impure library takes from (chezscheme) only getenv, through only right around it: bare, eval, getenv with import, call/1cc, except, prefix, rename, for, library, only around for, and only around a wider only are named; prefix, rename and for around the narrow only, only around (library (chezscheme)), and a version reference are not"
@@ -219,7 +232,7 @@
    (list "unreadable"
          "rule (f): a file that cannot be read as data"
          (refused (string-append (at "unreadable" "circuit/broken.sls")
-                                 ": it cannot be read as data: Exception in read: unexpected end-of-file reading list before file-position 54 of #<input port "
+                                 ": it cannot be read as data: Exception in read: unexpected end-of-file reading list before file-position 61 of #<input port "
                                  (at "unreadable" "circuit/broken.sls")
                                  ">; the character position might differ")))
    (list "dir-symlink"
@@ -303,6 +316,30 @@
                   (undefined "undefined-circuit" "circuit/http-server.sls" "(circuit http-server)"
                              "(circuit nope-too)")))
 
+   ;; --- rule (h): the #!r6rs line ---
+   (list "header-missing"
+         "rule (h): a library with no #!r6rs line, otherwise legal"
+         (refused (no-header (at "header-missing" "circuit.sls") (root "header-missing"))))
+   (list "header-chezscheme"
+         "rule (h): the review's library, headed #!chezscheme, reading a repeat vector and an fxvector literal and importing only (rnrs)"
+         (refused (no-header (at "header-chezscheme" "circuit.sls") (root "header-chezscheme"))))
+   (list "header-later"
+         "rule (h): the #!r6rs line, and #!chezscheme on a later line, turning Chez's syntax back on"
+         (refused (stray-directive (at "header-later" "circuit.sls") "line 3")))
+   (list "header-in-text"
+         "rule (h): #! in a line comment, a block comment and a string, each refused by its line; one file holding it on three lines, twice on one"
+         (refused (stray-directive (at "header-in-text" "circuit/block.sls") "line 3")
+                  (stray-directive (at "header-in-text" "circuit/comment.sls") "line 2")
+                  (stray-directive (at "header-in-text" "circuit/several.sls") "lines 2, 6 and 7")
+                  (stray-directive (at "header-in-text" "circuit/string.sls") "line 5")))
+   (list "header-not-first"
+         "rule (h): the #!r6rs line after a comment line: the file does not begin with it, and its #! is on line 2"
+         (refused (no-header (at "header-not-first" "circuit.sls") (root "header-not-first"))
+                  (stray-directive (at "header-not-first" "circuit.sls") "line 2")))
+   (list "header-variants"
+         "rule (h): #!r6rs with the library on the same line is not the line #!r6rs"
+         (refused (no-header (at "header-variants" "circuit/same-line.sls") (root "header-variants"))))
+
    ;; --- rule (e): import specs ---
    (list "wrapped"
          "rule (e): a banned library imported through only, except, prefix, rename, for, for with a meta level and library; (http-server) through only; an impure library through only"
@@ -331,8 +368,9 @@
                            (impure-import-tail "(circuit http-server)"))
                   (imports "versions-banned" "circuit.sls" "(circuit)" "(rnrs eval)" core-tail)))
    (list "cyclic"
-         "rule (e): an import spec that contains itself, through only, for, rename and a tail, is named and the program ends"
-         (refused (unreadable-spec "cyclic" "circuit.sls" "(circuit)" "#0=(only #0# x)")
+         "rule (e): an import spec that contains itself, through only, for, rename and a tail, is named and the program ends. Chez refuses datum labels after #!r6rs, so the file has no header, and rule (h) names it first"
+         (refused (no-header (at "cyclic" "circuit.sls") (root "cyclic"))
+                  (unreadable-spec "cyclic" "circuit.sls" "(circuit)" "#0=(only #0# x)")
                   (unreadable-spec "cyclic" "circuit.sls" "(circuit)" "#0=(for #0# run)")
                   (unreadable-spec "cyclic" "circuit.sls" "(circuit)" "#0=(rename #0# (a b))")
                   (unreadable-spec "cyclic" "circuit.sls" "(circuit)" "#0=(only (rnrs) . #0#)")))
@@ -392,6 +430,36 @@
             (want (refused (string-append missing ": not a directory")))
             (got (run (list missing))))
        (if (equal? got want) 'refused got)))))
+
+;; bytes-append : Bytevector ... -> Bytevector
+(define (bytes-append . parts)
+  (let-values (((out extract) (open-bytevector-output-port)))
+    (for-each (lambda (part) (put-bytevector out part)) parts)
+    (extract)))
+
+;; Git may change a line's end or keep a trailing space as it likes, so
+;; these headers are written at run time: a trailing space, a CRLF line end,
+;; and a byte order mark before it. Chez reads all three.
+(test-equal "rule (h): a header with a trailing space, a CR before its LF, or a byte order mark before it, is not the line #!r6rs"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (let ((write-file (lambda (name bytes)
+                         (call-with-port (open-file-output-port (string-append dir "/circuit/" name))
+                           (lambda (port) (put-bytevector port bytes)))))
+           (library (lambda (name) (string->utf8 (string-append "(library (circuit " name
+                                                                 ") (export) (import (rnrs)))\n")))))
+       (capture-command (list "mkdir" (string-append dir "/circuit")))
+       (write-file "a.sls" (bytes-append (string->utf8 "#!r6rs \n") (library "a")))
+       (write-file "b.sls" (bytes-append (string->utf8 "#!r6rs\r\n") (library "b")))
+       (write-file "c.sls" (bytes-append (u8-list->bytevector '(#xEF #xBB #xBF))
+                                              (string->utf8 "#!r6rs\n") (library "c")))
+       (let ((want (refused (no-header (string-append dir "/circuit/a.sls") dir)
+                            (no-header (string-append dir "/circuit/b.sls") dir)
+                            (no-header (string-append dir "/circuit/c.sls") dir)
+                            (stray-directive (string-append dir "/circuit/c.sls") "line 1")))
+             (got (run (list dir))))
+         (if (equal? got want) 'refused got))))))
 
 (test-equal "a file is no directory"
   (refused "tests/check-suites.sps: not a directory")
