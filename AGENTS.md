@@ -34,8 +34,10 @@
   `SERVER_PIN` on one commit.
 * chez-http-server isn't on the Akku index, so Akku can't install it for
   circuit: the submodule is the only way in.
-* The server's Akku package leaves out its `tests/`, so its fake shell
-  (`tests/fake-shell.sls`) is reached only through the vendored copy.
+* Circuit's tests run handlers through the server's test host,
+  `(http-server testing)`, which its package installs. Its fake shell is
+  `(http-server private fake-shell)`, which no circuit library imports
+  (ADR-0006).
 
 ### Layout, process & libraries
 

@@ -38,7 +38,7 @@ GOAL = $(strip $(if $(MAKECMDGOALS),$(MAKECMDGOALS),$@))
 
 # --- the pin -----------------------------------------------------------------
 SERVER_DIR := vendor/chez-http-server
-SERVER_PIN := a996eefea0d246e7c933cab961b62d4da4da569e  # v0.8.0
+SERVER_PIN := d928e41b7483e512dc10312d0834be8c8d860c44  # v0.9.0
 
 # --- the pins it carries ------------------------------------------------------
 LIBUV_DIR        := $(SERVER_DIR)/vendor/chez-libuv

@@ -11,10 +11,66 @@ close-out under **Close-outs**, newest first.
   their close-out is below. The design is
   [2026-10-24-circuit-design.md](2026-10-24-circuit-design.md): its §15 records the
   owner's decisions, ADR-0004 to ADR-0006 take them up, and §16 holds what is open.
-- **Next: slice 3, the pure core** (design §17): `req`, `res`, headers, keys,
-  `make-test-req`, `wrap`, and the suites that hold the names apart and `wrap`'s order;
-  with them `make oha`, and `make gate` holding the provisional numbers (design §15.6).
-  Nothing the owner must rule on blocks it.
+- **Every upstream ask has landed** on chez-http-server's main, at 9195305 by
+  2026-10-26, and the server tagged them as v0.9.0 that day (d928e41): A1 #219, A2
+  #218, A3 #238, A4 #234–#237, A5 #221–#223, A6 #224–#226, A7 #239, A8 #232, and the
+  docs fix #233. The design is revised to them (2026-10-26; design §12): the body is
+  the server's pulled port on the thunk's one coroutine, with no reader and no interim;
+  a sized body kind and port bodies sent with their length; `req-on-done!`; the
+  connection's addresses; tests through `(http-server testing)`. The owner's answers
+  are design §15.7–§15.9. ADR-0003, ADR-0004, ADR-0006 and `global-constraints.md` are
+  amended to match.
+- **The pin is at v0.9.0** (design §15.7), moved on 2026-10-26: the gitlink and
+  `SERVER_PIN` name d928e41, the tag's commit, and every pin the server carries is
+  unchanged from v0.8.0. `make check-pins` passes on the host, and `make test` in the
+  container (39, 14 and 45 passes, as before). Both spikes' programs still expand
+  against v0.9.0, though v0.9.0 drops `request-body`.
+- **A read-only Opus review of the revision** (Opus 5.5; 300,047 tokens, 18 minutes)
+  found two design flaws and a set of gaps, fixed on 2026-10-26. The session reproduced
+  the traps first: `transcoded-port` closing its binary port, `/proc/self/status` and
+  `/dev/zero` reporting length 0, the 431 path, and a sized body's mismatch reported
+  `failed`. The fixes:
+  - **a port under streaming middleware** leaked and lost its length:
+    `res-body->producer` gave way to `res-wrap-body`, a lazy wrap the adapter runs
+    (design §6, §14), whose shape awaits the owner (design §16.4);
+  - **`req-body`'s one port** lives in a cell of the request's record, shared by its
+    copies. It is read once, a transcode or close ending it for every reader, and only
+    in its own request's handler call. The adapter refuses it as a response body
+    (design §3, §4, §9);
+  - **the rest:**
+    - the view's defaults for `body` and `on-done`, and `test-req-done!`;
+    - `&body-failed`'s 431;
+    - the re-exports listed, without `next-body-piece` and `body-input-port`;
+    - port bodies a regular file or a bytevector port;
+    - the adapter measuring a port before it registers its close;
+    - `failed`'s endings;
+    - stale fake-shell text in ADR-0003, ADR-0006 and AGENTS.md, and design §6's "an
+      empty 500".
+- **A second read-only Opus review** (Opus 5.5; 212,128 tokens, 12 minutes) found that
+  the first round's `res-wrap-body` had three holes, and found smaller gaps; fixed on
+  2026-10-26. The session reproduced the traps first, on Chez 10.4.0 and 10.4.1:
+  `get-bytevector-n` of 0 answering an empty bytevector even on a closed port;
+  `file-regular?` passing procfs and sysfs files, one sysfs file reporting 4096 bytes and
+  holding 23; a FIFO's `port-position` raising; and `(http-server awaiting)` exporting
+  `make-body-failed`. The fixes:
+  - a wrap that drops a length stops at it, and a port's producer answers eof at its
+    length, never reading 0 bytes (design §5, §6);
+  - `res-with-body` closes the old port at any depth, unless the new body holds it;
+  - "has a length" is defined once, and an empty body reaches `f` as eof;
+  - the refusal of `req-body` as a response body looks through sized bodies too;
+  - `res-body->bytevector` reads as the adapter sends;
+  - `test-req-done!`'s rules are stated;
+  - the core's exports for the adapter and the tests are named (design §11);
+  - `f` runs on the request's coroutine;
+  - the owner's answers (2026-10-26; design §15.10 and §15.11): a view must supply
+    `method`, `host`, `path` and `http-version`, and slice 3 builds `res-wrap-body` as
+    provisional (design §16.4).
+- **Next: slice 3, the pure core** (design §17): `req` with its new accessors, shared
+  cells and required view procedures, `res` with the sized and wrapped bodies
+  (`res-wrap-body` provisional), headers, keys, `make-test-req` and `test-req-done!`, the
+  exports the adapter and the tests need, `wrap`, and the suites that hold the names
+  apart and `wrap`'s order; with them `make oha`, and `make gate` holding the provisional
+  numbers (design §15.6).
 
 ## Open
 
@@ -28,35 +84,21 @@ close-out under **Close-outs**, newest first.
   - two rows (`test-check-imports`'s and `test-check-suites`'s unreadable cases) hold
     Chez's exact read-error text, so a Chez that words it otherwise fails them;
   - the audit's rule (g) assumes `src` comes first on the library path.
-- **Upstream asks** (design §12). Filed on chez-http-server on 2026-10-25, the owner's
-  word, from the drafts in [upstream/](upstream/): A1 `request-header-list` as #214, A2
-  the HTTP version in the facade as #215, A5 a producer with a declared length as #216,
-  A6 a call when a response is done as #217; after the spikes, A4 reading the body by
-  waiting as #227 and A8 `request-has-body?` as #228; then A3 the connection's
-  addresses as #229 and A7 a supported test host as #230. All eight are filed:
-  [a4-read-the-body-by-waiting.md](upstream/a4-read-the-body-by-waiting.md) carries what
-  S1 found a port over the verb needs (a fresh piece, never empty; a sticky eof and a
-  sticky close; a raise only before taking a piece; a raise before waiting inside a
-  passed deadline), and [a8-request-has-body.md](upstream/a8-request-has-body.md) the
-  lookups' cost, 64 B a request, and a probe: the server keeps `Content-Length: 00`
-  alive as no body, which a copy of its rule that tests for `"0"` takes for one;
-  [a3-the-connections-addresses.md](upstream/a3-the-connections-addresses.md) argues the
-  server's own guide needs the peer's address to trust `X-Forwarded-For`, and chez-libuv
-  already gives both ends;
-  [a7-a-supported-test-host.md](upstream/a7-a-supported-test-host.md) asks for a
-  supported, installed host to test a handler that waits, over the fake shell, with the
-  surface circuit's tests would use. A7's surface may want revising once the adapter's
-  tests are written (design §16). Besides the asks, the two fixes to the server's
-  `docs/waiting.md` (design §12), its stale costs and a park's running every
-  `dynamic-wind`, are filed as one docs issue, #231
-  ([docs-waiting-costs-and-dynamic-wind.md](upstream/docs-waiting-costs-and-dynamic-wind.md)).
-  **chez-http-server is submitted to the Akku index and
-  awaits review** (the owner, 2026-10-25). Until it is published, circuit can't be
-  installed with Akku, and the submodule stays its only way in (ADR-0003).
-- **A clock for request logging** (slice 5): R6RS has none, and the facade exports
-  none. The server's own clock, the one its waits use, is the one to read, so A7's fake
-  clock would drive it in a test: likely an upstream ask, not a second Chez name.
-- **A7's shape**, the fake shell as a supported library (design §16).
+- **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
+  2026-10-26, with the docs fix; see **Now**. **chez-http-server is submitted to the Akku
+  index and awaits review** (the owner, 2026-10-25). Until it is published, circuit can't
+  be installed with Akku, and the submodule stays its only way in (ADR-0003).
+- **A clock for request logging** (slice 5; design §16.2): R6RS has none, and the facade
+  exports none. The server's own clock, the one its waits use, is the one to read, so
+  `(http-server testing)`'s clock would drive it in a test: likely an upstream ask, not a
+  second Chez name.
+- **A cap of circuit's own on the request body** (design §16.1): the revision has none,
+  and the server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by default.
+- **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
+  provisional.
+- **The server's `docs/waiting.md` lists `&body-failed`'s statuses as 413, 400 and 408**,
+  leaving out 431, a chunked body's trailers past the header limits (design §12). A docs
+  note upstream, not yet filed.
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and
   `chez-http1`. It stays as background; the design supersedes it where they differ.

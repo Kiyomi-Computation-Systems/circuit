@@ -16,8 +16,9 @@ provisional. They bind until that record is accepted or amended.
 ## Dependency
 
 - **chez-http-server is a submodule at `vendor/chez-http-server`, pinned at a release
-  tag**, now v0.8.0. Circuit uses the pins the server carries and pins none itself. Move
-  the gitlink and `SERVER_PIN` on one commit; `make check-pins` holds them (ADR-0003).
+  tag**, now v0.9.0 (`d928e41`). Circuit uses the pins the server carries and pins none
+  itself. Move the gitlink and `SERVER_PIN` on one commit, `SERVER_PIN` naming the tag's
+  commit; `make check-pins` holds them (ADR-0003).
 - **No Akku dependency on the server** while it isn't on the Akku index (ADR-0003).
 
 ## Tooling
@@ -32,9 +33,9 @@ provisional. They bind until that record is accepted or amended.
 
 - **A handler is `Req -> Res`; middleware is `Handler -> Handler`.** No callbacks, futures
   or answer sum in circuit's API (ADR-0004).
-- **The adapter answers every request with `awaiting`**, and a request with a body has its
-  reader answered from the thunk, never straight from the handler. No option calls an app
-  in place (ADR-0004).
+- **The adapter answers every request with `awaiting`**, and the thunk answers a response
+  or a switch, never a reader: the app reads its body through the server's
+  `body-input-port`, on the thunk's coroutine. No option calls an app in place (ADR-0004).
 - **The server's waits are the one async model.** Circuit defines no async primitive
   (ADR-0004).
 
