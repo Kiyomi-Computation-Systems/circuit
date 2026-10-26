@@ -9,5 +9,5 @@ release before 1.0.
 
 ### Added
 
-- The build: chez-http-server v0.8.0 as a pinned submodule, a pinned Guix development
+- The build: chez-http-server v0.9.0 as a pinned submodule, a pinned Guix development
   container, and `make test`.
