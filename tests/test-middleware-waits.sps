@@ -33,14 +33,19 @@
 ;;;     the host's clock; the default clock, Chez's real time across a real
 ;;;     sleep, bounded by the suite's own readings; the refusals;
 ;;;   - composed, (wrap app wrap-catch (wrap-timeout ms) wrap-log): the 504
-;;;     and the 500 logged as written.
+;;;     and the 500 logged as written;
+;;;   - around an upgrade, through the test host: wrap-catch passing one
+;;;     through, wrap-timeout's deadline over the handler and not the
+;;;     take-over, and wrap-log's line, 101 written, or 101 failed for a
+;;;     switch the server refuses.
 ;;;
 ;;; What a row asserts:
 ;;;   - a row through the test host asserts the response whole, as its wire
 ;;;     bytes, one character a byte, with whether the connection ended, the
 ;;;     server's log, whole, each condition in it shown by its kind, who,
 ;;;     message and irritants, and all that was written to the current
-;;;     output port; a row about the endings asserts them too;
+;;;     output port; a row about the endings asserts them too; an upgrade
+;;;     row asserts every byte the client read, the 101 and the taker's;
 ;;;   - a direct row asserts what the call answered or raised, the very
 ;;;     object where it says so, and the whole text written;
 ;;;   - a refusal row asserts the condition's kind, who, message and
@@ -1005,11 +1010,17 @@
 ;; /logged, then STEPS acting on the host and its client: what the client
 ;; read, whether the connection ended and the log, then the text written.
 (define (logged-through app steps)
+  (logged-through-sending app (get "/logged?q=1") steps))
+
+;; logged-through-sending : (Req -> Res) String (TestHost TestClient -> Any)
+;;                          -> (List String Boolean (Listof Any) String)
+;; As logged-through, the client sending REQUEST.
+(define (logged-through-sending app request steps)
   (let* ((host #f)
          (seen (hosted (lambda ()
                          (set! host (host-of (wrap-log app (lambda () (test-host-now host))) unset))
                          (let ((c (test-host-connect! host)))
-                           (test-client-send! c (b (get "/logged?q=1")))
+                           (test-client-send! c (b request))
                            (steps host c)
                            (list (received c) (test-client-connection-closed? c) (logged host)))))))
     (append (car seen) (list (cadr seen)))))
@@ -1106,6 +1117,71 @@
   (map (lambda (seen) (append (list-head* seen 3) (list (ms-blanked (list-ref seen 3)))))
        (list (composed forever (lambda (host) wrap-log) "/slow" 100)
              (composed (lambda (r) (sleep-ms 10) (error 'app "boom")) (lambda (host) wrap-log) "/boom" 10))))
+
+;;; --- around an upgrade -----------------------------------------------------------------
+
+(define upgrade-request "GET /chat HTTP/1.1\r\nHost: x\r\nConnection: upgrade\r\nUpgrade: echo\r\n\r\n")
+
+;; switching : (Listof String) -> String
+;; The 101 as the server writes it: FIELDS, then its own Connection:
+;; upgrade. A 1xx carries no Date.
+(define (switching fields)
+  (string-append "HTTP/1.1 101 Switching Protocols\r\n"
+                 (apply string-append (map (lambda (f) (string-append f "\r\n")) fields))
+                 "Connection: upgrade\r\n\r\n"))
+
+;; greeter : Transport Bytevector -> Any — a take-over that writes hello.
+(define (greeter t retained) (transport-write! t (b "hello")))
+
+;; upgrading : Req -> Res — an app that answers an upgrade, greeter taking over.
+(define (upgrading r) (make-upgrade-res '(("Upgrade" . "echo")) greeter))
+
+;; switched : (Req -> Res) String Nat -> (List String Boolean (Listof Any) String)
+;; APP on the host, a client sending REQUEST, the host advanced by MS: every
+;; byte the client read, whether the connection ended and the log, then
+;; the text written.
+(define (switched app request ms)
+  (let ((seen (hosted (lambda ()
+                        (let* ((host (host-of app unset))
+                               (c (test-host-connect! host)))
+                          (test-client-send! c (b request))
+                          (test-host-advance! host ms)
+                          (list (received c) (test-client-connection-closed? c) (logged host)))))))
+    (append (car seen) (list (cadr seen)))))
+
+(test-equal "wrap-catch passes an upgrade through: called directly, the very res; through the host, the 101 and the taker's bytes"
+  (list #t (list (string-append (switching '("Upgrade: echo")) "hello") #f '() ""))
+  (let ((up (upgrading (make-test-req 'GET "/chat"))))
+    (list (eq? up ((wrap-catch (lambda (r) up) no-on-raise) (make-test-req 'GET "/chat")))
+          (switched (wrap-catch upgrading no-on-raise) upgrade-request 0))))
+
+;; The handler waits 60 ms of the 100, so the deadline is armed while it
+;; runs; the taker then waits to 210 ms, past it, and past a deadline of
+;; 100 armed as the take-over starts, so no tie between a deadline and the
+;; sleep decides the row.
+(test-equal "wrap-timeout's deadline covers the handler, not the take-over: a taker that waits past it still writes, and nothing answers 504"
+  (list (string-append (switching '("Upgrade: echo")) "after the deadline") #f '() "")
+  (switched ((wrap-timeout 100)
+             (lambda (r)
+               (sleep-ms 60)
+               (make-upgrade-res '(("Upgrade" . "echo"))
+                                 (lambda (t retained)
+                                   (awaiting (lambda ()
+                                               (sleep-ms 150)
+                                               (transport-write! t (b "after the deadline"))))))))
+            upgrade-request 210))
+
+(test-equal "wrap-log's line for an upgrade: 101 written, told once the 101 is written"
+  (list (string-append (switching '("Upgrade: echo")) "hello") #f '() "request GET /chat 101 written 30\n")
+  (logged-through-sending (lambda (r) (sleep-ms 30) (upgrading r)) upgrade-request
+                          (lambda (host c) (test-host-advance! host 30))))
+
+(test-equal "wrap-log's line for a switch the server refuses, to a request that asked for no upgrade: 101 failed, the client's 500"
+  (list (response "500 Internal Server Error" '("Content-Length: 0" "Connection: close") "") #t
+        '((invalid-response not-an-upgrade))
+        "request GET /chat 101 failed 5\n")
+  (logged-through-sending (lambda (r) (sleep-ms 5) (upgrading r)) (get "/chat")
+                          (lambda (host c) (test-host-advance! host 5))))
 
 (test-end "middleware-waits")
 

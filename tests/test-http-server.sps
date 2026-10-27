@@ -19,6 +19,10 @@
 ;;;     streamed path gives a piece size smaller than its port;
 ;;;   - sized bodies and the server's mismatch handling; wraps;
 ;;;   - a client that leaves while the app waits;
+;;;   - upgrades: the 101, then the taker's bytes and the client's, a taker
+;;;     that waits, middleware that adds a field, removes one or wraps the
+;;;     take-over, an app that made its req-body, and the refusals, a 101
+;;;     that make-res made among them;
 ;;;   - refusals, each a 500 before the head, logged handler-failed;
 ;;;   - CIRCUIT_PORT_PIECE_BYTES, read once, from env or the process's
 ;;;     environment, and the malformed values it refuses;
@@ -35,6 +39,9 @@
 ;;;     the condition, port-position: the message is the OS's;
 ;;;   - the version row and the one-port row assert what the app read, and
 ;;;     neither the wire nor the log;
+;;;   - an upgrade row asserts every byte the client read, the 101 has no
+;;;     Date, and what the taker was handed, whether the connection ended
+;;;     and the log;
 ;;;   - the setting rows and the parity row assert the chunks' sizes and the
 ;;;     body's bytes, or the condition raised, whole, and not the log.
 ;;; The test host's clock stays under a second, so a Date field reads
@@ -861,6 +868,163 @@
            (test-host-advance! host 10)
            (list (wire c) (test-client-connection-closed? c) (port-closed? port) endings (logged host))))
        (list (settings piece-variable "4") unset)))
+
+;;; --- upgrades -------------------------------------------------------------------
+
+(define upgrade-request "GET /chat HTTP/1.1\r\nHost: x\r\nConnection: upgrade\r\nUpgrade: echo\r\n\r\n")
+
+;; switching : (Listof String) -> String
+;; The 101 as the server writes it: FIELDS, then its own Connection:
+;; upgrade. A 1xx carries no Date.
+(define (switching fields)
+  (string-append "HTTP/1.1 101 Switching Protocols\r\n"
+                 (apply string-append (map (lambda (f) (string-append f "\r\n")) fields))
+                 "Connection: upgrade\r\n\r\n"))
+
+;; subbytes : Bytevector Nat Nat -> Bytevector — BV from START to END.
+(define (subbytes bv start end)
+  (let ((out (make-bytevector (- end start))))
+    (bytevector-copy! bv start out 0 (- end start))
+    out))
+
+;; noting-taker : (Any -> Void) -> (Transport Bytevector -> Any)
+;; A take-over that notes the bytes read past the request, writes hello,
+;; then notes each read and writes it back, and at the read's end notes why
+;; and closes.
+(define (noting-taker note)
+  (lambda (t retained)
+    (note (list 'retained (text retained)))
+    (transport-write! t (b "hello"))
+    (transport-read-start! t
+                           (lambda (bv start end)
+                             (let ((bytes (subbytes bv start end)))
+                               (note (list 'read (text bytes)))
+                               (transport-write! t bytes)))
+                           (lambda (why) (note (list 'end why)) (transport-close! t)))))
+
+;; upgraded : ((Transport Bytevector -> Any) (Any -> Void) -> (Req -> Res)) String (Listof String)
+;;            -> (List String String (Listof Any) Boolean (Listof Any))
+;; The app MAKE-APP makes around a noting taker and its note procedure, a
+;; client sending REQUEST: every byte it read; every byte once it has sent
+;; each of AFTER; the notes, the taker's and any MAKE-APP's app made; and
+;; once the client closes, whether the connection ended, and the log.
+(define (upgraded make-app request after)
+  (let* ((notes '())
+         (note (lambda (x) (set! notes (cons x notes))))
+         (host (host-of (make-app (noting-taker note) note) unset))
+         (c (test-host-connect! host)))
+    (test-client-send! c (b request))
+    (let ((first (received c)))
+      (for-each (lambda (bytes) (test-client-send! c (b bytes))) after)
+      (let ((second (received c)))
+        (test-client-close! c)
+        (list first second (reverse notes) (test-client-connection-closed? c) (logged host))))))
+
+(define (echo-upgrade taker)
+  (lambda (r) (make-upgrade-res '(("Upgrade" . "echo") ("x-app" . "yes")) taker)))
+
+;; echo-only : (Transport Bytevector -> Any) (Any -> Void) -> (Req -> Res)
+(define (echo-only taker note) (echo-upgrade taker))
+
+(test-equal "an upgrade: the 101, the app's fields then the server's Connection: upgrade, then the taker's bytes; the taker is handed the bytes read past the request, then what the client sends"
+  (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes")) "hello")))
+    (list (list head (string-append head "pingpong") '((retained "") (read "ping") (read "pong") (end eof))
+                #t '())
+          (list head (string-append head "ping") '((retained "early") (read "ping") (end eof)) #t '())))
+  (list (upgraded echo-only upgrade-request '("ping" "pong"))
+        (upgraded echo-only (string-append upgrade-request "early") '("ping"))))
+
+(test-equal "an upgrade whose taker answers awaiting: its thunk runs on a coroutine of its own, where it waits"
+  (let ((head (switching '("Upgrade: echo"))))
+    (list head head (string-append head "late") #t '()))
+  (let* ((host (host-of (lambda (r)
+                          (make-upgrade-res '(("Upgrade" . "echo"))
+                                            (lambda (t retained)
+                                              (awaiting (lambda ()
+                                                          (sleep-ms 50)
+                                                          (transport-write! t (b "late"))
+                                                          (transport-close! t))))))
+                        unset))
+         (c (test-host-connect! host)))
+    (test-client-send! c (b upgrade-request))
+    (let ((at-0 (received c)))
+      (test-host-advance! host 49)
+      (let ((at-49 (received c)))
+        (test-host-advance! host 1)
+        (let ((at-50 (received c)))
+          (test-client-close! c)
+          (list at-0 at-49 at-50 (test-client-connection-closed? c) (logged host)))))))
+
+(test-equal "an upgrade carries the field a middleware adds, before the server's Connection: upgrade"
+  (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes" "server: circuit")) "hello")))
+    (list head (string-append head "ping") '((retained "") (read "ping") (end eof)) #t '()))
+  (upgraded (lambda (taker note)
+              (wrap (echo-upgrade taker)
+                    (lambda (handler) (lambda (r) (res-add-header (handler r) "server" "circuit")))))
+            upgrade-request '("ping")))
+
+(test-equal "an upgrade loses the fields a middleware removes, every one of the name, in any case"
+  (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes")) "hello")))
+    (list head (string-append head "ping") '((retained "") (read "ping") (end eof)) #t '()))
+  (upgraded (lambda (taker note)
+              (wrap (lambda (r)
+                      (make-upgrade-res '(("Upgrade" . "echo") ("X-Secret" . "1") ("x-app" . "yes")
+                                          ("x-secret" . "2"))
+                                        taker))
+                    (lambda (handler) (lambda (r) (res-remove-header (handler r) "x-SECRET")))))
+            upgrade-request '("ping")))
+
+;; The middleware makes a new upgrade from the one its handler answers:
+;; its headers, and a take-over that notes, then hands on to the old one.
+(test-equal "a middleware that wraps the take-over: its own note first, then the inner taker, handed the bytes read past the request"
+  (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes")) "hello")))
+    (list head (string-append head "ping")
+          '((outer "early" #t) (retained "early") (read "ping") (end eof)) #t '()))
+  (upgraded (lambda (taker note)
+              (wrap (echo-upgrade taker)
+                    (lambda (handler)
+                      (lambda (r)
+                        (let* ((answer (handler r))
+                               (inner (res-upgrade-body-take-over (res-body answer))))
+                          (make-upgrade-res (res-headers answer)
+                                            (lambda (t retained)
+                                              (note (list 'outer (text retained) (transport? t)))
+                                              (inner t retained))))))))
+            (string-append upgrade-request "early") '("ping")))
+
+(test-equal "an app that made its req-body, then answers an upgrade, still switches: an upgrade body holds no port"
+  (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes")) "hello")))
+    (list (list head (string-append head "ping") '((retained "") (read "ping") (end eof)) #t '()) #t))
+  (let* ((made #f)
+         (result (upgraded (lambda (taker note)
+                             (lambda (r)
+                               (req-body r)
+                               (set! made (and (req-body-made r) #t))
+                               ((echo-upgrade taker) r)))
+                           upgrade-request '("ping"))))
+    (list result made)))
+
+(test-equal "an upgrade with a header character above 255 is refused: a 500 before the head, logged handler-failed, the taker never called"
+  (list (refused not-latin-1 '("λ")) '())
+  (let* ((called '())
+         (result (exchange (lambda (r)
+                             (make-upgrade-res '(("Upgrade" . "echo") ("x-wide" . "λ"))
+                                               (lambda (t retained) (set! called (cons 'taker called)))))
+                           upgrade-request)))
+    (list result called)))
+
+(test-equal "a 101 that make-res made, answered to an upgrade request, is no upgrade: the server's 500, logged invalid-response invalid-status"
+  (list (list server-error) #t '((invalid-response invalid-status)))
+  (exchange (lambda (r) (make-res 101 '() "text")) upgrade-request))
+
+(test-equal "an upgrade answered to a request that asked for none: the server's 500, logged invalid-response not-an-upgrade, the taker never called"
+  (list (list (list server-error) #t '((invalid-response not-an-upgrade))) '())
+  (let* ((called '())
+         (result (exchange (lambda (r)
+                             (make-upgrade-res '(("Upgrade" . "echo"))
+                                               (lambda (t retained) (set! called (cons 'taker called)))))
+                           (get "/chat"))))
+    (list result called)))
 
 ;;; --- refusals: each a 500 before the head, logged handler-failed ---------------
 

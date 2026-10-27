@@ -9,22 +9,28 @@
 ;;; its middleware and its body's reads all run on the thunk's coroutine,
 ;;; where they may wait. The thunk makes the req, through one view over the
 ;;; server's accessors made here once, calls the app, and turns the res into
-;;; the server's response:
+;;; the server's response, or into a switch for an upgrade:
 ;;;
 ;;;   1. a value that is no res is an assertion violation;
 ;;;   2. a body that holds the request's own req-body port, bare, sized or
 ;;;      wrapped, is one too: a producer can't read it (design §9);
 ;;;   3. the body: #f and a bytevector as they are, a string as its UTF-8,
-;;;      a producer as itself; any other kind through res-body-stream. A
-;;;      port is measured first, from its position to Chez's length of it.
-;;;      One of a piece or less, CIRCUIT_PORT_PIECE_BYTES, is read whole
-;;;      and closed there, and its bytes go out as a bytevector; any other
-;;;      has its close registered with the server's request-on-done!, so it
-;;;      is closed however the response ends, and streams. Only then does a
-;;;      wrap's f run. What streams goes sized when it has a length;
+;;;      a producer as itself; an upgrade's take-over as it is; any other
+;;;      kind through res-body-stream. A port is measured first, from its
+;;;      position to Chez's length of it. One of a piece or less,
+;;;      CIRCUIT_PORT_PIECE_BYTES, is read whole and closed there, and its
+;;;      bytes go out as a bytevector; any other has its close registered
+;;;      with the server's request-on-done!, so it is closed however the
+;;;      response ends, and streams. Only then does a wrap's f run. What
+;;;      streams goes sized when it has a length;
 ;;;   4. then the headers, each name and value a string, one Latin-1 byte a
 ;;;      character; anything else is an assertion violation;
-;;;   5. the status passes through, and the server writes the reason.
+;;;   5. the status passes through, and the server writes the reason. An
+;;;      upgrade, which make-upgrade-res made, answers (switch-protocols
+;;;      headers take-over) instead: the server writes the 101, then calls
+;;;      the take-over with its transport and the bytes it read past the
+;;;      request. It refuses the switch, a 500, for a request that asked for
+;;;      no upgrade (design §8).
 ;;;
 ;;; The adapter catches nothing: whatever the thunk raises the server
 ;;; answers, a 500 before the head, a &body-failed's own status, or nothing
@@ -38,23 +44,32 @@
 ;;; the server's http-server-config-error? answers #t, as serve raises its
 ;;; own, so run-server refuses it before anything listens.
 ;;;
-;;; It re-exports the server's waits and the conditions they and the body
-;;; raise, the same bindings as (http-server)'s, so an app needs only
-;;; (circuit) and this library. Not next-body-piece or body-input-port:
-;;; req-body is the body's one port, and a second would split it.
+;;; It re-exports the server's waits, the conditions they and the body
+;;; raise, and what a take-over uses, the transport procedures and
+;;; awaiting, the same bindings as (http-server)'s, so an app needs only
+;;; (circuit) and this library. A handler never answers awaiting: the
+;;; adapter answers it for every request. Not
+;;; next-body-piece or body-input-port: req-body is the body's one port, and
+;;; a second would split it. Not make-transport either: it makes a
+;;; transport to test a taker without a server, and a test imports it from
+;;; (http-server).
 (library (circuit http-server)
   (export circuit->handler run-server
-          await sleep-ms with-deadline resolve
+          awaiting await sleep-ms with-deadline resolve
           &deadline-passed deadline-passed? &client-closed client-closed?
           &resolve-error resolve-error? resolve-error-reason
-          &body-failed body-failed? body-failed-reason body-failed-status)
+          &body-failed body-failed? body-failed-reason body-failed-status
+          transport? transport-write! transport-read-start! transport-read-stop!
+          transport-close! transport-abort! transport-deadline! transport-on-drain!
+          transport-on-close!)
   (import (rnrs)
           (only (chezscheme) getenv port-has-port-length? port-length)
           (only (circuit request) make-req-view make-req req-body-made)
           (only (circuit response) res? res-status res-headers res-body res-body-port
-                res-body-stream)
+                res-body-stream res-upgrade-body? res-upgrade-body-take-over)
           (only (http-server)
-                serve awaiting make-response sized-body body-input-port request-on-done!
+                serve awaiting make-response sized-body switch-protocols body-input-port
+                request-on-done!
                 request-method request-host request-path request-query request-http-major
                 request-http-minor request-header request-header-values request-header-list
                 request-remote-address request-remote-port request-local-address
@@ -63,7 +78,10 @@
                 await sleep-ms with-deadline resolve
                 &deadline-passed deadline-passed? &client-closed client-closed?
                 &resolve-error resolve-error? resolve-error-reason
-                &body-failed body-failed? body-failed-reason body-failed-status))
+                &body-failed body-failed? body-failed-reason body-failed-status
+                transport? transport-write! transport-read-start! transport-read-stop!
+                transport-close! transport-abort! transport-deadline! transport-on-drain!
+                transport-on-close!))
 
   ;; Request = the server's request
   ;; Env = (String -> (U String #f))
@@ -79,6 +97,21 @@
   ;; &deadline-passed, &client-closed, &resolve-error, &body-failed: condition
   ;;   types, each an &error
   ;; The server's own, re-exported: see its docs/waiting.md.
+
+  ;; awaiting : (-> Any) -> Awaiting
+  ;; The server's own, re-exported, for a take-over that waits: it answers
+  ;; (awaiting thunk), and the server runs THUNK on a coroutine, where it
+  ;; may wait; what THUNK returns is dropped. A handler never answers it:
+  ;; the adapter answers awaiting for every request, and an app answers a
+  ;; res. See the server's docs/upgrades.md.
+
+  ;; transport? : Any -> Boolean
+  ;; transport-write! : Transport Bytevector [Nat Nat] [(U #f ((U #f Symbol) -> Any))] -> Any
+  ;; transport-read-start! : Transport (Bytevector Nat Nat -> Any) (Symbol -> Any) -> Any
+  ;; transport-read-stop!, transport-close!, transport-abort! : Transport -> Any
+  ;; transport-deadline! : Transport (U Nat #f) [(-> Any)] -> Any
+  ;; transport-on-drain!, transport-on-close! : Transport (-> Any) -> Any
+  ;; The server's own, re-exported: see its docs/upgrades.md.
 
   ;; A malformed setting: a config error of the server's kind, so
   ;; http-server-config-error? answers #t, as it does for serve's own.
@@ -104,9 +137,10 @@
   ;; circuit->handler : (Req -> Res) [Env] -> (Request -> Awaiting)
   ;; A server handler that answers every request (awaiting thunk), the thunk
   ;; calling APP on the request and answering the server's response for the
-  ;; res it gives. ENV, the process's environment by getenv unless given,
-  ;; is read once, now. A non-procedure APP or ENV is an assertion
-  ;; violation; a malformed CIRCUIT_PORT_PIECE_BYTES is a config error.
+  ;; res it gives, or its switch for an upgrade. ENV, the process's
+  ;; environment by getenv unless given, is read once, now. A non-procedure
+  ;; APP or ENV is an assertion violation; a malformed
+  ;; CIRCUIT_PORT_PIECE_BYTES is a config error.
   (define circuit->handler
     (case-lambda
       ((app) (make-handler app getenv))
@@ -158,9 +192,10 @@
              (or (= i n)
                  (and (char<=? #\0 (string-ref s i) #\9) (loop (+ i 1))))))))
 
-  ;; answer : (Req -> Res) Request Nat -> Response
+  ;; answer : (Req -> Res) Request Nat -> (U Response Switch)
   ;; The thunk's work, in order: the req, the app, the res check, the echo
-  ;; refusal, the body, and only then the headers.
+  ;; refusal, the body, and only then the headers. An upgrade's body is its
+  ;; take-over, passed as it is, and its answer the server's switch.
   (define (answer app request size)
     (let* ((req (make-req view request))
            (r (app req)))
@@ -172,9 +207,13 @@
           (assertion-violation 'circuit->handler
                                "the response's body holds its request's req-body port, which no producer can read"
                                own))
-        (let* ((sent (server-body body request size))
-               (headers (encoded (res-headers r))))
-          (make-response (res-status r) #f headers sent)))))
+        (if (res-upgrade-body? body)
+            (let* ((take-over (res-upgrade-body-take-over body))
+                   (headers (encoded (res-headers r))))
+              (switch-protocols headers take-over))
+            (let* ((sent (server-body body request size))
+                   (headers (encoded (res-headers r))))
+              (make-response (res-status r) #f headers sent))))))
 
   ;; server-body : Body Request Nat -> (U Bytevector #f Producer SizedBody)
   ;; BODY as the server sends it. #f, a bytevector and a producer go as they

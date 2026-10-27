@@ -20,27 +20,42 @@
 ;;; nothing, since the wrap is lazy: res-body-stream, which the adapter and
 ;;; the tests send a body through, is the one place f is called.
 ;;;
+;;; (make-upgrade-res headers take-over) is a 101 whose body is an upgrade:
+;;; no bytes, but the take-over, which the adapter hands the server, and the
+;;; server calls with its transport once the 101 is written (design §8). An
+;;; upgrade body sits only in a 101 that make-upgrade-res made: make-res and
+;;; res-with-body refuse one; res-with-body, res-with-status and
+;;; res-wrap-body refuse an upgrade response; res-set-header,
+;;; res-add-header and res-remove-header keep it one. res-body-length and res-body-port answer #f
+;;; for it, and res-body-stream refuses it: after the 101 the stream is the
+;;; taker's. make-res with 101 and any other body is still a response, which
+;;; the server answers 500.
+;;;
 ;;; res-wrap-body's shape is provisional (design §15.11, §16.4).
 ;;;
 ;;; Also exported for the adapter and the tests, and left out of the
 ;;; (circuit) facade: the res-sized-body- and res-wrapped-body- accessors,
-;;; res-body-port and res-body-stream.
+;;; res-body-port and res-body-stream. res-upgrade-body-take-over is in the
+;;; facade, so middleware can make an upgrade around a wrapped take-over.
 (library (circuit response)
   (export make-res res? res-status res-headers res-body
-          res-header res-set-header res-add-header res-with-status res-with-body
+          res-header res-set-header res-add-header res-remove-header res-with-status res-with-body
           make-sized-body res-sized-body? res-sized-body-length res-sized-body-inner
           res-wrap-body res-wrapped-body? res-wrapped-body-inner res-wrapped-body-proc
           res-wrapped-body-same?
+          make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
           res-body-length res-body-port res-body-stream)
-  (import (rnrs) (only (circuit headers) header-value header-set header-add))
+  (import (rnrs) (only (circuit headers) header-value header-set header-add header-remove))
 
   ;; Producer = (-> (U Bytevector Eof))
   ;; Body = (U #f Bytevector String Producer BinaryInputPort SizedBody WrappedBody)
+  ;; TakeOver = (Transport Bytevector -> Any), Transport the server's
+  ;; UpgradeBody = the body of make-upgrade-res's 101, holding its TakeOver
 
   ;; res? : Any -> Boolean
   ;; res-status : Res -> Integer
   ;; res-headers : Res -> (Listof (Pair String String))
-  ;; res-body : Res -> Body
+  ;; res-body : Res -> (U Body UpgradeBody)
   (define-record-type (res %make-res res?)
     (fields (immutable status res-status)
             (immutable headers res-headers)
@@ -66,15 +81,38 @@
             (immutable same? res-wrapped-body-same?))
     (sealed #t))
 
+  ;; res-upgrade-body? : Any -> Boolean
+  ;; res-upgrade-body-take-over : UpgradeBody -> TakeOver
+  (define-record-type (upgrade %make-upgrade res-upgrade-body?)
+    (fields (immutable take-over res-upgrade-body-take-over))
+    (sealed #t))
+
   ;; make-res : Integer Headers Body -> Res
   ;; A response. STATUS must be an exact integer, HEADERS a list, and BODY
-  ;; a body kind, or it is an assertion violation. Nothing is rewritten.
+  ;; a body kind, or it is an assertion violation; an upgrade body is
+  ;; make-upgrade-res's alone. Nothing is rewritten.
   (define (make-res status headers body)
     (check-status 'make-res status)
-    (unless (list? headers)
-      (assertion-violation 'make-res "headers are a list of (name . value) string pairs" headers))
+    (check-headers 'make-res headers)
     (check-body 'make-res body)
     (%make-res status headers body))
+
+  ;; make-upgrade-res : Headers TakeOver -> Res
+  ;; A 101 with HEADERS, checked as make-res checks them, and an upgrade
+  ;; body holding TAKE-OVER, which the server calls with its transport and
+  ;; the bytes it read past the request once the 101 is written. A
+  ;; TAKE-OVER that is no procedure is an assertion violation.
+  (define (make-upgrade-res headers take-over)
+    (check-headers 'make-upgrade-res headers)
+    (unless (procedure? take-over)
+      (assertion-violation 'make-upgrade-res
+                           "a take-over is a procedure of a transport and the bytes read past the request"
+                           take-over))
+    (%make-res 101 headers (%make-upgrade take-over)))
+
+  (define (check-headers who headers)
+    (unless (list? headers)
+      (assertion-violation who "headers are a list of (name . value) string pairs" headers)))
 
   (define (check-status who status)
     (unless (and (integer? status) (exact? status))
@@ -83,6 +121,13 @@
   (define (check-res who r)
     (unless (res? r)
       (assertion-violation who "not a response" r)))
+
+  ;; check-not-upgrade : Symbol Res -> Void
+  ;; R, when it is an upgrade response, is an assertion violation: its
+  ;; status and its body are make-upgrade-res's.
+  (define (check-not-upgrade who r)
+    (when (res-upgrade-body? (res-body r))
+      (assertion-violation who "an upgrade response keeps the 101 and the body make-upgrade-res gave it" r)))
 
   (define (binary-input-port? x)
     (and (port? x) (input-port? x) (binary-port? x)))
@@ -93,8 +138,10 @@
 
   (define (check-body who body)
     (unless (body? body)
-      (assertion-violation who "not a body: #f, a bytevector, a string, a producer, a binary input port, a sized body or a wrapped body"
-                           body)))
+      (if (res-upgrade-body? body)
+          (assertion-violation who "an upgrade body sits only in the 101 make-upgrade-res makes" body)
+          (assertion-violation who "not a body: #f, a bytevector, a string, a producer, a binary input port, a sized body or a wrapped body"
+                               body))))
 
   (define (count? n) (and (integer? n) (exact? n) (>= n 0)))
 
@@ -108,33 +155,47 @@
 
   ;; res-set-header : Res String String -> Res
   ;; R with every field named NAME replaced by one, the name in lower case.
+  ;; An upgrade response stays one, its take-over kept.
   (define (res-set-header r name value)
     (check-res 'res-set-header r)
     (%make-res (res-status r) (header-set (res-headers r) name value) (res-body r)))
 
   ;; res-add-header : Res String String -> Res
-  ;; R with a field appended, the name in lower case.
+  ;; R with a field appended, the name in lower case. An upgrade response
+  ;; stays one, its take-over kept.
   (define (res-add-header r name value)
     (check-res 'res-add-header r)
     (%make-res (res-status r) (header-add (res-headers r) name value) (res-body r)))
 
+  ;; res-remove-header : Res String -> Res
+  ;; R without any field named NAME, in any case, the rest in order. The
+  ;; body is kept as it is, so it closes nothing, and an upgrade response
+  ;; stays one, its take-over kept.
+  (define (res-remove-header r name)
+    (check-res 'res-remove-header r)
+    (%make-res (res-status r) (header-remove (res-headers r) name) (res-body r)))
+
   ;; res-with-status : Res Integer -> Res
   ;; R with STATUS. A 1xx status is an assertion violation: the server sends
-  ;; those itself, and refuses one from a handler.
+  ;; those itself, and refuses one from a handler. So is an upgrade
+  ;; response, whose 101 is make-upgrade-res's.
   (define (res-with-status r status)
     (check-res 'res-with-status r)
+    (check-not-upgrade 'res-with-status r)
     (check-status 'res-with-status status)
     (when (and (>= status 100) (<= status 199))
       (assertion-violation 'res-with-status "a 1xx status is the server's to send" status))
     (%make-res status (res-headers r) (res-body r)))
 
   ;; res-with-body : Res Body -> Res
-  ;; R with BODY, checked as make-res checks it. The body is replaced
-  ;; outright, so the port the old body holds, at any depth, is closed,
-  ;; unless BODY holds that same port: (res-with-body r (make-sized-body n
-  ;; (res-body r))) keeps it open.
+  ;; R with BODY, checked as make-res checks it, so an upgrade body is an
+  ;; assertion violation; so is an upgrade response R. Refused, it closes
+  ;; nothing. The body is replaced outright, so the port the old body
+  ;; holds, at any depth, is closed, unless BODY holds that same port:
+  ;; (res-with-body r (make-sized-body n (res-body r))) keeps it open.
   (define (res-with-body r body)
     (check-res 'res-with-body r)
+    (check-not-upgrade 'res-with-body r)
     (check-body 'res-with-body body)
     (let ((old (body-port (res-body r))))
       (when (and old (not (eq? old (body-port body))))
@@ -157,7 +218,8 @@
   ;; body as a producer, and the producer F gives back is sent. SAME?, #f
   ;; unless given, says F gives back as many bytes as it is handed, so the
   ;; body keeps the old one's length. Wraps nest. It closes nothing and
-  ;; calls nothing. Provisional (design §16.4).
+  ;; calls nothing. An upgrade response, which has no body to send, is an
+  ;; assertion violation. Provisional (design §16.4).
   (define res-wrap-body
     (case-lambda
       ((r f) (wrap-body r f #f))
@@ -165,6 +227,7 @@
 
   (define (wrap-body r f same?)
     (check-res 'res-wrap-body r)
+    (check-not-upgrade 'res-wrap-body r)
     (unless (procedure? f)
       (assertion-violation 'res-wrap-body "a wrap's f is a procedure from producer to producer" f))
     (unless (boolean? same?)
@@ -177,8 +240,9 @@
   ;; The length of R's body where the core can tell it: #f 0, a bytevector
   ;; its length, a string its UTF-8 length, a sized body its n, and a wrap
   ;; that keeps the bytes the length of the body under it. Otherwise #f: a
-  ;; producer, a wrap that drops the length, and a port, whose length is
-  ;; Chez's for the adapter to read.
+  ;; producer, a wrap that drops the length, a port, whose length is
+  ;; Chez's for the adapter to read, and an upgrade, since a 101 carries no
+  ;; Content-Length.
   (define (res-body-length r)
     (check-res 'res-body-length r)
     (body-length (res-body r)))
@@ -203,11 +267,13 @@
               (loop (+ i 1)
                     (+ total (cond ((< c #x80) 1) ((< c #x800) 2) ((< c #x10000) 3) (else 4)))))))))
 
-  ;; res-body-port : Body -> (U BinaryInputPort #f)
-  ;; The port BODY holds, bare, under a sized body or under wraps, or #f.
-  ;; What is no body kind is an assertion violation.
+  ;; res-body-port : (U Body UpgradeBody) -> (U BinaryInputPort #f)
+  ;; The port BODY holds, bare, under a sized body or under wraps, or #f; #f
+  ;; for an upgrade, which holds none. What is neither a body kind nor an
+  ;; upgrade is an assertion violation.
   (define (res-body-port body)
-    (check-body 'res-body-port body)
+    (unless (res-upgrade-body? body)
+      (check-body 'res-body-port body))
     (body-port body))
 
   (define (body-port body)
@@ -222,7 +288,9 @@
   ;;                   -> (Values (U Bytevector Producer) (U Nat #f))
   ;; What sends BODY, and its length, or #f for none: a bytevector when its
   ;; bytes are whole, otherwise a producer. SIZE is the most a port's piece
-  ;; holds. No producer answers an empty piece.
+  ;; holds. No producer answers an empty piece. An upgrade body is an
+  ;; assertion violation: it has no bytes, and after the 101 the stream is
+  ;; the taker's.
   ;;
   ;; #f answers #vu8(), a bytevector itself, a string its UTF-8, each with
   ;; its own length. A producer answers itself, with no length.
@@ -253,6 +321,9 @@
   ;; any, raising at a piece that would pass it, and the wrap has no
   ;; length. F's answer must be a procedure.
   (define (res-body-stream body measure on-port size)
+    (when (res-upgrade-body? body)
+      (assertion-violation 'res-body-stream "an upgrade has no body to send: after the 101, the stream is the taker's"
+                           body))
     (check-body 'res-body-stream body)
     (unless (procedure? measure)
       (assertion-violation 'res-body-stream "the measure is a procedure from port to length" measure))
