@@ -26,6 +26,7 @@
         (circuit response)
         (circuit headers)
         (circuit middleware)
+        (circuit middleware waits)
         (circuit test)
         (circuit http-server)
         (prefix (http-server) server:)
@@ -93,8 +94,9 @@
 (test-begin "names")
 
 (test-equal "the server's libraries and circuit's are all loaded, side by side"
-  '(#t #t #t #t #t #t #t)
-  (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler)))
+  '(#t #t #t #t #t #t #t #t)
+  (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler
+                        wrap-catch)))
 
 (test-equal "(circuit request) exports its list exactly"
   (sorted request-names)
@@ -111,6 +113,10 @@
 (test-equal "(circuit middleware) exports wrap alone"
   '(wrap)
   (sorted-exports '(circuit middleware)))
+
+(test-equal "(circuit middleware waits) exports its three exactly"
+  '(wrap-catch wrap-log wrap-timeout)
+  (sorted-exports '(circuit middleware waits)))
 
 (test-equal "(circuit test) exports its three"
   '(make-test-req res-body->bytevector test-req-done!)
