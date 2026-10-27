@@ -25,8 +25,8 @@
 (import (rnrs)
         (srfi :64)
         (circuit-testing)
-        (only (chezscheme) getenv iota library-directories library-list file-directory?
-              directory-list))
+        (only (chezscheme) getenv iota library-directories library-list library-exports
+              file-directory? directory-list))
 
 ;; SRFI-64 sets no exit status. This suite's last line turns the runner's
 ;; counts into one.
@@ -97,7 +97,7 @@
   "but an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme) through only, and the (http-server ...) libraries except (http-server private ...)")
 
 (define chez-tail
-  "but an impure library imports (chezscheme) only through only, right around it, naming getenv, port-has-port-length?, port-length alone: anything wider gives its body import and eval, which reach any library")
+  "but an impure library imports (chezscheme) only through only, right around it, naming getenv, port-has-port-length?, port-length, real-time, display-condition alone: anything wider gives its body import and eval, which reach any library")
 
 (define edge-tail
   "but only an impure library, (circuit http-server) or (circuit middleware waits), may import (chezscheme) or an (http-server ...) library")
@@ -163,7 +163,7 @@
          "a legal tree: core libraries and both impure ones; every wrapper over an (rnrs ...) import, nested; a version reference; getenv from (chezscheme) through only, and the (http-server ...) libraries but the private ones, in an impure library; a comment and a string that say what a library must not do; every file headed #!r6rs"
          (ok 6))
    (list "impure-chezscheme"
-         "rule (d): an impure library takes from (chezscheme) only getenv, port-has-port-length? and port-length, through only right around it: bare, eval, getenv with import, call/1cc, except, prefix, rename, for, library, only around for, and only around a wider only are named; prefix, rename and for around the narrow only, only around (library (chezscheme)), and a version reference are not"
+         "rule (d): an impure library takes from (chezscheme) only getenv, port-has-port-length?, port-length, real-time and display-condition, through only right around it: bare, eval, getenv with import, call/1cc, except, prefix, rename, for, library, only around for, and only around a wider only are named; prefix, rename and for around the narrow only, only around (library (chezscheme)), and a version reference are not"
          (apply refused
                 (map (lambda (i)
                        (imports "impure-chezscheme" "circuit/http-server.sls" "(circuit http-server)"
@@ -179,6 +179,16 @@
                        (imports "impure-port-length-wider" "circuit/http-server.sls"
                                 "(circuit http-server)" "(chezscheme)" chez-tail))
                      (iota 4))))
+   (list "impure-real-time"
+         "rule (d): both impure libraries take real-time and display-condition from (chezscheme), with the other allowed names and without, through only right around it, bare and under prefix and rename"
+         (ok 2))
+   (list "impure-real-time-wider"
+         "rule (d): an only beside real-time and display-condition still refuses a name off the list: current-time and cpu-time, which read clocks, condition-message, condition-continuation and display-statistics, which read or show a condition or the system, and interpret, which evaluates, are each named"
+         (apply refused
+                (map (lambda (i)
+                       (imports "impure-real-time-wider" "circuit/middleware/waits.sls"
+                                "(circuit middleware waits)" "(chezscheme)" chez-tail))
+                     (iota 6))))
    (list "case-mismatch"
          "rule (a): a library's path matches its name letter for letter: (circuit request) in circuit/Request.sls is at the wrong path"
          (refused (misplaced "case-mismatch" "circuit/Request.sls" "(circuit request)"
@@ -441,6 +451,16 @@
             (got (run (list missing))))
        (if (equal? got want) 'refused got)))))
 
+;; split-lines : String -> (Listof String)
+;; TEXT's lines, each without its line feed; a last line with none is kept.
+(define (split-lines text)
+  (let loop ((i 0) (start 0) (found '()))
+    (cond ((= i (string-length text))
+           (reverse (if (< start i) (cons (substring text start i) found) found)))
+          ((char=? (string-ref text i) #\newline)
+           (loop (+ i 1) (+ i 1) (cons (substring text start i) found)))
+          (else (loop (+ i 1) start found)))))
+
 ;; bytes-append : Bytevector ... -> Bytevector
 (define (bytes-append . parts)
   (let-values (((out extract) (open-bytevector-output-port)))
@@ -470,6 +490,41 @@
                             (stray-directive (string-append dir "/circuit/c.sls") "line 1")))
              (got (run (list dir))))
          (if (equal? got want) 'refused got))))))
+
+;; The allowlist against its whole complement: an impure library that
+;; takes the allowlist's names through one only, and every other name
+;; (chezscheme) exports through an only of its own. Each of those is named,
+;; in order, and the allowlist's are not. The complaint names the library,
+;; not the name, so the count of complaints is what holds each refused: a
+;; failure answers how many there were, and any line that differs.
+(define chez-allowed '(getenv port-has-port-length? port-length real-time display-condition))
+
+(test-equal "rule (d): every name (chezscheme) exports but the allowlist's is refused through an only of its own; the allowlist's, beside them, are not"
+  'refused-each
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((others (filter (lambda (n) (not (memq n chez-allowed))) (library-exports '(chezscheme))))
+            (file (string-append dir "/circuit/middleware/waits.sls"))
+            (complaint (string-append "check-imports: " file
+                                      ": (circuit middleware waits) imports (chezscheme), " chez-tail)))
+       (capture-command (list "mkdir" "-p" (string-append dir "/circuit/middleware")))
+       (call-with-port (open-file-output-port file (file-options) (buffer-mode block)
+                                              (make-transcoder (utf-8-codec)))
+         (lambda (p)
+           (put-string p "#!r6rs\n(library (circuit middleware waits)\n  (export)\n  (import (rnrs)\n")
+           (put-string p "          (only (chezscheme)")
+           (for-each (lambda (n) (put-char p #\space) (write n p)) chez-allowed)
+           (put-string p ")\n")
+           (for-each (lambda (n) (put-string p "          (only (chezscheme) ") (write n p) (put-string p ")\n"))
+                     others)
+           (put-string p "))\n")))
+       (let* ((got (run (list dir)))
+              (lines (split-lines (caddr got)))
+              (odd (filter (lambda (line) (not (string=? line complaint))) lines)))
+         (if (and (= (car got) 1) (string=? (cadr got) "") (= (length lines) (length others)) (null? odd)
+                  (> (length others) 1000))
+             'refused-each
+             (list (car got) (cadr got) (length others) (length lines) odd)))))))
 
 (test-equal "a file is no directory"
   (refused "tests/check-suites.sps: not a directory")
