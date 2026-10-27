@@ -103,13 +103,15 @@ close-out under **Close-outs**, newest first.
 
 Commits on `slice/5-middleware-waits`: the import audit's two names (3d6140c), the library
 and its suite (d5e7adb), the example and its loopback rows (09f8698), the gate on the real
-middleware (8db56bf), the records with this close-out, and its CI run named here. Built,
-reviewed and fixed on 2026-10-26 and 27. `make test` passes 12 suites, 514 rows
-(check-imports 51, check-suites 14, circuit-testing 45, examples 58, headers 24,
+middleware (8db56bf), the records with this close-out (4b99942), and its CI run named
+here. Built, reviewed and fixed on 2026-10-26 and 27. `make test` passes 12 suites, 514
+rows (check-imports 51, check-suites 14, circuit-testing 45, examples 58, headers 24,
 http-server 64, middleware 9, middleware-waits 64, names 17, request 47, response 79,
 test 42), and `make gate` passes. Its worst figures in the three runs on the final code:
 G1 1,445, G2 1,442, G3 310 a GET and 278 a POST, G4 81 and 406, G5 385 and 341 with a
-park, G7 309, G8 1,141, G8 own 302, G8 on-done 870, G9 609 and 612 with a park:
+park, G7 309, G8 1,141, G8 own 302, G8 on-done 870, G9 609 and 612 with a park. CI
+passed on the PR (run 40481062189, 3m6s): 12 suites, and the gate's worst figures within
+those ranges (G5 385 and 340, G8 own 288, G9 606 and 605):
 
 - **the owner's decisions** (design §15.13–§15.15): before the slice, the log's clock is
   Chez's `real-time`, logging is on `req-on-done!` with its cost filed upstream, the catch
