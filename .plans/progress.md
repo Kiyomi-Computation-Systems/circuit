@@ -108,7 +108,7 @@ close-out under **Close-outs**, newest first.
 
 Commits on `slice/6a-upgrades`: the slice 6 design (16577d4), upgrades in the core and
 the adapter (c4abbee), the example and its loopback rows (70d0db3), the records with this
-close-out, and its CI run named here. Built, reviewed and fixed on 2026-10-27. `make test`
+close-out (42dfdaa), and its CI run named here. Built, reviewed and fixed on 2026-10-27. `make test`
 passes 12 suites, 553 rows (check-imports 51, check-suites 14, circuit-testing 45,
 examples 65, headers 24, http-server 73, middleware 9, middleware-waits 68, names 18,
 request 47, response 96, test 43), and `make gate` passes. Its worst figures in the three
@@ -116,8 +116,9 @@ runs on the final code: G1 1,445, G2 1,440, G3 308 a GET and 281 a POST, G4 81 a
 G5 383 and 361 with a park, G7 308, G8 1,142, G8 own 311, G8 on-done 873, G9 610 and 609
 with a park. No held gate measures an upgrade: on a GET or a POST the new code is one
 record predicate: the review ran the gate on main's libraries and on the slice's, and read
-G3 at main's 308 B against the slice's 309 B a GET, and 276 B against 278 B a POST. CI on
-the PR is named here once it passes:
+G3 at main's 308 B against the slice's 309 B a GET, and 276 B against 278 B a POST. CI
+passed on the PR (run 40520270891, 3m1s): 12 suites, and the gate's worst figures within
+those ranges (G3 308 and 276, G5 382 and 343, G8 own 298, G9 607 and 598):
 
 - **the owner's decisions** (design §15.16–§15.19): before the slice, slice 6's design
   (§15.16); in it, the transport procedures re-exported (§15.17); at the review, `awaiting`
