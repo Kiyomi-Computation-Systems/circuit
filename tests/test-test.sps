@@ -1,7 +1,7 @@
 #!r6rs
 ;;; (circuit test): make-test-req's view, the re-exported test-req-done!,
 ;;; and res-body->bytevector reading every body kind as the adapter sends
-;;; it.
+;;; it, and refusing an upgrade, which has none.
 ;;;
 ;;; A value that can be #f or '() is asserted behind a tag, since SRFI-64
 ;;; turns a raise into #f. Producers that note each call show whether a
@@ -100,6 +100,13 @@
 (define (res-of body) (make-res 200 '() body))
 (define (wrapped body f same?) (res-body (res-wrap-body (res-of body) f same?)))
 (define (other-wrap body) (wrapped body (lambda (p) p) #f))
+
+;; tagged : Any Any Symbol -> Any
+;; X with each part eq? to OBJ, at any depth of its pairs, as TAG.
+(define (tagged x obj tag)
+  (cond ((eq? x obj) tag)
+        ((pair? x) (cons (tagged (car x) obj tag) (tagged (cdr x) obj tag)))
+        (else x)))
 
 (define digits (string->utf8 "0123456789"))
 (define e-acute (string (integer->char #xE9)))
@@ -449,6 +456,23 @@
   (let ((req (make-test-req 'POST "/" '() "unread")))
     (list (utf8->string (res-body->bytevector (res-of "plain") req))
           (answer (lambda () (req-body-made req))))))
+
+;; The upgrade is asserted as its own refusal: res-body-stream, which would
+;; refuse it next, names itself.
+(test-equal "res-body->bytevector refuses an upgrade, with its request and without, the request's port left alone"
+  (list '(assertion-violation res-body->bytevector (the-upgrade))
+        '(assertion-violation res-body->bytevector (the-upgrade))
+        '(assertion-violation res-body->bytevector (the-upgrade))
+        (list #f "rest"))
+  (let* ((up (make-upgrade-res '(("upgrade" . "echo")) (lambda (t retained) 'taken)))
+         (bare (make-test-req 'GET "/chat"))
+         (read (make-test-req 'GET "/chat" '() "rest"))
+         (port (req-body read))
+         (refusals (map (lambda (thunk) (tagged (raised thunk) up 'the-upgrade))
+                        (list (lambda () (res-body->bytevector up))
+                              (lambda () (res-body->bytevector up bare))
+                              (lambda () (res-body->bytevector up read))))))
+    (append refusals (list (list (port-closed? port) (utf8->string (get-bytevector-all port)))))))
 
 (test-equal "res-body->bytevector refuses a request that is not one"
   '(assertion-violation res-body->bytevector (not-a-req))

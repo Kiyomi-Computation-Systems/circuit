@@ -5,9 +5,11 @@
 ;;;
 ;;; The request's accessors, its keys and req-with- helpers, and
 ;;; req-on-done!; the response's constructor, accessors and helpers, the
-;;; sized body and the wrap; the header helpers; wrap. Each is the binding
-;;; its home library exports, so a program that imports that library too
-;;; doesn't clash.
+;;; sized body, the wrap, and the upgrade, with res-upgrade-body? so
+;;; middleware can pass one by, and res-upgrade-body-take-over so it can
+;;; make one around a wrapped take-over; the header helpers; wrap. Each is the
+;;; binding its home library exports, so a program that imports that
+;;; library too doesn't clash.
 ;;;
 ;;; Left out, for the adapter and the tests: make-req-view, make-req,
 ;;; req-body-made and test-req-done! from (circuit request); the
@@ -26,7 +28,9 @@
     req-with-remote-address req-with-remote-port
     ;; the response
     make-res res? res-status res-headers res-body res-header res-set-header res-add-header
+    res-remove-header
     res-with-status res-with-body make-sized-body res-wrap-body res-body-length
+    make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
     ;; header lists
     header-value header-values header-set header-add header-remove header-names-downcase
     ;; composing middleware

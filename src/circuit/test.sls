@@ -5,7 +5,8 @@
 ;;;                          body, read through a view of its own
 ;;;   test-req-done!         (circuit request)'s, re-exported: ends a test
 ;;;                          request's response, calling what it kept
-;;;   res-body->bytevector   a response's body, read as the adapter sends it
+;;;   res-body->bytevector   a response's body, read as the adapter sends it;
+;;;                          an upgrade, which has none, refused
 ;;;
 ;;; A test request's view reads a record of what it was made with. It has
 ;;; no addresses, as the server's test host has none, and no on-done, so the
@@ -15,7 +16,7 @@
   (import (rnrs)
           (only (circuit headers) header-value header-values)
           (only (circuit request) make-req-view make-req req? req-body-made test-req-done!)
-          (only (circuit response) res? res-body res-body-port res-body-stream))
+          (only (circuit response) res? res-body res-body-port res-body-stream res-upgrade-body?))
 
   ;; What a test request was made with: the view's host request.
   (define-record-type (source make-source source?)
@@ -122,7 +123,9 @@
   ;; server's rule is. Given REQ, a body that holds REQ's body port, bare,
   ;; sized or wrapped, is an assertion violation, as the adapter refuses it
   ;; (design §9), checked before anything is read; a request whose port
-  ;; was never made has none to hold.
+  ;; was never made has none to hold. An upgrade response is an assertion
+  ;; violation: it has no body to read, and after the 101 the stream is the
+  ;; taker's.
   (define res-body->bytevector
     (case-lambda
       ((r) (read-body r #f))
@@ -131,6 +134,9 @@
   (define (read-body r req)
     (unless (res? r)
       (assertion-violation 'res-body->bytevector "not a response" r))
+    (when (res-upgrade-body? (res-body r))
+      (assertion-violation 'res-body->bytevector
+                           "an upgrade has no body to read: after the 101, the stream is the taker's" r))
     (when req
       (unless (req? req)
         (assertion-violation 'res-body->bytevector "not a request" req))

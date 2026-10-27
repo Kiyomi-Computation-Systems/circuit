@@ -43,8 +43,9 @@ provisional. They bind until that record is accepted or amended.
 
 - **Requests are `req`, responses `res`**: `req-path`, `make-res`, `res-status` and so on.
   The adapter's entry is `run-server`, its handler maker `circuit->handler` (ADR-0005).
-- **No circuit export names a binding `(http-server)` exports**, except the server's waits
-  and conditions that `(circuit http-server)` re-exports as the same bindings (ADR-0005).
+- **No circuit export names a binding `(http-server)` exports**, except the server's waits,
+  conditions, transport procedures and `awaiting` that `(circuit http-server)` re-exports
+  as the same bindings (ADR-0005).
 - **Middleware's data on a request goes under unique keys** from `make-req-key`, read with
   `req-ref` and set with `req-set` (ADR-0005).
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`

@@ -4,9 +4,9 @@
 ;;; (design §10, ADR-0005). An export of circuit's that names a binding the
 ;;; server's libraries export is a clash, and Chez refuses this program
 ;;; before any test runs, so the suite fails. The adapter, (circuit
-;;; http-server), re-exports the server's waits and conditions, which the
-;;; import takes from both libraries at once only because each is the
-;;; server's own binding.
+;;; http-server), re-exports the server's waits, conditions, transport
+;;; procedures and awaiting, which the import takes from both libraries at
+;;; once only because each is the server's own binding.
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
 ;;; its list, so the (circuit) facade keeps the adapter's and the tests'
@@ -54,17 +54,18 @@
 
 (define response-names
   '(make-res res? res-status res-headers res-body res-header res-set-header res-add-header
-    res-with-status res-with-body make-sized-body res-sized-body? res-sized-body-length
+    res-remove-header res-with-status res-with-body make-sized-body res-sized-body? res-sized-body-length
     res-sized-body-inner res-wrap-body res-wrapped-body? res-wrapped-body-inner
-    res-wrapped-body-proc res-wrapped-body-same? res-body-length res-body-port
-    res-body-stream))
+    res-wrapped-body-proc res-wrapped-body-same? make-upgrade-res res-upgrade-body?
+    res-upgrade-body-take-over res-body-length res-body-port res-body-stream))
 
 (define header-names
   '(header-value header-values header-set header-add header-remove header-names-downcase))
 
 ;; What an app uses: the request's accessors, keys and req-with- helpers,
-;; req-on-done!; the response's constructor, accessors and helpers; the
-;; header helpers; wrap.
+;; req-on-done!; the response's constructors, accessors and helpers, the
+;; upgrade's predicate and its take-over among them; the header helpers;
+;; wrap.
 (define facade-names
   '(req? req-method req-scheme req-host req-path req-query req-http-version req-header
     req-header-values req-headers req-body req-remote-address req-remote-port
@@ -73,16 +74,21 @@
     req-with-method req-with-scheme req-with-host req-with-path req-with-query
     req-with-remote-address req-with-remote-port
     make-res res? res-status res-headers res-body res-header res-set-header res-add-header
-    res-with-status res-with-body make-sized-body res-wrap-body res-body-length
+    res-remove-header res-with-status res-with-body make-sized-body res-wrap-body res-body-length
+    make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
     header-value header-values header-set header-add header-remove header-names-downcase
     wrap))
 
-;; The server's waits and conditions, which (circuit http-server) re-exports.
+;; The server's waits, conditions, transport procedures and awaiting, which
+;; (circuit http-server) re-exports.
 (define server-reexports
-  '(await sleep-ms with-deadline resolve
+  '(awaiting await sleep-ms with-deadline resolve
     &deadline-passed deadline-passed? &client-closed client-closed?
     &resolve-error resolve-error? resolve-error-reason
-    &body-failed body-failed? body-failed-reason body-failed-status))
+    &body-failed body-failed? body-failed-reason body-failed-status
+    transport? transport-write! transport-read-start! transport-read-stop!
+    transport-close! transport-abort! transport-deadline! transport-on-drain!
+    transport-on-close!))
 
 ;; What the adapter and the tests need, which an app does not.
 (define kept-out-of-the-facade
@@ -122,7 +128,7 @@
   '(make-test-req res-body->bytevector test-req-done!)
   (sorted-exports '(circuit test)))
 
-(test-equal "(circuit http-server) exports its two and the server's waits and conditions, exactly"
+(test-equal "(circuit http-server) exports its two and the server's waits, conditions, transport procedures and awaiting, exactly"
   (sorted (append '(circuit->handler run-server) server-reexports))
   (sorted-exports '(circuit http-server)))
 
@@ -131,10 +137,14 @@
   (filter (lambda (name) (memq name (library-exports '(circuit http-server))))
           '(next-body-piece body-input-port)))
 
+(test-equal "(circuit http-server) leaves out make-transport: a test of a taker imports it from (http-server)"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit http-server)))) '(make-transport)))
+
 (test-equal "(circuit http-server)'s re-exported procedures are the server's own"
-  '(#t #t #t #t #t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t)
   (map (lambda (pair) (eq? (car pair) (cdr pair)))
-       (list (cons adapter:await server:await) (cons adapter:sleep-ms server:sleep-ms)
+       (list (cons adapter:awaiting server:awaiting) (cons adapter:await server:await) (cons adapter:sleep-ms server:sleep-ms)
              (cons adapter:with-deadline server:with-deadline) (cons adapter:resolve server:resolve)
              (cons adapter:deadline-passed? server:deadline-passed?)
              (cons adapter:client-closed? server:client-closed?)
@@ -142,7 +152,16 @@
              (cons adapter:resolve-error-reason server:resolve-error-reason)
              (cons adapter:body-failed? server:body-failed?)
              (cons adapter:body-failed-reason server:body-failed-reason)
-             (cons adapter:body-failed-status server:body-failed-status))))
+             (cons adapter:body-failed-status server:body-failed-status)
+             (cons adapter:transport? server:transport?)
+             (cons adapter:transport-write! server:transport-write!)
+             (cons adapter:transport-read-start! server:transport-read-start!)
+             (cons adapter:transport-read-stop! server:transport-read-stop!)
+             (cons adapter:transport-close! server:transport-close!)
+             (cons adapter:transport-abort! server:transport-abort!)
+             (cons adapter:transport-deadline! server:transport-deadline!)
+             (cons adapter:transport-on-drain! server:transport-on-drain!)
+             (cons adapter:transport-on-close! server:transport-on-close!))))
 
 (test-equal "(circuit http-server)'s re-exported condition types are the server's own"
   '(#t #t #t #t)

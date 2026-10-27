@@ -1,7 +1,9 @@
 #!r6rs
 ;;; (circuit response): make-res and its refusals, the header helpers,
-;;; res-with-status, res-with-body's closing, the sized and wrapped bodies,
-;;; res-body-length, res-body-port, and res-body-stream for every body kind.
+;;; res-remove-header among them, res-with-status, res-with-body's closing,
+;;; the sized and wrapped bodies, res-body-length, res-body-port, and
+;;; res-body-stream for every body kind; make-upgrade-res, and an upgrade
+;;; body only in the 101 it makes.
 ;;;
 ;;; A producer is drained a fixed number of calls, each answer shown as its
 ;;; text or eof, so a body that ends early, runs on, or answers an empty
@@ -237,6 +239,33 @@
     "sample")
   (let ((r (res-add-header (sample-res) "Server" "circuit")))
     (list (res-status r) (res-headers r) (res-body r))))
+
+(define mixed-fields
+  (list (cons "Content-Type" "text/html") (cons "Set-Cookie" "a=1") (cons "X-Keep" "1")
+        (cons "set-cookie" "b=2") (cons "SET-COOKIE" "c=3") (cons "x-keep" "2")))
+
+(test-equal "res-remove-header: a new response without every field of the name, in any case, the others kept in order"
+  (list (list 203 '(("Content-Type" . "text/html") ("X-Keep" . "1") ("x-keep" . "2")) "kept")
+        (list 203 mixed-fields "kept"))
+  (let* ((r (make-res 203 mixed-fields "kept"))
+         (r2 (res-remove-header r "sEt-CoOkIe")))
+    (list (list (res-status r2) (res-headers r2) (res-body r2))
+          (list (res-status r) (res-headers r) (res-body r)))))
+
+(test-equal "res-remove-header: a name that isn't there, nor one that is a field's prefix or longer, leaves the headers equal"
+  (list mixed-fields mixed-fields mixed-fields)
+  (map (lambda (name) (res-headers (res-remove-header (make-res 203 mixed-fields "kept") name)))
+       '("accept" "set" "set-cookies")))
+
+(test-equal "res-remove-header keeps the body as it is: the very port, left open"
+  '(#t #f (("x-b" . "2")) 206)
+  (let* ((p (digits-port))
+         (r (res-remove-header (make-res 206 '(("X-A" . "1") ("x-b" . "2") ("x-a" . "3")) p) "x-a")))
+    (list (eq? p (res-body r)) (port-closed? p) (res-headers r) (res-status r))))
+
+(test-equal "res-remove-header refuses what is not a response"
+  '(assertion-violation res-remove-header (x))
+  (raised (lambda () (res-remove-header 'x "set-cookie"))))
 
 ;; --- res-with-status --------------------------------------------------------------------
 
@@ -856,6 +885,136 @@
         (raised (lambda () (body-stream "x" no-length 0)))
         (raised (lambda () (body-stream "x" no-length -1)))
         (raised (lambda () (body-stream "x" no-length 1.5)))))
+
+;; --- make-upgrade-res and the upgrade body -------------------------------------------------
+;; An upgrade body sits only in a 101 that make-upgrade-res made. Its
+;; refusals are asserted with their messages: the upgrade's own checks and
+;; the checks they stand in front of name the same procedure and irritant.
+
+;; refusal : (-> Any) -> Any
+;; What THUNK raised: (assertion-violation WHO MESSAGE IRRITANTS) for an
+;; assertion violation, (other-raise X) for anything else, and no-raise if
+;; it returned.
+(define (refusal thunk)
+  (guard (e ((and (assertion-violation? e) (who-condition? e) (message-condition? e)
+                  (irritants-condition? e))
+             (list 'assertion-violation (condition-who e) (condition-message e) (condition-irritants e)))
+            ((condition? e) (list 'other-raise (describe e)))
+            (#t (list 'other-raise e)))
+    (thunk)
+    'no-raise))
+
+;; tagged : Any Any Symbol -> Any
+;; X with each part eq? to OBJ, at any depth of its pairs, as TAG.
+(define (tagged x obj tag)
+  (cond ((eq? x obj) tag)
+        ((pair? x) (cons (tagged (car x) obj tag) (tagged (cdr x) obj tag)))
+        (else x)))
+
+(define not-a-header-list "headers are a list of (name . value) string pairs")
+(define not-a-take-over "a take-over is a procedure of a transport and the bytes read past the request")
+(define upgrade-body-refused "an upgrade body sits only in the 101 make-upgrade-res makes")
+(define upgrade-res-refused "an upgrade response keeps the 101 and the body make-upgrade-res gave it")
+(define upgrade-not-streamed "an upgrade has no body to send: after the 101, the stream is the taker's")
+
+(define (taker t retained) (list 'taken t retained))
+
+(define (sample-upgrade)
+  (make-upgrade-res (list (cons "Upgrade" "echo") (cons "X-Mixed" "Case") (cons "x-mixed" "dup")) taker))
+
+(test-equal "make-upgrade-res: a response, status 101, the headers as given, its body an upgrade holding the very take-over"
+  '(#t 101 (("Upgrade" . "echo") ("X-Mixed" . "Case") ("x-mixed" . "dup")) #t #t)
+  (let ((r (sample-upgrade)))
+    (list (res? r) (res-status r) (res-headers r) (res-upgrade-body? (res-body r))
+          (eq? taker (res-upgrade-body-take-over (res-body r))))))
+
+(test-equal "make-upgrade-res refuses headers that are not a list, as make-res does"
+  (map (lambda (h) (list 'assertion-violation 'make-upgrade-res not-a-header-list (list h)))
+       (list 'x '(("a" . "b") . "c") #f))
+  (map (lambda (h) (refusal (lambda () (make-upgrade-res h taker)))) (list 'x '(("a" . "b") . "c") #f)))
+
+(test-equal "make-upgrade-res refuses a take-over that is no procedure"
+  (map (lambda (t) (list 'assertion-violation 'make-upgrade-res not-a-take-over (list t)))
+       (list 'x #f "taker"))
+  (map (lambda (t) (refusal (lambda () (make-upgrade-res '() t)))) (list 'x #f "taker")))
+
+(test-equal "res-upgrade-body? answers for an upgrade body alone, and the other kinds' predicates not for it"
+  '((#f #f #f #f #f #f #f #f) (#t #f #f))
+  (let ((body (res-body (sample-upgrade))))
+    (list (map res-upgrade-body?
+               (list #f (string->utf8 "bv") "s" (ending-with-eof "x") (digits-port)
+                     (make-sized-body 1 (ending-with-eof "x")) (other-wrap "w") (sample-upgrade)))
+          (list (res-upgrade-body? body) (res-sized-body? body) (res-wrapped-body? body)))))
+
+(test-equal "make-res refuses an upgrade body, with 101 and with any other status"
+  (map (lambda (s) (list 'assertion-violation 'make-res upgrade-body-refused '(the-upgrade-body)))
+       '(101 200))
+  (let ((body (res-body (sample-upgrade))))
+    (map (lambda (s) (tagged (refusal (lambda () (make-res s '() body))) body 'the-upgrade-body))
+         '(101 200))))
+
+(test-equal "res-with-body refuses an upgrade body, and then closes nothing"
+  (list (list 'assertion-violation 'res-with-body upgrade-body-refused '(the-upgrade-body)) #f)
+  (let* ((p (digits-port))
+         (body (res-body (sample-upgrade)))
+         (refused (refusal (lambda () (res-with-body (make-res 200 '() p) body)))))
+    (list (tagged refused body 'the-upgrade-body) (port-closed? p))))
+
+(test-equal "res-with-body, res-with-status and res-wrap-body refuse an upgrade response"
+  (append (map (lambda (who) (list 'assertion-violation who upgrade-res-refused '(the-upgrade)))
+               '(res-with-body res-with-body res-with-body))
+          (map (lambda (who) (list 'assertion-violation who upgrade-res-refused '(the-upgrade)))
+               '(res-with-status res-with-status res-with-status))
+          (map (lambda (who) (list 'assertion-violation who upgrade-res-refused '(the-upgrade)))
+               '(res-wrap-body res-wrap-body)))
+  (let ((r (sample-upgrade)))
+    (tagged (list (refusal (lambda () (res-with-body r "text")))
+                  (refusal (lambda () (res-with-body r #f)))
+                  (refusal (lambda () (res-with-body r (res-body r))))
+                  (refusal (lambda () (res-with-status r 200)))
+                  (refusal (lambda () (res-with-status r 101)))
+                  (refusal (lambda () (res-with-status r 404)))
+                  (refusal (lambda () (res-wrap-body r (lambda (p) p))))
+                  (refusal (lambda () (res-wrap-body r (lambda (p) p) #t))))
+            r 'the-upgrade)))
+
+(test-equal "res-set-header and res-add-header keep an upgrade one: 101, the headers changed, the very take-over"
+  '((101 (("Upgrade" . "echo") ("x-mixed" . "one")) #t #t)
+    (101 (("Upgrade" . "echo") ("X-Mixed" . "Case") ("x-mixed" . "dup") ("server" . "circuit")) #t #t))
+  (map (lambda (r)
+         (list (res-status r) (res-headers r) (res-upgrade-body? (res-body r))
+               (eq? taker (res-upgrade-body-take-over (res-body r)))))
+       (list (res-set-header (sample-upgrade) "X-MIXED" "one")
+             (res-add-header (sample-upgrade) "Server" "circuit"))))
+
+(test-equal "res-remove-header keeps an upgrade one: 101, every field of the name removed, the very take-over"
+  '(101 (("Upgrade" . "echo")) #t #t)
+  (let ((r (res-remove-header (sample-upgrade) "x-MIXED")))
+    (list (res-status r) (res-headers r) (res-upgrade-body? (res-body r))
+          (eq? taker (res-upgrade-body-take-over (res-body r))))))
+
+(test-equal "res-body-length answers #f for an upgrade, which carries no Content-Length, its headers changed or not"
+  '((answer #f) (answer #f))
+  (list (answer (lambda () (res-body-length (sample-upgrade))))
+        (answer (lambda () (res-body-length (res-add-header (sample-upgrade) "server" "circuit"))))))
+
+(test-equal "res-body-port answers #f for an upgrade body, which holds no port"
+  '(answer #f)
+  (answer (lambda () (res-body-port (res-body (sample-upgrade))))))
+
+(test-equal "res-body-stream refuses an upgrade body, and calls neither measure nor on-port"
+  (list (list 'assertion-violation 'res-body-stream upgrade-not-streamed '(the-upgrade-body)) '())
+  (let ((body (res-body (sample-upgrade))))
+    (take-log!)
+    (let ((refused (refusal (lambda ()
+                              (res-body-stream body (lambda (q) (note! 'measure) #f)
+                                               (lambda (q) (note! 'on-port)) 4)))))
+      (list (tagged refused body 'the-upgrade-body) (take-log!)))))
+
+(test-equal "make-res with 101 and a body of another kind makes a plain response, no upgrade; the adapter's suite holds the server's 500 for it"
+  '(101 "text" #f)
+  (let ((r (make-res 101 '() "text")))
+    (list (res-status r) (res-body r) (res-upgrade-body? (res-body r)))))
 
 (test-end "response")
 
