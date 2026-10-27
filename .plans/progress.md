@@ -30,8 +30,11 @@ close-out under **Close-outs**, newest first.
 - **Slice 6a, upgrades, is merged**, squashed from
   [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6) on 2026-10-27;
   its close-out is below. The owner's answers in it are design §15.17–§15.19.
-- **Next: slice 6b, `(circuit router)`**, plain R6RS (the slice 6 design §5); then the
-  handshake in chez-websocket, and 6c.
+- **Slice 6b, `(circuit router)`, is merged**, squashed from
+  [PR #7](https://github.com/Kiyomi-Computation-Systems/circuit/pull/7) on 2026-10-27;
+  its close-out is below. The owner's answers in it are design §15.20–§15.24.
+- **Next: the handshake in chez-websocket**, host-neutral and released there (the slice 6
+  design), then slice 6c, WebSocket.
 
 ## Open
 
@@ -89,6 +92,15 @@ close-out under **Close-outs**, newest first.
   - `examples/long-poll.sps` may wake a waiter whose deadline fired in the same instant,
     answering "woke 1" and logging `late-resume`, as the server's example would.
     Unverified.
+- **The router's 400 and 405 can't be customised:** only its not-found handler is the
+  app's (the slice 6 design §5). A middleware around the router can rewrite them.
+- **Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
+  returns** (slice 6b, reproduced; its close-out has the repro). Circuit's libraries
+  return values only from direct calls. Not filed.
+- **The router takes a raw ASCII character that isn't legal in a path, such as a space,
+  into a capture as it is.** The server refuses one on the wire, so it reaches the router
+  only through `req-with-path` or a test request (the slice 6 design §5 refuses raw
+  characters past ASCII alone).
 - **A cap of circuit's own on the request body** (design §16.1): the revision has none,
   and the server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by default.
 - **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
@@ -103,6 +115,100 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-27: slice 6b, `(circuit router)`, in PR #7
+
+Commits on `slice/6b-router`: the slice (485bf5d), the records with this close-out, and
+its CI run named here. Built, reviewed and fixed on 2026-10-27. `make test`
+passes 14 suites, 695 rows (check-imports 51, check-suites 14, circuit-testing 45,
+examples 77, headers 24, http-server 73, middleware 9, middleware-waits 68, names 19,
+request 47, response 96, router 100, router-properties 29, test 43), and `make gate`
+passes. Its worst figures in the three runs on the final code: G1 1,448, G2 1,441, G3 314
+a GET and 278 a POST, G4 80 and 402, G5 384 and 342 with a park, G7 308, G8 1,145, G8 own
+289, G8 on-done 864, G9 606 and 612 with a park, and G10, now held, 85 a word, 167 a
+parameter and 4 a miss. CI: named here once the PR's run passes.
+
+- **the owner's decisions** (design §15.20–§15.24):
+  - in the slice, `req-mount-path` (§15.20);
+  - around a mount, a group's middleware reads the enclosing mounts' part, and a wrapped
+    mount pays a second `req-set` (§15.21);
+  - route matching tested by property in 6b, with an oracle written from §5 alone
+    (§15.22);
+  - at the final review, a request that a group's middleware hands on without the
+    mount's match reaches the mount's handler as it is (§15.23);
+  - G10 held at 128, 256 and 64 B (§15.24);
+- **the build** (Opus 5.5; 572,002 tokens over three rounds, 32.9, 27.4 and 7.4 minutes):
+  `src/circuit/router.sls`, `tests/test-router.sps`, the names suite's exact exports, G10
+  in the gate, `examples/router.sps` and its loopback rows. Round 1 watched 103 of its
+  mutants fail. The session regenerated every mutant set from the final router, 219 in
+  all, its own and the reviews' included: the example suite alone leaves 4 alive, each
+  equivalent (`rev-head-to-get-only-if-no-any`, `rev-hex-needs-two-before-e-one`,
+  `rev-rest-of-gt`, `rev-walk-word-no-backtrack-to-rest`);
+- **the property suite** (Opus 5.5; 523,982 tokens over two rounds, 66.9 and 30.1
+  minutes), `tests/test-router-properties.sps`:
+  - a naive oracle written from §5 before the router was read (the session checked the
+    agent's transcript), 21 sanity rows from §5's examples, and P1–P7 with a shrinker,
+    4.4 s at the fixed seed;
+  - its generators nest routers four deep, and give groups middleware that rewrites the
+    path, makes a fresh request, or is a router of its own;
+  - no disagreement with the router at the default seed, 25 others, or ten times the
+    cases; the session reran eight seeds, two at ten times;
+  - alone it kills 188 of the 219 mutants. The ones left: the 4 equivalents and 3 more
+    (the 404's body as `""`, which sends the same bytes; a memo of a pure function; a
+    path only read where no middleware sits between), 7 cost-only, and 17 argument
+    checks, each of which the example suite kills;
+  - its round 1 found two gaps in §5, now rules: a route takes one method entry or more,
+    each once; and what a nested router's not-found handler reads;
+- **a read-only Opus review of round 1** (Opus 5.5; 232,270 tokens, 16.3 minutes) found
+  flaws in the session's brief, each fixed:
+  - a router reached through a route lost the mount's part of the match;
+  - group middleware around a mount saw the rest of the path;
+  - the mount's prefix was dropped (now `req-mount-path`, §15.20);
+  - `METHOD` took any symbol, and names were too loose;
+  - dot words were allowed;
+  - the Latin-1 branch rested on a false premise;
+  - G10 measured the server's path string, and couldn't prove which path oha asked;
+  - test gaps: the join without params, UTF-8 checks at every position, the mount 400, a
+    name repeated apart, a router under a words-only route; the decoding hazards and
+    shared strings undocumented;
+- **the final read-only Opus review** (Opus 5.5; 285,611 tokens, 19.2 minutes) found,
+  each fixed:
+  - the router crashed, `ahead-match: not of type ahead`, when a group's middleware
+    around a mount handed `next` a fresh request, or one a router of its own matched
+    (§15.23; two rows, and both kinds now in the property suite's generators);
+  - no row held what a nested router's not-found handler reads under a route, or under
+    a wrapped mount: two of its mutants survived both suites. Now two example rows, and
+    P1 compares every not-found read;
+  - P3 took a crash inside `make-router` for a refusal; P5 passed for a router that
+    answers 400 to everything, and P6 for one that runs no handler; escaped words came
+    from five plain words alone; a router under a route under a mount, and four routers
+    deep, were reached 68 and 27 times in 32,000. Each fixed in the property suite;
+  - §5 over-claimed: mount path then path is the whole path only unless a middleware
+    rewrote it; HEAD on a route with GET and ANY goes to GET, against "ANY takes every
+    method the route doesn't list"; a mount also allocates its rest. The README and
+    changelog said "HEAD goes to GET";
+  - the example suite missed a `req-mount-path` that joins at most two mounts: now a
+    three-mount row;
+- **G10, held:** a word compared through a substring reads 341, 401 and 323 B and fails
+  all three rows. A word route's match made per request reads 117 B, under the 128 B
+  bound: the example suite's 88 B row holds that one (ADR-0007);
+- **traps:**
+  - Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
+    returns. With `(define (g-int n) (lambda (s) (values (mod s n) (+ s 1))))`, a
+    `g-pick` that takes `let-values` of `((g-int (length xs)) s)` and returns the item
+    and the state, and a second procedure that does the same `let-values`,
+    `((g-pick '(a)) 5)` raises "incorrect number of values from rhs" with cp0 on, and
+    gives `a` and `6` with `run-cp0` off (reproduced by the session). The property
+    suite's generators return pairs. Circuit's libraries return values only from direct
+    calls; not filed;
+  - Chez's `utf8->string` never raises: each invalid sequence becomes U+FFFD, so the
+    router decodes by hand;
+  - Chez's `--libdirs` silently skips a missing directory, so a mutant run with a wrong
+    path passes every mutant;
+  - mutants copy the whole library: after a fix, regenerate them, or each carries the old
+    code and dies of it;
+  - the server refuses raw bytes past ASCII and malformed escapes itself, with a 400 and
+    `Connection: close`; `%FF` and dot segments reach the router as sent.
 
 ### 2026-10-27: slice 6a, upgrades, in PR #6
 
