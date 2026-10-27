@@ -1,8 +1,9 @@
 #!r6rs
 ;;; The programs under examples/, and tests/loopback-app.sps, each run as a
 ;;; process of its own and asked over loopback with curl: what the server's
-;;; test host, which has no socket, leaves out (design §10). Run it from the
-;;; checkout's root, as make test does.
+;;; test host, which has no socket, leaves out (design §10). upgrade.sps's
+;;; switch is asked with bash's /dev/tcp instead, since curl can't talk past
+;;; a 101. Run it from the checkout's root, as make test does.
 ;;;
 ;;; Each program runs with the Chez that CHEZ names, on this suite's own
 ;;; library path, in an environment of PATH, CHEZ_HTTP_HOST=127.0.0.1,
@@ -21,7 +22,8 @@
 ;;; a zombie, holding nothing, until the suite exits.
 ;;;
 ;;; Oracles: examples/README.md, which says what each example answers; curl,
-;;; which says which local port it used; the settings a row gives; and, for
+;;; which says which local port it used; the settings a row gives; the
+;;; bytes a row sends, which the echo hands back; and, for
 ;;; the line (circuit middleware waits)'s catch writes, the line the server
 ;;; writes in the same process for the same raise let out. A response is
 ;;; asserted whole: its status line, its header fields in order, Date's
@@ -444,6 +446,38 @@
 (define (send port message) (answer (fetch port "/send" "--data-binary" message)))
 
 ;;; ------------------------------------------------------------------------
+;;; The upgrade
+
+;; A bash script, its port its first argument: it asks for Upgrade: echo,
+;; "early" right behind the request, and writes on standard output every
+;; byte it reads: the head, a line at a time, up to its blank line, then
+;; the echo of "early", then of "ping" and of "pong", each sent once the
+;; echo before it is in, so a byte too many shifts the next. Each read is
+;; bounded by 10 s. bash reads a socket a byte at a time, so no read takes
+;; bytes past its own.
+(define echo-script
+  (string-append
+   "LC_ALL=C\n"
+   "exec 3<>/dev/tcp/127.0.0.1/\"$1\" || exit 3\n"
+   "printf 'GET /chat HTTP/1.1\\r\\nHost: x\\r\\nConnection: upgrade\\r\\nUpgrade: echo\\r\\n\\r\\nearly' >&3\n"
+   "while IFS= read -r -t 10 line <&3; do\n"
+   "  printf '%s\\n' \"$line\"\n"
+   "  [ \"$line\" = $'\\r' ] && break\n"
+   "done\n"
+   "read -r -t 10 -N 5 got <&3; printf '%s' \"$got\"\n"
+   "printf 'ping' >&3\n"
+   "read -r -t 10 -N 4 got <&3; printf '%s' \"$got\"\n"
+   "printf 'pong' >&3\n"
+   "read -r -t 10 -N 4 got <&3; printf '%s' \"$got\"\n"
+   "exec 3>&-\n"))
+
+;; echoed : Nat -> (List Nat String String)
+;; echo-script run against PORT: its exit status, what it read, and its
+;; standard error.
+(define (echoed port)
+  (capture-command (list "bash" "-c" echo-script "bash" (number->string port))))
+
+;;; ------------------------------------------------------------------------
 ;;; The loopback program
 
 ;; addresses-verdict : Fetched String Nat (Pair String String) ... -> Any
@@ -504,7 +538,7 @@
          (test-equal (string-append name ": it imports (rnrs), (circuit) and (circuit http-server) alone, and ends in run-server")
                      '((import (rnrs) (circuit) (circuit http-server)) run-server)
                      (program-shape (string-append "examples/" name ".sps"))))
-       '("hello" "echo" "stream" "long-poll"))
+       '("hello" "echo" "stream" "long-poll" "upgrade"))
       (test-equal "middleware: it imports (rnrs), (circuit), (circuit http-server) and (circuit middleware waits) alone, and ends in run-server"
                   '((import (rnrs) (circuit) (circuit http-server) (circuit middleware waits)) run-server)
                   (program-shape "examples/middleware.sps"))
@@ -597,6 +631,24 @@
           (test-equal "long-poll: anything else is 404, with a hint"
                       (text-answer "HTTP/1.1 404 Not Found" "GET /wait or /waiting, or POST /send with a message\n")
                       (answer (fetch port "/send")))))
+
+      (with-server "upgrade" "examples/upgrade.sps" '()
+        (lambda (port)
+          (test-equal "upgrade: Upgrade: echo is switched, a 101 with no Date, then every byte sent comes back, the bytes behind the request first"
+                      (list 0
+                            (string-append "HTTP/1.1 101 Switching Protocols\r\nupgrade: echo\r\n"
+                                           "Connection: upgrade\r\n\r\nearlypingpong")
+                            "")
+                      (echoed port))
+          (test-equal "upgrade: a request that asks for no upgrade is told how to ask, as text"
+                      (text-answer "HTTP/1.1 200 OK" "ask for Upgrade: echo\n")
+                      (answer (fetch port "/")))
+          (test-equal "upgrade: Upgrade: echo without Connection: upgrade is the server's empty 500, the connection closed"
+                      (empty-answer "HTTP/1.1 500 Internal Server Error" '("Connection" . "close"))
+                      (answer (fetch port "/" "-H" "Upgrade: echo")))
+          (test-equal "upgrade: Upgrade: echo over HTTP/1.0, Connection: upgrade and all, is the server's empty 500, the connection closed"
+                      (empty-answer "HTTP/1.1 500 Internal Server Error" '("Connection" . "close"))
+                      (answer (fetch port "/" "-0" "-H" "Connection: upgrade" "-H" "Upgrade: echo")))))
 
       ;; Each request's lines are waited for before the next request.
       ;; Sleeps and deadlines run on a timer of their own, not the server's
