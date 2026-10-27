@@ -118,15 +118,17 @@ close-out under **Close-outs**, newest first.
 
 ### 2026-10-27: slice 6b, `(circuit router)`, in PR #7
 
-Commits on `slice/6b-router`: the slice (485bf5d), the records with this close-out, and
-its CI run named here. Built, reviewed and fixed on 2026-10-27. `make test`
+Commits on `slice/6b-router`: the slice (485bf5d), the records with this close-out
+(ab7aab7), and its CI run named here. Built, reviewed and fixed on 2026-10-27. `make test`
 passes 14 suites, 695 rows (check-imports 51, check-suites 14, circuit-testing 45,
 examples 77, headers 24, http-server 73, middleware 9, middleware-waits 68, names 19,
 request 47, response 96, router 100, router-properties 29, test 43), and `make gate`
 passes. Its worst figures in the three runs on the final code: G1 1,448, G2 1,441, G3 314
 a GET and 278 a POST, G4 80 and 402, G5 384 and 342 with a park, G7 308, G8 1,145, G8 own
 289, G8 on-done 864, G9 606 and 612 with a park, and G10, now held, 85 a word, 167 a
-parameter and 4 a miss. CI: named here once the PR's run passes.
+parameter and 4 a miss. CI passed on the PR (run 40605288848, 2m52s): 14
+suites, and the gate's worst figures G3 305 and 272, G5 382 and 341, G8 own 294, G9 609
+and 593, G10 84, 164 and 3.
 
 - **the owner's decisions** (design §15.20–§15.24):
   - in the slice, `req-mount-path` (§15.20);
