@@ -6,7 +6,8 @@
   slice 5: G5 measures the real catch helper; G8, request logging, is printed, and its own
   share, G8 own, held; G9, `wrap-timeout`, is held with and without a park (the owner's
   decisions, design §15 items 13–15). The owner accepted G8 own's 384 B and G9's 768 B
-  bounds at slice 5's review, 2026-10-27
+  bounds at slice 5's review, 2026-10-27; 2026-10-27, in slice 6b: G10, the router's own
+  work, is held (the owner's decision, design §15 item 24)
 - **Scope:** the bounds `make gate` holds and prints, and what they are measured on
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §4, §13, §15 item 6
 
@@ -50,6 +51,9 @@ record size step, where a six-field request record failed it by 1 B.
    | G8 on-done, a no-op `req-on-done!` | none | printed | 870 | |
    | G9, `wrap-timeout` | 768 | held | 609 (in 7 runs) | a `call/1cc` escape: 1,131–1,137 |
    | G9 park | 768 | held | 614 | a `call/1cc` escape: 3,895–3,904 |
+   | G10 word, the router's own work | 128 | held | 90 (in 7 runs) | each word compared by a substring: 341 |
+   | G10 param | 256 | held | 167 | each word compared by a substring: 401 |
+   | G10 miss | 64 | held | 4 | each word compared by a substring: 323 |
 
    G6 stays a smoke: at least 90% of raw's rate at 50 connections, printed, never failing.
 4. **G7 holds a port body**: a 6-byte bytevector port, made per request, as the body,
@@ -104,5 +108,12 @@ G3 and G4 mutants.
     tell a `call/1cc` escape from `call/cc`, so the owner chose to hold it, with a park
     variant, where `call/1cc` jumps to about 3.9 KB. The 768 B bounds leave about 160 B
     of headroom.
+- **Slice 6b measured the router**, in seven runs by the session on 2026-10-27, each
+  variant over a base that reads `req-path` at the same URL:
+  - **G10** reads 74–90 B a word route, 151–167 B a one-parameter route, and −6–4 B a
+    path no route takes. The owner chose to hold it, at 128, 256 and 64 B.
+  - **A word route's match made per request** reads 108–117 B, under the 128 B bound. A
+    suite row holds that one: `tests/test-router.sps` bounds a words-only route at 88 B,
+    in plain Chez.
 - **G1 and G2 are re-baselined at each move of the server's pin**, as before.
 - **Per-connection costs cancel under keep-alive**, so the gate doesn't see them.

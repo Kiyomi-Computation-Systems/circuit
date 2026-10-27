@@ -285,11 +285,11 @@ check-imports: deps ## Fail unless only the two impure libraries import the serv
 # The cost gate (design §15.6, ADR-0007), outside `make test`: bytes a
 # request through circuit's adapter, against the raw server and its
 # `awaiting` path, in one process, with the counts fixed (tests/gate.sps).
-# It prints G1, G2 and G8, and fails when a held gate, G3 to G5, G7, G8 own
-# or G9, is over its bound, naming it. CI runs it as a step of its own: noise doesn't move a
+# It prints G1, G2, G8 and G8 on-done, and fails when a held gate, G3 to G5, G7, G8 own, G9
+# or G10, is over its bound, naming it. CI runs it as a step of its own: noise doesn't move a
 # byte count. At a terminal, timeout runs with --foreground, as in `make
 # test`, and an oha it started may outlive a HUNG gate.
-gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5, G7, G8 own, G9) is over its bound
+gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5, G7, G8 own, G9, G10) is over its bound
 	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
 	@[ -x $(OHA) ] || { echo "gate: $(OHA) not found. Run 'make oha' on the host: it fetches oha, and the container has no network." >&2; exit 1; }
 	@fg=; if [ -t 0 ]; then fg=--foreground; fi; \

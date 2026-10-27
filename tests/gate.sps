@@ -38,16 +38,25 @@
 ;;; parked once inside it and not; through
 ;;; the adapter as a bytevector body, and
 ;;; as a bytevector port body, which the adapter reads whole, a port of
-;;; one piece or less (design §5); and a 13-byte POST read raw, by
+;;; one piece or less (design §5); a 13-byte POST read raw, by
 ;;; read-whole-body, and from an `awaiting` thunk and through the adapter,
 ;;; each by get-bytevector-n of its declared length, the cheapest read
-;;; (design §4), so G3 POST is circuit's work over the same read.
+;;; (design §4), so G3 POST is circuit's work over the same read; and,
+;;; through the adapter, a router of twenty routes asked a word route, a
+;;; one-parameter route, and a path no route takes, which its not-found
+;;; handler answers, each over an app that reads the path at the same URL
+;;; and answers hello, so G10 is the router's own work. Each variant asks a
+;;; path of its own, / unless it names one. The handlers a G10 variant
+;;; should reach count each request in a fixnum, which allocates nothing,
+;;; and a run whose count isn't its request count refuses: oha asked
+;;; another path.
 ;;;
 ;;; The adapter is circuit's own, (circuit http-server)'s circuit->handler,
 ;;; given an environment that answers #f for every name, so the process's
 ;;; environment moves no figure: the server under it is started with a
 ;;; lookup of its own. The catch helper, wrap-log and wrap-timeout are
-;;; circuit's own, (circuit middleware waits)'s. Every run's standard output
+;;; circuit's own, (circuit middleware waits)'s, and the router (circuit
+;;; router)'s. Every run's standard output
 ;;; goes to /dev/null, so wrap-log's lines cost what they cost on a file.
 ;;;
 ;;; Run from the checkout's root, inside the Guix container, through make,
@@ -68,17 +77,19 @@
         (only (http-server private shell) shell-run-turns!)
         (only (http-server private serve) start-server)
         (only (circuit request) make-req-view make-req req-body req-header req-ref req-set
-              make-req-key req-on-done! test-req-done!)
-        (only (circuit response) make-res res? res-status)
+              make-req-key req-on-done! test-req-done! req-with-path req-path)
+        (only (circuit response) make-res res? res-status res-headers)
         (only (circuit middleware) wrap)
         (only (circuit middleware waits) wrap-catch wrap-timeout wrap-log)
+        (only (circuit router) make-router route group GET POST PUT DELETE)
         (only (circuit http-server) circuit->handler))
 
 ;;; ------------------------------------------------------------------------
 ;;; The counts and the gates: design §15.6. The bounds are slice 4's,
 ;;; measured through the real adapter, each with headroom over the worst
 ;;; figure eight runs read and under what a known regression reads
-;;; (ADR-0007).
+;;; (ADR-0007). G10's are 6b's, over the worst of three runs (design
+;;; §15.24).
 
 ;; Fixed: 5,000 against 25,000 requests, two rounds, at 1 and 50 keep-alive
 ;; connections, which reads a gate's worst figure to within about 10 B from
@@ -129,7 +140,17 @@
    (make-gate "G9" "timeout" "get-adapter" 1 768 #t
               "wrap-timeout over the unwrapped app, its deadline never passing")
    (make-gate "G9 park" "timeout-park" "get-adapter-park" 1 768 #t
-              "wrap-timeout over the unwrapped app, its deadline never passing, the app parked once inside it")))
+              (string-append "wrap-timeout over the unwrapped app, its deadline never passing,"
+                             " the app parked once inside it"))
+   (make-gate "G10 word" "router-word" "path-word" 1 128 #t
+              (string-append "a router of twenty routes over an app that reads the path, both asked"
+                             " /users/new: the router's own work for a word route"))
+   (make-gate "G10 param" "router-param" "path-param" 1 256 #t
+              (string-append "the same, both asked /users/42: the router's own work for a"
+                             " one-parameter route"))
+   (make-gate "G10 miss" "router-miss" "path-miss" 1 64 #t
+              (string-append "the same, both asked /nope/nothing, which no route takes:"
+                             " the router's own work to find nothing"))))
 
 ;;; ------------------------------------------------------------------------
 ;;; The adapter's environment.
@@ -193,6 +214,64 @@
 ;; five : Req -> Res — hello under five middlewares, each setting its key.
 (define five (apply wrap hello (map key-setter five-keys)))
 
+;; asked : (Vector Fixnum ...) — how many requests each counted handler has
+;; answered since its variant's run began: the router's word route, its
+;; parameter route and its not-found handler, then each path variant's app,
+;; for the path it names. A fixnum in a vector: a count allocates nothing.
+(define asked (make-vector 6 0))
+(define (count! k) (vector-set! asked k (fx+ (vector-ref asked k) 1)))
+
+;; through : Headers Nat -> Handler — hello, its headers HEADERS, counted at
+;; K: the same bytes as hello's, from a list of its own, so a probe can tell
+;; by eq? which handler answered.
+(define (through headers k)
+  (lambda (req)
+    (count! k)
+    (make-res 200 headers "hello\n")))
+
+;; path-hello : String Nat -> Handler — hello, once it has read the path, as
+;; a router does; counted at K when the path is PATH.
+(define (path-hello path k)
+  (lambda (req)
+    (when (string=? (req-path req) path) (count! k))
+    (make-res 200 text-headers "hello\n")))
+
+(define word-headers (list (cons "content-type" "text/plain")))
+(define param-headers (list (cons "content-type" "text/plain")))
+(define miss-headers (list (cons "content-type" "text/plain")))
+
+;; pass-through : Middleware — the admin group's, which adds nothing.
+(define (pass-through next) (lambda (req) (next req)))
+
+;; routed : Handler — a router of twenty routes of the shapes apps have:
+;; words, parameters, a group, a catch-all. Its word route, its
+;; one-parameter route and its not-found handler answer `through` their own
+;; headers, and every other route hello.
+(define routed
+  (make-router
+   (list (route "/" (GET hello))
+         (route "/health" (GET hello))
+         (route "/login" (GET hello) (POST hello))
+         (route "/logout" (POST hello))
+         (route "/search" (GET hello))
+         (route "/about" (GET hello))
+         (route "/users" (GET hello) (POST hello))
+         (route "/users/new" (GET (through word-headers 0)))
+         (route "/users/:id" (GET (through param-headers 1)) (PUT hello) (DELETE hello))
+         (route "/users/:id/edit" (GET hello))
+         (route "/users/:id/followers" (GET hello))
+         (route "/users/:id/posts" (GET hello) (POST hello))
+         (route "/users/:id/posts/:post" (GET hello) (DELETE hello))
+         (route "/posts" (GET hello))
+         (route "/posts/:id" (GET hello))
+         (route "/posts/:id/comments" (GET hello) (POST hello))
+         (group "/admin" (list pass-through)
+           (route "" (GET hello))
+           (route "/stats" (GET hello))
+           (route "/users/:id" (GET hello) (DELETE hello)))
+         (route "/static/*path" (GET hello)))
+   (through miss-headers 2)))
+
 ;; hello-response, refused-response : Response — built once.
 (define hello-response (make-response 200 #f text-headers/bytes hello-bytes))
 (define refused-response (make-response 400 #f text-headers/bytes hello-bytes))
@@ -221,11 +300,27 @@
 ;;; ------------------------------------------------------------------------
 ;;; The variants.
 
-;; make-variant : String (U String #f) Symbol Handler -> Variant
-;; A variant: its name, its baseline's in the table, GET or POST, and its
-;; handler.
+;; make-variant : String (U String #f) Symbol Handler [String [Nat]] -> Variant
+;; A variant: its name, its baseline's in the table, GET or POST, its
+;; handler, the path oha asks, / unless given, and the slot of `asked` its
+;; handler counts in, or #f.
 (define-record-type (variant make-variant variant?)
-  (fields name base method handler))
+  (fields name base method handler path counter)
+  (protocol (lambda (new)
+              (case-lambda
+                ((name base method handler) (new name base method handler "/" #f))
+                ((name base method handler path) (new name base method handler path #f))
+                ((name base method handler path k) (new name base method handler path k))))))
+
+;; path-variant : String String Nat -> Variant — path-hello through the
+;; adapter, asked PATH, counted at K.
+(define (path-variant name path k)
+  (make-variant name "get-adapter" 'GET (circuit->handler (path-hello path k) no-env) path k))
+
+;; routed-variant : String String String Nat -> Variant — the router through
+;; the adapter over BASE, asked PATH, its handler for it counted at K.
+(define (routed-variant name base path k)
+  (make-variant name base 'GET (circuit->handler routed no-env) path k))
 
 (define variants
   (list (make-variant "get-raw" #f 'GET raw)
@@ -245,7 +340,13 @@
         (make-variant "get-adapter-port" "get-adapter-bytes" 'GET (circuit->handler port-hello no-env))
         (make-variant "post-raw" #f 'POST post-raw)
         (make-variant "post-awaiting" "post-raw" 'POST post-awaited)
-        (make-variant "post-adapter" "post-raw" 'POST (circuit->handler post-hello no-env))))
+        (make-variant "post-adapter" "post-raw" 'POST (circuit->handler post-hello no-env))
+        (path-variant "path-word" "/users/new" 3)
+        (path-variant "path-param" "/users/42" 4)
+        (path-variant "path-miss" "/nope/nothing" 5)
+        (routed-variant "router-word" "path-word" "/users/new" 0)
+        (routed-variant "router-param" "path-param" "/users/42" 1)
+        (routed-variant "router-miss" "path-miss" "/nope/nothing" 2)))
 
 ;; variant-named : String -> Variant
 (define (variant-named name) (find (lambda (v) (string=? (variant-name v) name)) variants))
@@ -273,6 +374,21 @@
     (thunk)))
 
 (define (probe!)
+  (for-each
+   (lambda (probe)
+     (let* ((v (variant-named (car probe)))
+            (route-name (cadr probe))
+            (got (outcome (lambda () (routed (req-with-path (probe-req) (variant-path v)))))))
+       (unless (and (res? got) (= (res-status got) 200) (eq? (res-headers got) (caddr probe)))
+         (refuse (call-with-string-output-port
+                  (lambda (p) (put-string p (variant-name v)) (put-string p ", GET ")
+                          (put-string p (variant-path v)) (put-string p ", answered ")
+                          (write (if (res? got) (list 'res (res-status got) (res-headers got)) got)
+                                 p)
+                          (put-string p ", not through ") (put-string p route-name)))))))
+   (list (list "router-word" "the word route /users/new" word-headers)
+         (list "router-param" "the parameter route /users/:id" param-headers)
+         (list "router-miss" "the not-found handler" miss-headers)))
   (let ((keys (outcome (lambda ()
                          ((apply wrap (lambda (req) (map (lambda (k) (req-ref req k)) five-keys))
                                  (map key-setter five-keys))
@@ -347,7 +463,7 @@
                          (lambda (request) (current request))
                          (lambda (name) (and (string=? name "CHEZ_HTTP_PORT") "0"))
                          log!))
-  (set! url (string-append "http://127.0.0.1:" (number->string (cadr listening)) "/")))
+  (set! url (string-append "http://127.0.0.1:" (number->string (cadr listening)))))
 
 ;; null-port : TextualOutputPort — /dev/null, every run's standard output,
 ;; flushed as standard output is: wrap-log flushes each line.
@@ -376,6 +492,9 @@
       (uv-close! out)
       (values (- b1 b0) (car exit) (utf8->string (collector-bytes said))))))
 
+;; target : Variant -> String — the URL oha asks for V: the server's, and its path.
+(define (target v) (string-append url (variant-path v)))
+
 ;; method-args : Variant -> (Listof String) — oha's flags for its method.
 (define (method-args v)
   (if (eq? (variant-method v) 'POST) (list "-m" "POST" "-d" post-body) '()))
@@ -385,10 +504,12 @@
 ;; is not `n` 200s, each with the 6-byte body, and no error, refuses.
 (define (load oha v c n)
   (collect)
+  (when (variant-counter v)
+    (vector-set! asked (variant-counter v) 0))
   (let-values (((bytes status text)
                 (spawn oha (append (list "--no-tui" "--output-format" "json" "-t" "10s"
                                          "-n" (number->string n) "-c" (number->string c))
-                                   (method-args v) (list url)))))
+                                   (method-args v) (list (target v))))))
     (let ((codes (json-object text "statusCodeDistribution"))
           (errors (json-object text "errorDistribution"))
           (data (json-number text "totalData")))
@@ -401,6 +522,12 @@
                                ", status " (or codes "none") ", errors " (or errors "none")
                                ", body bytes " (if data (number->string data) "none")
                                "; its bytes measure nothing")))
+      (let ((k (variant-counter v)))
+        (when (and k (not (= (vector-ref asked k) n)))
+          (refuse (string-append (variant-name v) ", " (number->string n) " requests at "
+                                 (number->string c) " conn: its handler for " (variant-path v)
+                                 " answered " (number->string (vector-ref asked k))
+                                 "; oha asked another path, so its bytes measure nothing"))))
       bytes)))
 
 ;; rate : String Variant Nat Nat -> (List Real String)
@@ -411,7 +538,7 @@
                 (spawn oha (append (list "--no-tui" "--output-format" "json"
                                          "-z" (string-append (number->string seconds) "s")
                                          "-c" (number->string c))
-                                   (method-args v) (list url)))))
+                                   (method-args v) (list (target v))))))
     (let ((codes (json-object text "statusCodeDistribution"))
           (errors (json-object text "errorDistribution")))
       (unless (and (eqv? status 0) codes (only-200s? codes))

@@ -172,70 +172,201 @@ Reitit's docs cover this:
   (make-res 200 '() (req-path-param req "id")))
 ```
 
-The exports, as drafts:
+The exports. Slice 6b settled the names and a constructor for other methods. The
+owner added `req-mount-path` at the review (design §15.20):
 
 ```text
 make-router : (Listof Route) [Handler] -> Handler      the optional not-found handler
-route       : String MethodEntry ... -> Route
+route       : String [Symbol] MethodEntry ... -> Route  the symbol names the route
 GET POST PUT PATCH DELETE OPTIONS ANY : Handler -> MethodEntry
+METHOD      : Symbol Handler -> MethodEntry            any other method, and HEAD
 group       : String (Listof Middleware) Route ... -> Route
 mount       : String Handler -> Route
 req-path-param  : Req String -> (U String #f)
 req-path-params : Req -> (Listof (Pair String String))
 req-route       : Req -> (U String #f)                  the matched template
+req-mount-path  : Req -> String                         the part the mounts took
 ```
 
-The names suite holds them apart from the server's (ADR-0005). The slice settles the
-final names, and a constructor for methods past the six. A route also takes an optional
-name, kept for reverse routing later (§7.3).
+- **The names suite holds them apart from the server's** (ADR-0005).
+- **`(circuit router)` isn't in the `(circuit)` facade:** an app imports it beside it.
+- **`METHOD`:**
+  - Its symbol is an RFC 9110 token in upper case, as the server takes a method.
+    `(METHOD 'PROPFIND h)` is one; `(METHOD 'HEAD h)` gives HEAD its own handler.
+  - `(METHOD 'GET h)` is `(GET h)`, and `(METHOD 'ANY h)` is `(ANY h)`.
+- **A route's name:**
+  - It is a symbol right after the template, `(route "/users/:id" 'user (GET h))`.
+  - Two routes of one name are refused. Nothing reads the name yet: it is kept for
+    reverse routing (§7.3).
+- **A route lists one method entry or more, each method once.** `(route "/x")` is
+  refused, and so are two GETs, or `(METHOD 'ANY h)` beside `(ANY h)`.
+- **Each constructor checks its own arguments,** with its own name as the who. The checks
+  that need the whole table are `make-router`'s, and they run before any middleware is
+  applied.
+
+### Templates
+
+- **A template given to `route`, `group` or `mount` is `""` or begins with `/`.**
+  - Group prefixes join a route's or a mount's template by plain concatenation:
+    `(group "/admin" mws (route "" ...))` serves `/admin`.
+  - Every joined template must begin with `/`.
+- **A template splits at `/` into segments.** A segment is a word, a parameter `:name`, or
+  a catch-all `*name`.
+  - **A name** is one or more ASCII letters, digits, `-` and `_`.
+  - **A word** holds what a path carries unescaped: RFC 3986 `pchar` without
+    `pct-encoded`. That is letters, digits, `- . _ ~`, `! $ & ' ( ) * + , ; =`, `:` and
+    `@`. A word can't begin with `:` or `*`.
+  - **The words `.` and `..` are refused:** clients remove dot segments (RFC 3986 §5.2.4),
+    so such a route could never be reached.
+- **In a joined template:**
+  - an empty segment comes only last, the trailing slash of `/users/`;
+  - a catch-all comes only last;
+  - each name comes once.
+- **A mount's joined template** has no catch-all and doesn't end in `/`, so it isn't `/`
+  alone: the not-found handler takes every path.
+- **`make-router` refuses two templates of one shape** (§7.1), whatever their names. One
+  shape means the same segments, with equal words and with parameters and catch-alls
+  equal whatever they're called. So it refuses `/u/:id` beside `/u/:name`, a template
+  listed twice, and a mount `/p` beside a catch-all `/p/*r`.
 
 ### Matching
 
-- **A template splits at `/` into segments.** A segment is a word, a parameter `:name` or
-  a catch-all `*name`, which comes last and takes the rest.
 - **Segments are matched as the client sent them,** since `req-path` isn't decoded
-  (design §3). So `%2F` stays inside its segment.
-  - A template's words must be characters a path may carry unescaped (RFC 3986 `pchar`).
-    Any other is an assertion violation at construction.
-  - A captured value is percent-decoded as UTF-8. A malformed escape answers 400.
+  (design §3).
+  - A word matches its segment exactly, case and all.
+  - A parameter takes one segment that isn't empty.
+  - A catch-all takes the rest after the slash before it: slashes kept, possibly empty.
+    So `/files/*p` takes `/files/` and `/files/a/b`, not `/files`.
+  - A mount `/p` takes `/p` and every `/p/...`, not `/px`.
+  - A path that doesn't begin with `/`, such as `*`, matches nothing.
 - **The trailing slash counts:** `/users/` isn't `/users`.
 - **When several templates match a path, the leftmost segment where they differ
-  decides:** a word beats a parameter, and a parameter beats a catch-all or a mount. So
-  `/users/new` beats `/users/:id`, whatever order they're listed in. Two templates of one
-  shape, such as `/u/:id` and `/u/:name`, are refused at construction, as is a template
-  listed twice (§7.1).
-- **The path picks the route, then the method picks the handler,** as in Reitit. A path
-  has one route, so `DELETE /users/new` is a 405, not `/users/:id`'s DELETE.
-- **HEAD goes to the GET handler** when a route has none of its own.
+  decides** (§7.1). This holds whatever order the table lists them in.
+  - A word beats a parameter, and a parameter beats a catch-all or a mount.
+  - A template that ends where the path does beats a mount taking nothing: route `/p`
+    beats mount `/p` for `/p`.
+  - The empty last word beats a catch-all or a mount: `/p/` beats both for `/p/`.
+  - The match backtracks. For `/users/new/edit`, `/users/:id/edit` wins over
+    `/users/new`, which takes the first two segments but not the third.
+- **Then the captures are percent-decoded, strictly, as UTF-8.**
+  - These answer an empty 400, and no handler runs:
+    - a malformed escape, anywhere in a value;
+    - bytes that aren't UTF-8: an overlong form, a surrogate, past U+10FFFF, cut short,
+      or a stray continuation byte;
+    - a raw character past ASCII.
+  - The server refuses raw non-ASCII and malformed escapes itself, before any handler
+    runs. They reach the router only through `req-with-path` or a test request. Bytes that
+    aren't UTF-8, such as `%FF`, do come from the wire.
+  - `+` stays `+`.
+  - `%2F` stays inside its segment for matching, and decodes to `/` in the value. So
+    `/users/%6Eew` is `/users/:id` with id `new`, not the word `new`.
+- **Then the method picks the handler, as in Reitit.** A path has one route, so
+  `DELETE /users/new` is `/users/new`'s 405, even beside `/users/:id`'s DELETE.
+  - HEAD goes to the route's own HEAD, else its GET, else its ANY. The handler sees the
+    method as it came.
+  - ANY takes every other method the route doesn't list, HEAD only when the route has no
+    GET. So a route with ANY never answers 405.
 - **When nothing matches:**
-  - no route takes the path: the not-found handler runs, a 404 with no body by default;
-  - the route has no handler for the method: a 405, with an `Allow` header listing the
-    route's methods, HEAD included where there's a GET. RFC 9110 §15.5.6 requires the
-    header.
+  - **No route takes the path:** the not-found handler runs. By default it answers an
+    empty 404. It gets the request as it came to the router: under a mount, the mount's
+    match and the rest of the path; reached through a route, that route's match.
+  - **The route has no handler for the method:** an empty 405, with `allow` listing the
+    route's methods.
+    - The methods come in the order the route lists them, joined by `", "`.
+    - HEAD comes right after GET when the route has a GET and no HEAD of its own.
+    - RFC 9110 §15.5.6 requires the header.
 
 ### The request
 
-- **The match goes on the request with one `req-set`,** under the router's own key from
-  `make-req-key` (ADR-0005; G4 bounds one `req-set` at 88 B). It holds the template, the
-  params and a mount's prefix.
-- **A mounted handler sees the rest of the path,** through `req-with-path`: `"/"` when
-  nothing is left, as with Compojure's `context`. The params the mount captured join any
-  that a router under it finds.
+- **The match goes on the request with one `req-set` for each router it passes,** under
+  the router's own key from `make-req-key` (ADR-0005; G4 bounds one `req-set` at 88 B).
+  - The match holds the template, the params and the nearest mount above.
+  - A mount's match also keeps the path it matched, and where its rest begins.
+  - A mount that a group's middleware wraps takes a second `req-set` (design §15.21).
+- **What the match answers:**
+  - `req-route` answers the joined template, and `#f` when no router matched.
+  - `req-path-params` answers the params left to right in the template, and `'()` when
+    there are none.
+  - `req-path-param` answers the last param of that name.
+- **A mounted handler sees the rest of the path,** through `req-with-path`.
+  - It is `"/"` when nothing or only `/` follows, as with Compojure's `context`.
+  - It is the rest of the path the router matched, even if a middleware between rewrote
+    the path.
+  - A request a group's middleware hands on without the mount's match reaches the
+    handler as it is (design §15.23); see Middleware.
+- **A router under a mount joins its match onto that mount's,** even when it is reached
+  through a route under that mount. The templates join and the params join:
+  `/api/:v` and `/users/:id` read `/api/:v/users/:id`. A router with no mount above it
+  uses its own match alone.
+- **`req-mount-path`** answers the part of the path the mounts above took, undecoded
+  (design §15.20).
+  - Under `mount "/api/:v"`, `/api/2/users/7` reads `"/api/2"`. Nested mounts join, and
+    under no mount it is `""`.
+  - It is built only when it is called.
+  - Wherever a handler or a middleware reads it, it followed by `req-path` is the path the
+    server read, unless a middleware rewrote the path. The one other exception is a rest
+    of `"/"` standing for nothing after the mount.
+- **A decoded value is the client's.**
+  - It can hold `/` (from `%2F`), `..`, and NUL (from `%00`).
+  - The server passes dot segments through as sent, so `/f/../../etc/passwd` reaches
+    `/f/*p` with p `../../etc/passwd`.
+  - Check a decoded value, not `req-path`, before using it as a file name.
+- **`req-route`'s template and the params' names are the router's own strings,** shared
+  by every request. Don't mutate them.
 
 ### Middleware
 
-- **A group's middleware wraps each route under it,** once, when the router is made.
-  The outer group's middleware sits outermost, in `wrap`'s order. It runs only for a
-  request that matched.
-- **Middleware that wraps the router itself runs for every request,** 404s and 405s
-  included.
+- **A group's middleware wraps each method's handler under it, and each mounted
+  handler,** as Reitit's does.
+  - It is applied once, when the router is made.
+  - The outer group's middleware sits outermost, in `wrap`'s order.
+  - It runs only for a request whose path and method matched: not for a 404, a 405 or a
+    400.
+- **Around a mount, a group's middleware sees what it sees around a route.** That is the
+  path as the router matched it, the mount's template and params, and as
+  `req-mount-path` the part the mounts above the router took (design §15.21). Only the
+  mount's handler sees the rest.
+  - A request the middleware hands `next` without the mount's match reaches the mount's
+    handler as it is, as a route's handler would get it (design §15.23). That is a
+    request the middleware made, or one a router of its own matched.
+- **Middleware that wraps the router itself runs for every request,** 404s, 405s and
+  400s included.
 
 ### Cost
 
-The matcher walks the path by index, so a match allocates only the values it captures
-and the one `req-set`. The gate prints a new row first: the router over about twenty
-routes, for a word, a parameter and a 404. The bound is held only after it's measured
-and the owner accepts it, as G8 own and G9 were.
+- **The matcher walks the path by index,** comparing words in place. So a match
+  allocates only the values it captures, the match, and its `req-set`. A mount also
+  allocates the rest of the path, and the request `req-with-path` copies.
+- **A words-only route with no mount above it** has its match made once, when the router
+  is made: such a request costs its one `req-set`.
+- **What the router allocates a request,** in plain Chez, the router called alone
+  (6b's probes; `tests/test-router.sps` bounds the words-only route at 88 B, a mount at
+  340 B, and a wrapped one at 80–112 B more):
+
+  | Request | Bytes |
+  |:--|--:|
+  | a words-only route, its one `req-set` | 80 |
+  | a route with one parameter | 160 |
+  | a route with a catch-all | 176 |
+  | a path no route takes | 0 |
+  | through a mount | 336 |
+  | through a mount a group's middleware wraps: a second `req-set` and a 16 B marker | 432 |
+
+- **The gate holds three rows, G10:** a router of twenty routes asked a word, a
+  parameter, and a path no route takes.
+  - Each row is measured over an adapter base that reads `req-path` at the same URL, so
+    it is the router's own work.
+  - A counter in each handler proves oha asked that path.
+  - Its worst figures in 6b's seven final runs: a word 90 B, a parameter 167 B, a miss
+    4 B.
+  - It holds them at 128 B a word, 256 B a parameter and 64 B a miss (design §15.24).
+
+### Testing
+
+- **`tests/test-router.sps` holds each rule above by example.**
+- **`tests/test-router-properties.sps` holds them by property** (the owner, design
+  §15.22). It generates tables and paths from a fixed seed, and checks the router against
+  an oracle written from this section alone.
 
 ## 6. WebSocket
 

@@ -9,8 +9,8 @@
 ;;; once only because each is the server's own binding.
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
-;;; its list, so the (circuit) facade keeps the adapter's and the tests'
-;;; names out, that the adapter's re-exports are the server's own bindings,
+;;; its list, so the (circuit) facade keeps the adapter's, the tests' and the
+;;; router's names out, that the adapter's re-exports are the server's own bindings,
 ;;; compared through a prefixed import of each, and that the like-named
 ;;; bindings of the two make different things.
 (import (rnrs)
@@ -27,6 +27,7 @@
         (circuit headers)
         (circuit middleware)
         (circuit middleware waits)
+        (circuit router)
         (circuit test)
         (circuit http-server)
         (prefix (http-server) server:)
@@ -61,6 +62,12 @@
 
 (define header-names
   '(header-value header-values header-set header-add header-remove header-names-downcase))
+
+;; The router's: an app imports (circuit router) beside (circuit), which
+;; leaves them out.
+(define router-names
+  '(make-router route GET POST PUT PATCH DELETE OPTIONS ANY METHOD group mount
+    req-path-param req-path-params req-route req-mount-path))
 
 ;; What an app uses: the request's accessors, keys and req-with- helpers,
 ;; req-on-done!; the response's constructors, accessors and helpers, the
@@ -100,9 +107,9 @@
 (test-begin "names")
 
 (test-equal "the server's libraries and circuit's are all loaded, side by side"
-  '(#t #t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t #t)
   (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler
-                        wrap-catch)))
+                        wrap-catch make-router)))
 
 (test-equal "(circuit request) exports its list exactly"
   (sorted request-names)
@@ -123,6 +130,10 @@
 (test-equal "(circuit middleware waits) exports its three exactly"
   '(wrap-catch wrap-log wrap-timeout)
   (sorted-exports '(circuit middleware waits)))
+
+(test-equal "(circuit router) exports its list exactly"
+  (sorted router-names)
+  (sorted-exports '(circuit router)))
 
 (test-equal "(circuit test) exports its three"
   '(make-test-req res-body->bytevector test-req-done!)
