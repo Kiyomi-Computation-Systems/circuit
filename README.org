@@ -19,9 +19,9 @@ Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server
 
 ** Status
 
-Early. Requests, responses, middleware, the adapter onto the server, and the middleware
-that knows the server's waits (a catch for errors, a timeout, request logging) work.
-Upgrades and a router are still to come.
+Early. Requests, responses, middleware, the adapter onto the server, the middleware
+that knows the server's waits (a catch for errors, a timeout, request logging), and
+upgrades work. A router and WebSockets are still to come.
 
 ** Build and test
 
@@ -70,6 +70,16 @@ Middleware takes a handler and gives back one. ~wrap~ puts the last outermost.
   the handler's: ~failed~ means the server ended it, perhaps with its own. A request the
   server refuses before any handler runs, such as a ~413~ for a body past its cap, isn't
   logged.
+
+A handler can take the connection over for another protocol. ~(make-upgrade-res headers
+take-over)~ answers ~101~, then the server calls ~(take-over transport retained)~:
+~retained~ holds the bytes the server had already read past the request, and the
+transport is how you read and write from then on (~transport-write!~,
+~transport-read-start!~ and the rest, from ~(circuit http-server)~). To wait, the
+take-over answers ~(awaiting thunk)~. [[file:examples/upgrade.sps][examples/upgrade.sps]] echoes every byte back.
+Middleware can change an upgrade's headers, but not its status or body:
+~res-upgrade-body?~ tells one apart, and ~make-upgrade-res~ around
+~res-upgrade-body-take-over~ wraps its take-over.
 
 ** Configuration
 

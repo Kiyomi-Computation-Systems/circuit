@@ -35,3 +35,13 @@ release before 1.0.
   `make test` runs it over loopback.
 - The cost gate holds the real catch helper, G5, `wrap-log`'s own work, G8 own, and
   `wrap-timeout`'s cost, G9, and prints what logging costs, G8.
+- Upgrades: `make-upgrade-res` answers 101 and hands the connection to a take-over, which
+  the adapter passes to the server's `switch-protocols`. `res-upgrade-body?` and
+  `res-upgrade-body-take-over` are in `(circuit)`, so middleware can rebuild an upgrade
+  around a wrapped take-over. `res-remove-header` drops every field of a name and keeps
+  the body, an upgrade's included. `(circuit http-server)` re-exports the server's
+  transport procedures, and `awaiting` for a take-over that waits. An upgrade body lives only
+  in the 101 `make-upgrade-res` makes: `make-res` and `res-with-body` refuse one;
+  `res-with-body`, `res-with-status` and `res-wrap-body` refuse an upgrade response;
+  `res-body-stream` and `res-body->bytevector` refuse an upgrade. `examples/upgrade.sps`
+  echoes bytes back after the 101, and `make test` runs it over loopback.

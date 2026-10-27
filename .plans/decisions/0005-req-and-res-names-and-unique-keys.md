@@ -2,6 +2,10 @@
 
 - **Status:** Accepted (the owner's decisions, 2026-10-25)
 - **Date:** 2026-10-25
+- **Amended:** 2026-10-27, in slice 6a: the server's transport procedures and
+  `awaiting`, which a take-over answers to wait, join the re-exports, so an app that
+  upgrades needs only circuit's libraries (the owner's decisions, design §15.17 and
+  §15.18)
 - **Scope:** circuit's public names, and how middleware adds data to a request
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §3, §5, §9, §15 items 1 and 3
 
@@ -21,7 +25,8 @@ request as map keys, and two libraries can collide on one.
 2. **The adapter's entry is `run-server`**, and the procedure that makes a server handler
    is `circuit->handler`.
 3. **No export of circuit's names a binding `(http-server)` exports**, except the server's
-   waits and conditions, which `(circuit http-server)` re-exports as the same bindings.
+   waits, conditions, transport procedures and `awaiting`, which `(circuit http-server)`
+   re-exports as the same bindings.
    A suite that imports `(http-server)`, `(circuit)` and `(circuit http-server)`
    together, with no `only` or `rename`, holds it.
 4. **Middleware's data goes under unique keys**: `(make-req-key name)` makes one,

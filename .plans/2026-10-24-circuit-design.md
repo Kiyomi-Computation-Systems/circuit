@@ -323,7 +323,8 @@ Body = #f                          no body
   encodes it itself (RFC 8187).
 - **Accessors**: `res-status`, `res-headers`, `res-body`, and `res?`.
 - **Helpers**, each giving a new response: `res-header` (look one up),
-  `res-set-header` (replace), `res-add-header` (append), `res-with-status`,
+  `res-set-header` (replace), `res-add-header` (append),
+  `res-remove-header` (drop every field of a name, since slice 6a), `res-with-status`,
   `res-with-body`, and `res-wrap-body` (§6). `res-with-body` replaces the
   body outright, so it closes the port the old body holds, wherever it
   sits: a port body, or one under a sized body or a wrap, at any depth.
@@ -665,7 +666,8 @@ output adds one.
 - **The status is the one the handler answered**, not always the one
   sent. When the server answers in the app's place (§7's `failed`), the
   line reads, say, `200 failed` while the client got a 500: for a response
-  whose body is its request's `req-body` (§9), or a 101 before upgrades. Placed outside the catch helper and `wrap-timeout`, it
+  whose body is its request's `req-body` (§9), a 101 made by `make-res`, or
+  an upgrade answered to a request that asked for none (§8). Placed outside the catch helper and `wrap-timeout`, it
 sees the 500, 504 and 413 they answer: `(wrap app wrap-catch (wrap-timeout
 ms) wrap-log)`.
 
@@ -697,11 +699,21 @@ read. The take-over may answer `awaiting`, as the server allows. A
 take-over's transport carries no addresses, so a taker that needs them
 reads them from the request first (§3). The
 server's rules still apply: an upgrade answered to a request that can't
-take one is a 500.
+take one is a 500, logged `invalid-response not-an-upgrade`. That includes
+a request without `Connection: upgrade`, and an HTTP/1.0 one, both
+checked in the test host and over loopback. Slice 6a settles the rest
+([2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md) §2):
+`res-upgrade-body?` and `res-upgrade-body-take-over` in the facade, so
+middleware can rebuild an upgrade around a wrapped take-over; an upgrade
+body only in a 101 that `make-upgrade-res` made; `res-remove-header`,
+which keeps an upgrade one; and the transport procedures and `awaiting`
+re-exported by the adapter (§9, §15.17, §15.18).
 
 WebSocket through circuit needs chez-websocket's handshake to work from a
 circuit request. Today `websocket-accept` takes the server's request. That
-belongs to the WebSocket slice, and may be an ask on chez-websocket.
+belongs to the WebSocket slice: chez-websocket gains a handshake neutral to
+the host, and circuit maps it onto its own responses
+([2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md) §6, §15.16).
 
 ## 9. The adapter
 
@@ -746,7 +758,13 @@ libraries that import `(http-server)`.
   `&deadline-passed`, `deadline-passed?`, `&client-closed`,
   `client-closed?`, `&resolve-error`, `resolve-error?`,
   `resolve-error-reason`; `&body-failed`, `body-failed?`,
-  `body-failed-reason`, `body-failed-status`. So an app needs only
+  `body-failed-reason`, `body-failed-status`. Since slice 6a, it also
+  re-exports the transport procedures a take-over uses (§8, §15.17):
+  `transport?`, `transport-write!`, `transport-read-start!`,
+  `transport-read-stop!`, `transport-close!`, `transport-abort!`,
+  `transport-deadline!`, `transport-on-drain!`, `transport-on-close!`;
+  and `awaiting`, which a take-over answers to wait. A handler never
+  answers it: the adapter does (§15.18). So an app needs only
   `(circuit)` and `(circuit http-server)`. A re-export is the same
   binding, so a program that also imports `(http-server)` doesn't clash on
   them (R6RS §7.1).
@@ -854,10 +872,42 @@ libraries that import `(http-server)`.
   `tests/loopback-app.sps` writes through a block-buffered standard output.
   Chez's own console port writes out at each line feed when standard
   output is a file, so on it a missing flush is invisible.
+  Slice 6a adds upgrades.
+  - **Through the test host:**
+    - the 101 whole, the app's fields and then the server's
+      `Connection: upgrade`, then the taker's bytes;
+    - the taker handed what was read past the request, and each read;
+    - a taker that answers `awaiting`;
+    - middleware that adds a field to an upgrade, removes every field of a
+      name with `res-remove-header`, or wraps the take-over with
+      `make-upgrade-res` around `res-upgrade-body-take-over`, its own note
+      first and then the inner taker, handed the retained bytes;
+    - an app that made its `req-body` and still switches;
+    - a header past Latin-1 refused, a 500;
+    - the server's 500, `invalid-response not-an-upgrade`, for a request
+      that asked for no upgrade;
+    - a 101 that `make-res` made, answered to an upgrade request: the
+      server's 500, `invalid-response invalid-status`. Without this row an
+      adapter that switched on the status instead of the body kind passed
+      every suite (slice 6a's review);
+    - `wrap-log`'s `101 written` and `101 failed`;
+    - `wrap-timeout`'s deadline not reaching a taker that waits past it.
+  - **Over loopback,** `examples/upgrade.sps` is asked with bash's
+    `/dev/tcp`. curl reads the 101's head and then waits for a final
+    response until it times out (checked, exit 28). The row asserts
+    every byte read: the head, then the echo of the bytes sent right
+    behind the request, then of two more, each sent once the one before
+    it is back. Two curl rows hold the server's 500 for an `Upgrade: echo`
+    it can't take: one without `Connection: upgrade`, and one over
+    HTTP/1.0.
 - **Names don't clash, by test.** A suite imports `(http-server)`,
   `(http-server testing)`, `(circuit)`, `(circuit http-server)` and
   `(circuit test)` together with no `only` or `rename`, so an export that
-  clashes fails it (§15.3). Circuit's tests import them together.
+  clashes fails it (§15.3). Circuit's tests import them together. So the
+  rows that compare a re-export with the server's binding by `eq?` only
+  restate the import. A binding of circuit's own under a re-exported name
+  fails that import first, with `multiple definitions`, before any row
+  runs (slice 6a, reproduced).
 - **Order and shape, by test:**
   - `wrap`'s order;
   - a port body closed however its response ends: at its last byte, on
@@ -1314,6 +1364,51 @@ The owner's answers in slice 5 (2026-10-26):
     stays printed, G8 on-done. Weighed: keeping all of G8 printed, as
     §15.13 had it.
 
+The owner's answers before slice 6 (2026-10-27), with the slice's design
+([2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md)) approved the
+same day:
+
+16. **Slice 6 is three PRs here and one in chez-websocket:** 6a upgrades,
+    6b the router, a host-neutral handshake released in chez-websocket,
+    then 6c WebSocket. The router draws on Reitit and Compojure (that
+    design's §3 and §4).
+    - **When two templates match one path, the leftmost segment where they
+      differ decides:** a word over a parameter, a parameter over a
+      catch-all or a mount. Only same-shape duplicates are refused.
+      Weighed: Reitit's refusal of any overlap unless it is marked; and
+      Compojure's first-listed-wins.
+    - **A table is built with constructor procedures**, `(route "/u/:id"
+      (GET h))`. Weighed: quasiquoted nested lists, as Reitit's vectors.
+    - **Reverse routing comes later.** A route keeps an optional name now.
+    - **WebSocket's logic stays in chez-websocket**, and circuit's glue is
+      a small `(circuit websocket)`. ADR-0006 is amended for it in 6c.
+      Weighed: no circuit library, an example showing the glue.
+
+The owner's answer in slice 6a (2026-10-27):
+
+17. **`(circuit http-server)` re-exports the server's transport
+    procedures**, the same bindings, so an app that upgrades needs only
+    `(circuit)` and `(circuit http-server)`. ADR-0005 is amended for them.
+    `make-transport` stays the server's, for tests. Weighed: apps importing
+    the transport from `(http-server)` themselves.
+
+The owner's answers to slice 6a's review (2026-10-27):
+
+18. **The adapter re-exports `awaiting` too**, the same binding. A take-over
+    runs in the server's callbacks, so to wait it answers `awaiting`.
+    Without the re-export, an app whose taker waits had to import
+    `(http-server)`, against §15.17. A handler never answers `awaiting`:
+    the adapter does (ADR-0004). Weighed: narrowing the claim, and leaving
+    `awaiting` the server's.
+19. **Middleware can remove an upgrade's headers and wrap its take-over.**
+    `res-remove-header` joins the response helpers, keeping the body as
+    `res-set-header` does, an upgrade's included. `res-upgrade-body-take-over`
+    moves into the facade, so middleware can rebuild an upgrade around a
+    wrapped take-over with `make-upgrade-res`. The review found that
+    removing a header through `make-res` turned every upgrade into a 500.
+    Weighed: the accessor alone; and the helper alone, which keeps the
+    take-over the adapter's.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body.** This draft has none
@@ -1359,4 +1454,8 @@ The owner's answers in slice 5 (2026-10-26):
    helper, `wrap-log`'s own share (G8 own) and `wrap-timeout` (G9), and
    prints logging's whole cost (G8). `examples/middleware.sps` composes
    the three, run over loopback.
-6. Upgrades; then the router and WebSocket, each its own library.
+6. Upgrades; then the router and WebSocket, each its own library:
+   designed in [2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md)
+   as 6a, 6b and 6c, with chez-websocket's handshake between (§15.16).
+   6a, upgrades, is
+   [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6).

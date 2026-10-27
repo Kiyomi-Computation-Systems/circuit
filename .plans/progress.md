@@ -24,8 +24,14 @@ close-out under **Close-outs**, newest first.
 - **Slice 5, `(circuit middleware waits)`, is merged**, squashed from
   [PR #5](https://github.com/Kiyomi-Computation-Systems/circuit/pull/5) on 2026-10-27;
   its close-out is below. The owner's answers before and in it are design §15.13–§15.15.
-- **Next: slice 6** (design §17): upgrades; then the router and WebSocket, each its own
-  library.
+- **Slice 6 is designed** in [2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md),
+  approved by the owner on 2026-10-27 (design §15.16): 6a upgrades, 6b the router, a
+  host-neutral handshake released in chez-websocket, then 6c WebSocket.
+- **Slice 6a, upgrades, is merged**, squashed from
+  [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6) on 2026-10-27;
+  its close-out is below. The owner's answers in it are design §15.17–§15.19.
+- **Next: slice 6b, `(circuit router)`**, plain R6RS (the slice 6 design §5); then the
+  handshake in chez-websocket, and 6c.
 
 ## Open
 
@@ -71,7 +77,7 @@ close-out under **Close-outs**, newest first.
   every request. Filed as
   [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245)
   on 2026-10-26: on the server alone one costs 733–843 B, and `tell-done!`'s shape 240 B
-  of it in plain Chez.
+  of it in plain Chez. Still open on 2026-10-27, and being worked on (the owner).
 - **Left from the owner's `/code-review` of slice 4, not fixed:**
   - a procfs file such as `/proc/self/status` reports a length of 0, so it is measured at
     0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
@@ -97,6 +103,63 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-27: slice 6a, upgrades, in PR #6
+
+Commits on `slice/6a-upgrades`: the slice 6 design (16577d4), upgrades in the core and
+the adapter (c4abbee), the example and its loopback rows (70d0db3), the records with this
+close-out, and its CI run named here. Built, reviewed and fixed on 2026-10-27. `make test`
+passes 12 suites, 553 rows (check-imports 51, check-suites 14, circuit-testing 45,
+examples 65, headers 24, http-server 73, middleware 9, middleware-waits 68, names 18,
+request 47, response 96, test 43), and `make gate` passes. Its worst figures in the three
+runs on the final code: G1 1,445, G2 1,440, G3 308 a GET and 281 a POST, G4 81 and 407,
+G5 383 and 361 with a park, G7 308, G8 1,142, G8 own 311, G8 on-done 873, G9 610 and 609
+with a park. No held gate measures an upgrade: on a GET or a POST the new code is one
+record predicate: the review ran the gate on main's libraries and on the slice's, and read
+G3 at main's 308 B against the slice's 309 B a GET, and 276 B against 278 B a POST. CI on
+the PR is named here once it passes:
+
+- **the owner's decisions** (design §15.16–§15.19): before the slice, slice 6's design
+  (§15.16); in it, the transport procedures re-exported (§15.17); at the review, `awaiting`
+  re-exported (§15.18), and `res-remove-header` and `res-upgrade-body-take-over` in the
+  facade (§15.19);
+- **the build** (Opus 5.5; 365,450 tokens over two rounds, 24.6 and 9.4 minutes): the
+  upgrade body and its refusals in `(circuit response)`, the facade, the adapter's switch
+  and re-exports, `res-body->bytevector`'s refusal, `examples/upgrade.sps`, and rows in
+  seven suites. Its first round watched 39 mutants fail. Its second regenerated its 43
+  library mutants and 7 example mutants from the final source and watched each fail. A
+  dropped re-export, or one of the adapter's own, fails by killing a suite at its import,
+  not a named row (traps below). It added two curl rows unasked, for the server's 500s
+  the example's docs now claim, which the session kept. The session reran six mutants of
+  its own, and the review's status-101 mutant rebuilt on the final adapter;
+- **a read-only Opus review** (Opus 5.5; 195,894 tokens, 12.4 minutes) found eight
+  things, each fixed:
+  - a take-over that waits needed `(http-server)` for `awaiting`: now re-exported
+    (§15.18);
+  - middleware couldn't remove an upgrade's header: through `make-res`, every upgrade
+    became a 500 (the review's probe). Now `res-remove-header`, and the take-over's
+    accessor in the facade (§15.19);
+  - no row held the server's 500 for a 101 that `make-res` made: switching on status 101
+    instead of the body passed every suite. Now an adapter row, logged
+    `invalid-response invalid-status`;
+  - the example's docs said every other request gets the 200: one with `Upgrade: echo`
+    and no `Connection: upgrade`, or over HTTP/1.0, gets the server's 500, logged
+    `invalid-response not-an-upgrade`, now held over loopback by the two curl rows;
+  - a transport `eq?` row in the adapter suite that couldn't fail, dropped; a comment's
+    ordering claim that no row held, dropped; `retained` described as all the client
+    sent behind its request, where it is what the server had already read; design §17's
+    link to PR #6, made before the PR existed;
+- **traps:**
+  - a suite that imports `(http-server)` and `(circuit http-server)` without a prefix
+    dies at the import, "multiple definitions", exit 255, once a re-export isn't the
+    server's own binding, so the names suite's `eq?` rows only restate the import
+    (reproduced by the session);
+  - curl 8.20 prints a 101's head, then waits and times out, exit 28 (reproduced by the
+    session and the review), so bash's `/dev/tcp` drives the echo;
+  - over loopback the bytes sent right behind the request arrive as `retained`. Were they
+    to come by a read instead, correct code would still pass, and a dropped `retained`
+    would go unseen by the examples suite; the adapter suite's own row still holds it
+    (the builder's).
 
 ### 2026-10-27: slice 5, `(circuit middleware waits)`, in PR #5
 
