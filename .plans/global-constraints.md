@@ -63,5 +63,4 @@ provisional. They bind until that record is accepted or amended.
   park and without (G5); a 6-byte port body over the same bytes as a bytevector at most
   384 B (G7); `wrap-log`'s own work, over the app registering a no-op `req-on-done!`, at
   most 384 B (G8 own); `wrap-timeout` over the app, its deadline never passing, at most
-  768 B, with a park and without (G9). G8 own's and G9's bounds are provisional until the
-  owner accepts them. CI fails over any of them (ADR-0007).
+  768 B, with a park and without (G9). CI fails over any of them (ADR-0007).

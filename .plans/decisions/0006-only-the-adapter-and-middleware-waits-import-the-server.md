@@ -10,7 +10,8 @@
   the allowlist takes `port-has-port-length?` and `port-length` too, which size a port body
   (design §5, §15 item 8, the owner's decision); 2026-10-26, before slice 5: it takes
   `real-time` and `display-condition` too, the request log's clock and the catch helper's
-  line (design §6, §7, §15 item 13, the owner's decision)
+  line (design §6, §7, §15 item 13, the owner's decision; both names accepted at slice
+  5's review, 2026-10-27)
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 

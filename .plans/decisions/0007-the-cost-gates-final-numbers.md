@@ -5,8 +5,8 @@
 - **Amended:** 2026-10-26: G7, a port body, is held (the owner's decision); 2026-10-26, in
   slice 5: G5 measures the real catch helper; G8, request logging, is printed, and its own
   share, G8 own, held; G9, `wrap-timeout`, is held with and without a park (the owner's
-  decisions, design §15 items 13–15). G8 own's 384 B and G9's 768 B bounds await the
-  owner's acceptance at slice 5's review
+  decisions, design §15 items 13–15). The owner accepted G8 own's 384 B and G9's 768 B
+  bounds at slice 5's review, 2026-10-27
 - **Scope:** the bounds `make gate` holds and prints, and what they are measured on
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §4, §13, §15 item 6
 

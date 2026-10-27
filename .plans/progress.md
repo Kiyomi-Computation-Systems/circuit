@@ -64,7 +64,6 @@ close-out under **Close-outs**, newest first.
   `put-detail` displays one as it is, and only a condition's text has its line feeds made
   spaces (`private/serve.sls`). The catch helper's default line copies the server's on
   purpose. Reproduced in slice 5; not filed.
-- **G8 own's 384 B and G9's 768 B bounds await the owner's acceptance** (ADR-0007, slice 5).
 - **Unverified off Linux:** the adapter suite's FIFO row opens a FIFO read-write, which
   POSIX leaves undefined; it works on Linux. CI runs Linux alone.
 - **A `request-on-done!` procedure costs 858–870 B a request** through the adapter at 1
@@ -116,8 +115,9 @@ those ranges (G5 385 and 340, G8 own 288, G9 606 and 605):
 - **the owner's decisions** (design §15.13–§15.15): before the slice, the log's clock is
   Chez's `real-time`, logging is on `req-on-done!` with its cost filed upstream, the catch
   helper reports through `on-raise`, and the line has the server's shape; in it, G9 held
-  with a park, and `wrap-log`'s own share held, G8 own, after the review. G8 own's and
-  G9's bounds await the owner's acceptance (Open);
+  with a park, and `wrap-log`'s own share held, G8 own, after the review. At the review,
+  on 2026-10-27, the owner accepted G8 own's 384 B and G9's 768 B bounds, and the
+  allowlist's `real-time` and `display-condition`;
 - **upstream:** [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245),
   filed 2026-10-26: a no-op `request-on-done!` procedure costs 706–843 B a request on the
   server alone, and 858–870 B through the adapter;

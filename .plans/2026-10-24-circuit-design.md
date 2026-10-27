@@ -1233,7 +1233,8 @@ The owner's answers to this draft's open questions (2026-10-25):
      `wrap-timeout` over the app, is held at 768 B with a park and without.
      It reads 582–614 B, and a `call/1cc` escape, which no suite row can
      see, reads 1,131–1,137 B and 3,895–3,904 B with a park. Holding G8 own
-     and G9 are the owner's decisions; their bounds await acceptance.
+     and G9 are the owner's decisions, and the owner accepted their bounds
+     at slice 5's review (2026-10-27).
    - **What the gate doesn't hold.** A port of more than one piece, which
      streams, and a sized body. Per-connection costs cancel under
      keep-alive, so the gate doesn't see them.
