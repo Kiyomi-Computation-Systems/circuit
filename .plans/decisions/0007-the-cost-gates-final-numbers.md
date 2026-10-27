@@ -2,7 +2,11 @@
 
 - **Status:** Accepted (the owner's decision, 2026-10-26, on slice 4's measurements)
 - **Date:** 2026-10-26
-- **Amended:** 2026-10-26: G7, a port body, is held (the owner's decision)
+- **Amended:** 2026-10-26: G7, a port body, is held (the owner's decision); 2026-10-26, in
+  slice 5: G5 measures the real catch helper; G8, request logging, is printed, and its own
+  share, G8 own, held; G9, `wrap-timeout`, is held with and without a park (the owner's
+  decisions, design §15 items 13–15). The owner accepted G8 own's 384 B and G9's 768 B
+  bounds at slice 5's review, 2026-10-27
 - **Scope:** the bounds `make gate` holds and prints, and what they are measured on
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §4, §13, §15 item 6
 
@@ -38,9 +42,14 @@ record size step, where a six-field request record failed it by 1 B.
    | G3 POST | 352 (was 512) | held | 280 | a view made per request: 384–385 |
    | G4 one | 88 (was 96) | held | 81 | a six-field request record: 97 |
    | G4 five | 440 (was 480) | held | 406 | a six-field request record: 484–487 |
-   | G5 | 512 | held | 374 | a `call/1cc` catch helper: 849 |
-   | G5 park | 512 | held | 343 | a `call/1cc` catch helper: 3,657 |
+   | G5 | 512 | held | 374; 385 on the real helper (in 7 runs) | a `call/1cc` catch helper: 849; the real one so: 875–927 |
+   | G5 park | 512 | held | 343; 351 on the real helper | a `call/1cc` catch helper: 3,657; the real one so: 3,674–3,725 |
    | G7, a port body | 384 | held | 310 (in 2 runs) | the port streamed: 5,098; closed on a raise by two `guard`s: 658 |
+   | G8, `wrap-log` | none | printed | 1,145 (in 7 runs) | its line built in a string port: 1,520–1,521 |
+   | G8 own, `wrap-log` over a no-op `req-on-done!` | 384 | held | 302 (in 3 runs) | its line built in a string port: 653–688 |
+   | G8 on-done, a no-op `req-on-done!` | none | printed | 870 | |
+   | G9, `wrap-timeout` | 768 | held | 609 (in 7 runs) | a `call/1cc` escape: 1,131–1,137 |
+   | G9 park | 768 | held | 614 | a `call/1cc` escape: 3,895–3,904 |
 
    G6 stays a smoke: at least 90% of raw's rate at 50 connections, printed, never failing.
 4. **G7 holds a port body**: a 6-byte bytevector port, made per request, as the body,
@@ -78,6 +87,22 @@ G3 and G4 mutants.
   the owner chose, the same day, to read a port of a piece or less whole (design §5), with
   one `with-exception-handler` closing a port on a raise, and to hold the cost. A port of
   more than one piece, which streams, and a sized body are still unheld.
-- **G5 is re-measured in slice 5**, with the real catch helper.
+- **Slice 5 measured the real middleware**, in seven runs by the session and two by its
+  review, on 2026-10-26 and 27:
+  - **G5, the real catch helper**, reads 373–385 B, and 319–351 B with a park. Its first
+    shape called `on-raise` after the escape, which put a frame after the `call/cc` and
+    read 485–487 B, 25 B under the bound. So `on-raise` runs inside the handler (design
+    §6), and a suite row holds that order, since G5 wouldn't catch the costlier shape.
+  - **G8, `wrap-log`**, reads 1,129–1,145 B at 1 connection and 817–834 B at 50, printed
+    (the owner's decision). Of that, G8 on-done, the server's running of one no-op
+    procedure, reads 858–870 B and 528–557 B, filed as chez-http-server #245.
+  - **G8 own, `wrap-log`'s own share**, reads 264–302 B. Building the line in a string port
+    first, as the first build did, costs about 380 B more and passes every suite, so the
+    owner chose to hold it, at 384 B, after slice 5's review. The server's share is in its
+    baseline too, so a fix to #245 doesn't move it.
+  - **G9, `wrap-timeout`**, reads 596–609 B, and 574–614 B with a park. No suite row can
+    tell a `call/1cc` escape from `call/cc`, so the owner chose to hold it, with a park
+    variant, where `call/1cc` jumps to about 3.9 KB. The 768 B bounds leave about 160 B
+    of headroom.
 - **G1 and G2 are re-baselined at each move of the server's pin**, as before.
 - **Per-connection costs cancel under keep-alive**, so the gate doesn't see them.

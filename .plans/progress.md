@@ -21,11 +21,11 @@ close-out under **Close-outs**, newest first.
 - **Slice 4, the adapter, is merged**, squashed from
   [PR #4](https://github.com/Kiyomi-Computation-Systems/circuit/pull/4) on 2026-10-26;
   its close-out is below. The owner's answers in it are design §15.12 and ADR-0007.
-- **Next: slice 5, `(circuit middleware waits)`** (design §17): the catch helper and
-  `wrap-timeout`, through `(http-server testing)`, and request logging on
-  `req-on-done!`, with G5 re-measured on the real helper. Two things to weigh first
-  (Open): the server's cost for each `request-on-done!` procedure, which logging pays
-  on every request, and a clock for the log.
+- **Slice 5, `(circuit middleware waits)`, is merged**, squashed from
+  [PR #5](https://github.com/Kiyomi-Computation-Systems/circuit/pull/5) on 2026-10-27;
+  its close-out is below. The owner's answers before and in it are design §15.13–§15.15.
+- **Next: slice 6** (design §17): upgrades; then the router and WebSocket, each its own
+  library.
 
 ## Open
 
@@ -44,10 +44,6 @@ close-out under **Close-outs**, newest first.
   to the Akku index and awaits review** (the owner, 2026-10-25). Until it is published,
   circuit can't be installed with Akku, and the submodule stays its only way in
   (ADR-0003).
-- **A clock for request logging** (slice 5; design §16.2): R6RS has none, and the facade
-  exports none. The server's own clock, the one its waits use, is the one to read, so
-  `(http-server testing)`'s clock would drive it in a test: likely an upstream ask, not a
-  second Chez name.
 - **The test host logs a line the server doesn't**: `handler-failed` for a `&body-failed`
   the app lets out, where `serve` logs nothing. The libuv shell skips a failure the
   request's notice already told (`private/shell.sls`, `told-failure?`), and the fake shell
@@ -55,15 +51,27 @@ close-out under **Close-outs**, newest first.
   changes that row. Found by slice 4's review; filed as
   [chez-http-server #243](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/243)
   on 2026-10-26, reproduced on v0.9.0 in the test host and over loopback.
-- **A wrap's `f` can meet a closed port** once the client has gone while the app waited
-  (design §6, §9). The test host drops `f`'s raise there; whether the real server logs
-  it `handler-failed` is unverified, since curl closes with a FIN, not a reset.
+- **A wrap's `f` can meet a closed port in the test host** once the client has gone while
+  the app waited (design §6, §9), and the test host drops `f`'s raise. Over a real socket,
+  a FIN is heard at once, but the request stays open until its response is written: `f`
+  reads its port, and the write fails, logged `read-error EPIPE` (slice 5, reproduced).
+  Whether a reset makes `f` meet a closed port is unverified: curl can't send one.
+- **A request the server refuses before any handler runs is logged nowhere**: a 400, 408,
+  431 or 505, or a 413 for a declared length past the cap. No handler runs, so `wrap-log`
+  registers nothing, and the server logs none of them (design §7; reproduced in the test
+  host by slice 5's review). An ask for the server to log its own refusals would cover it.
+- **The server's log line breaks on a raised string or character holding a line feed**:
+  `put-detail` displays one as it is, and only a condition's text has its line feeds made
+  spaces (`private/serve.sls`). The catch helper's default line copies the server's on
+  purpose. Reproduced in slice 5; not filed.
 - **Unverified off Linux:** the adapter suite's FIFO row opens a FIFO read-write, which
   POSIX leaves undefined; it works on Linux. CI runs Linux alone.
-- **A `request-on-done!` procedure costs about 1 KB a request** of the server's (slice 4,
-  outside the gate): its `tell-done!` runs each one under `call/1cc` and
-  `with-exception-handler`. Request logging (slice 5) would pay it on every request:
-  likely an upstream ask before slice 5.
+- **A `request-on-done!` procedure costs 858–870 B a request** through the adapter at 1
+  connection, and 528–557 B at 50, a no-op one (design §7; the gate's G8 on-done). Request logging pays it on
+  every request. Filed as
+  [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245)
+  on 2026-10-26: on the server alone one costs 733–843 B, and `tell-done!`'s shape 240 B
+  of it in plain Chez.
 - **Left from the owner's `/code-review` of slice 4, not fixed:**
   - a procfs file such as `/proc/self/status` reports a length of 0, so it is measured at
     0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
@@ -89,6 +97,67 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-27: slice 5, `(circuit middleware waits)`, in PR #5
+
+Commits on `slice/5-middleware-waits`: the import audit's two names (3d6140c), the library
+and its suite (d5e7adb), the example and its loopback rows (09f8698), the gate on the real
+middleware (8db56bf), the records with this close-out (4b99942), and its CI run named
+here. Built, reviewed and fixed on 2026-10-26 and 27. `make test` passes 12 suites, 514
+rows (check-imports 51, check-suites 14, circuit-testing 45, examples 58, headers 24,
+http-server 64, middleware 9, middleware-waits 64, names 17, request 47, response 79,
+test 42), and `make gate` passes. Its worst figures in the three runs on the final code:
+G1 1,445, G2 1,442, G3 310 a GET and 278 a POST, G4 81 and 406, G5 385 and 341 with a
+park, G7 309, G8 1,141, G8 own 302, G8 on-done 870, G9 609 and 612 with a park. CI
+passed on the PR (run 40481062189, 3m6s): 12 suites, and the gate's worst figures within
+those ranges (G5 385 and 340, G8 own 288, G9 606 and 605):
+
+- **the owner's decisions** (design §15.13–§15.15): before the slice, the log's clock is
+  Chez's `real-time`, logging is on `req-on-done!` with its cost filed upstream, the catch
+  helper reports through `on-raise`, and the line has the server's shape; in it, G9 held
+  with a park, and `wrap-log`'s own share held, G8 own, after the review. At the review,
+  on 2026-10-27, the owner accepted G8 own's 384 B and G9's 768 B bounds, and the
+  allowlist's `real-time` and `display-condition`;
+- **upstream:** [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245),
+  filed 2026-10-26: a no-op `request-on-done!` procedure costs 706–843 B a request on the
+  server alone, and 858–870 B through the adapter;
+- **the library** (Opus 5.5; 387,045 tokens over four rounds, 28, 5.5, 4.6 and 1.5
+  minutes): `(circuit middleware waits)`, its suite through the test host, the audit's two
+  names, and the names suite. Its first round watched 62 of 64 mutants fail; the two
+  `call/1cc` escapes fail the gate instead. The session reran twelve mutants of its own, three
+  of them through the gate, and nine of the review's. The gate on its first build read G5 at 485–487 B against 512: the
+  brief had `on-raise` run after the escape, a frame after the `call/cc`. Run inside the
+  handler, it reads 373–385 B. Writing the log line straight to the port took `wrap-log`'s
+  own share from about 655 B to about 273 B;
+- **the example and loopback rows** (Opus 5.5; 229,926 tokens, 50 minutes):
+  `examples/middleware.sps` and 21 rows. 28 mutants were watched failing, and no process
+  outlives a run; the session reran four. It found that a FIN mid-response is heard at
+  once, and that over one a wrap's `f` reads an open port, which corrected design §6 and
+  §9 and the Open item;
+- **the gate** (the session): G5 on the real helper, G8 printed, G8 own and G9 held, each
+  held gate watched failing: `call/1cc` escapes read G5 875–927 B and 3,674–3,725 B with a
+  park, and G9 1,131–1,137 B and 3,895–3,904 B; the line built in a string port reads
+  G8 own 653–688 B;
+- **a read-only Opus review** (Opus 5.5; 290,803 tokens, 26 minutes) found no defect in
+  what the middleware does. It found, and the session reproduced, then fixed:
+  - records that overclaimed: requests the server refuses before the handler are logged
+    nowhere (Open); a line can read `200 failed` while the client got the server's 500;
+    an `on-raise` that waits needs `wrap-timeout` outside `wrap-catch`;
+  - `wrap-log`'s own cost held by nothing: now G8 own;
+  - nine mutants passing every suite, among them a 504 with an empty-string body, a
+    non-res `on-raise` answer, `(wrap-timeout 0)` and a coarse default clock: each now
+    fails a row;
+  - figures that disagreed between the records, now ranges over every run;
+- **traps, reproduced by the session:**
+  - `(rnrs)`'s `current-output-port` is not Chez's parameter: `parameterize` raises
+    "incorrect number of arguments"; parameterize Chez's own through a rename;
+  - `display-condition` shows one irritant as `with irritant 7`, and several as
+    `with irritants (7 "x")`;
+  - the server's log line breaks on a raised string holding a line feed (Open);
+  - R6RS's `record?` is false for an opaque record, so the server's log writes it;
+  - Chez buffers a custom textual output port until a flush, and its console port writes
+    out at each line feed when standard output is a file, which hides a missing flush;
+  - a `call/cc` outside tail position costs about 100 B a request more on a coroutine.
 
 ### 2026-10-26: slice 4, the adapter, in PR #4
 

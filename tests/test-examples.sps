@@ -21,11 +21,20 @@
 ;;; a zombie, holding nothing, until the suite exits.
 ;;;
 ;;; Oracles: examples/README.md, which says what each example answers; curl,
-;;; which says which local port it used; and the settings a row gives. A
-;;; response is asserted whole: its status line, its header fields in order,
-;;; Date's value aside, and its body. Each example is also read as data: it
-;;; imports (rnrs), (circuit) and (circuit http-server) alone, and its last
-;;; form calls run-server.
+;;; which says which local port it used; the settings a row gives; and, for
+;;; the line (circuit middleware waits)'s catch writes, the line the server
+;;; writes in the same process for the same raise let out. A response is
+;;; asserted whole: its status line, its header fields in order, Date's
+;;; value aside, and its body. Each example is also read as data: it
+;;; imports (rnrs), (circuit) and (circuit http-server) alone, but
+;;; middleware.sps, which imports (circuit middleware waits) too, and its
+;;; last form calls run-server.
+;;;
+;;; Where a row reads a program's standard output, it asserts every line,
+;;; whole and in order, one character a byte, a request line's milliseconds
+;;; aside, which a row bounds where it can. The suite waits, with a bound,
+;;; for each request's lines before it makes the next, so their order is
+;;; the program's.
 ;;;
 ;;; The two addresses read the same over 127.0.0.1, so one row connects from
 ;;; 127.0.0.2. Linux routes all of 127.0.0.0/8 to loopback. Where curl can't
@@ -37,7 +46,8 @@
 ;;;
 ;;; To run mutants, run this suite from a directory holding an examples/ and
 ;;; a tests/loopback-app.sps of its own, on an absolute library path, with a
-;;; mutant library first on it for the adapter's.
+;;; mutant library first on it for the adapter's or (circuit middleware
+;;; waits).
 (import (rnrs)
         (srfi :64)
         (circuit-testing)
@@ -225,6 +235,47 @@
                       (cons (cadr words) (string->number (caddr words)))
                       (loop (cdr lines)))))))))
 
+;; lines-in : String -> (Listof String)
+;; The whole lines the program in DIR has written on standard output, in
+;; order, one character a byte, so two lines are equal as strings only when
+;; their bytes are.
+(define (lines-in dir)
+  (let ((path (file-in dir "out")))
+    (if (file-exists? path)
+        (let ((pieces (reverse (split (call-with-port (open-file-input-port path) bytes-text) "\n"))))
+          ;; The last piece follows the last newline: no whole line.
+          (reverse (cdr pieces)))
+        '())))
+
+;; bytes-text : BinaryInputPort -> String — what is left of PORT, one character a byte.
+(define (bytes-text port)
+  (let ((bytes (get-bytevector-all port)))
+    (if (eof-object? bytes)
+        ""
+        (list->string (map integer->char (bytevector->u8-list bytes))))))
+
+;; until-lines : String Nat -> (Listof String)
+;; lines-in, once the program in DIR has written N whole lines or more,
+;; waiting at most 5 s; else the lines it has written by then.
+(define (until-lines dir n)
+  (or (poll (lambda () (let ((lines (lines-in dir))) (and (>= (length lines) n) lines))) 5000)
+      (lines-in dir)))
+
+;; digits? : String -> Boolean — one or more of #\0 to #\9, nothing else.
+(define (digits? s)
+  (and (> (string-length s) 0)
+       (for-all (lambda (c) (char<=? #\0 c #\9)) (string->list s))))
+
+;; blank-ms : String -> (Pair String (U Nat #f))
+;; A request line, `request ... MS` with MS in digits, as `request ... N`,
+;; and MS; any other line as it is, and #f.
+(define (blank-ms line)
+  (let* ((words (split line " "))
+         (last-word (car (reverse words))))
+    (if (and (pair? (cdr words)) (string=? (car words) "request") (digits? last-word))
+        (cons (join " " (reverse (cons "N" (cdr (reverse words))))) (string->number last-word 10))
+        (cons line #f))))
+
 ;; with-program : String String (Listof String)
 ;;                (String (U (Pair String Nat) 'ended #f) -> Any) -> Void
 ;; Starts PROGRAM with SETTINGS, waits at most 60 s for its listening line
@@ -250,10 +301,10 @@
       (test-equal (string-append name ": nothing raises outside a row") "nothing" raised))
     (test-equal (string-append name ": it has ended once the rows are done") 'ended ending)))
 
-;; with-server : String String (Listof String) (Nat -> Any) -> Void
+;; with-server-in : String String (Listof String) (String Nat -> Any) -> Void
 ;; with-program, asserting the program listens on 127.0.0.1 at a port the
-;; kernel chose, and then calling BODY with the port.
-(define (with-server name program settings body)
+;; kernel chose, and then calling BODY with its directory and the port.
+(define (with-server-in name program settings body)
   (with-program name program settings
     (lambda (dir heard)
       (test-equal (string-append name ": it listens on 127.0.0.1, at a port the kernel chose")
@@ -262,7 +313,12 @@
                       (list (car heard) (if (kernel-port? (cdr heard)) 'kernel (cdr heard)))
                       (list heard (file-text (file-in dir "out")) (file-text (file-in dir "err")))))
       (when (pair? heard)
-        (body (cdr heard))))))
+        (body dir (cdr heard))))))
+
+;; with-server : String String (Listof String) (Nat -> Any) -> Void
+;; with-server-in, calling BODY with the port alone.
+(define (with-server name program settings body)
+  (with-server-in name program settings (lambda (dir port) (body port))))
 
 ;; kernel-port? : Any -> Boolean
 ;; A port number, and not 8080, the server's default: the kernel's choice
@@ -332,6 +388,10 @@
 ;; text-answer : String String -> Answer — a text/plain body, sent with its length.
 (define (text-answer status-line body)
   (list status-line (list date text-plain (content-length (bytevector-length (string->utf8 body)))) body))
+
+;; empty-answer : String (Pair String String) ... -> Answer — no body, MORE-FIELDS after its length.
+(define (empty-answer status-line . more-fields)
+  (list status-line (append (list date (content-length 0)) more-fields) ""))
 
 ;;; ------------------------------------------------------------------------
 ;;; The long poll
@@ -445,6 +505,9 @@
                      '((import (rnrs) (circuit) (circuit http-server)) run-server)
                      (program-shape (string-append "examples/" name ".sps"))))
        '("hello" "echo" "stream" "long-poll"))
+      (test-equal "middleware: it imports (rnrs), (circuit), (circuit http-server) and (circuit middleware waits) alone, and ends in run-server"
+                  '((import (rnrs) (circuit) (circuit http-server) (circuit middleware waits)) run-server)
+                  (program-shape "examples/middleware.sps"))
 
       (with-server "hello" "examples/hello.sps" '()
         (lambda (port)
@@ -535,6 +598,62 @@
                       (text-answer "HTTP/1.1 404 Not Found" "GET /wait or /waiting, or POST /send with a message\n")
                       (answer (fetch port "/send")))))
 
+      ;; Each request's lines are waited for before the next request.
+      ;; Sleeps and deadlines run on a timer of their own, not the server's
+      ;; tick, which ends the waits due earliest first. A sleep is armed
+      ;; after the deadline around it, so one of 1001 ms is due after a
+      ;; deadline of 1000 however late the loop runs: its 504 rests on no
+      ;; timing, and pins the timeout below 1001 ms. A 504's ms is the
+      ;; timeout and the loop's lateness, 3 to 6 ms here, with four busy
+      ;; loops beside it too; the bound of 1500 allows the loop 500 ms, and
+      ;; a clock that read a finer unit than ms would read 1000 times more.
+      (with-server-in "middleware" "examples/middleware.sps" '()
+        (lambda (dir port)
+          (test-equal "middleware: GET / is hello, as text"
+                      (text-answer "HTTP/1.1 200 OK" "hello\n")
+                      (answer (fetch port "/")))
+          (until-lines dir 2)
+          (test-equal "middleware: GET /boom raises, and the catch answers an empty 500, the connection kept"
+                      (empty-answer "HTTP/1.1 500 Internal Server Error")
+                      (answer (fetch port "/boom")))
+          (until-lines dir 4)
+          (test-equal "middleware: GET /slow?ms=0 answers inside the timeout"
+                      (text-answer "HTTP/1.1 200 OK" "waited 0 ms\n")
+                      (answer (fetch port "/slow?ms=0")))
+          (until-lines dir 5)
+          (test-equal "middleware: GET /slow?ms=1500 is cut short by the timeout: an empty 504, no sooner than 1000 ms"
+                      (list (empty-answer "HTTP/1.1 504 Gateway Timeout") 'not-before-the-timeout)
+                      (let* ((start (now-ms))
+                             (f (fetch port "/slow?ms=1500"))
+                             (took (- (now-ms) start)))
+                        (list (answer f) (if (>= took 1000) 'not-before-the-timeout (list 'took-ms took)))))
+          (until-lines dir 6)
+          (test-equal "middleware: GET /slow?ms=1001, a millisecond past the timeout, is an empty 504 too"
+                      (empty-answer "HTTP/1.1 504 Gateway Timeout")
+                      (answer (fetch port "/slow?ms=1001")))
+          (until-lines dir 7)
+          (test-equal "middleware: any other path is 404, with a hint"
+                      (text-answer "HTTP/1.1 404 Not Found" "try /, /slow?ms=1500 or /boom\n")
+                      (answer (fetch port "/nope")))
+          (let ((lines (map blank-ms (until-lines dir 8))))
+            (test-equal "middleware: its standard output, each line whole and in order, a request line's ms aside: the catch's line before its request's"
+                        (list (string-append "listening 127.0.0.1 " (number->string port))
+                              "request GET / 200 written N"
+                              "handler-failed Exception in app: boom"
+                              "request GET /boom 500 written N"
+                              "request GET /slow 200 written N"
+                              "request GET /slow 504 written N"
+                              "request GET /slow 504 written N"
+                              "request GET /nope 404 written N")
+                        (map car lines))
+            (test-equal "middleware: each 504's ms, by the real clock, is at least the timeout's 1000, and under 1500, the timeout and 500 ms for the loop's lateness"
+                        '(from-1000-to-under-1500 from-1000-to-under-1500)
+                        (map (lambda (line)
+                               (let ((ms (cdr line)))
+                                 (if (and ms (<= 1000 ms) (< ms 1500)) 'from-1000-to-under-1500 (list 'ms ms))))
+                             (filter (lambda (line) (string=? (car line) "request GET /slow 504 written N"))
+                                     lines))))))
+
       (with-server "loopback" "tests/loopback-app.sps"
         '("CIRCUIT_PORT_PIECE_BYTES=4" "CHEZ_HTTP_MAX_BODY_BYTES=4")
         (lambda (port)
@@ -573,6 +692,51 @@
                       (addresses-verdict (fetch port "/addresses" "-H" "Transfer-Encoding: chunked"
                                                 "--data-binary" "abcdefghij")
                                          "127.0.0.1" port '("Connection" . "close")))))
+
+      ;; The raises are irritant, (error 'app "refused" 7); lines,
+      ;; (error 'app "two\nlines"); and components, a &warning alone, which
+      ;; display-condition shows on two lines. Each is raised under the catch
+      ;; and then let out, so the server writes its own line for it; the
+      ;; catch's line is held against the server's, in the same process.
+      ;; GET /stream writes "1", then waits 30 s before its next write, so a
+      ;; line within the 5 s until-lines waits can only come from the
+      ;; server reading the client's close: curl, leaving at its
+      ;; --max-time, closes with a FIN.
+      (with-server-in "loopback, its log" "tests/loopback-app.sps" '()
+        (lambda (dir port)
+          (let ((raises '(("irritant" . "handler-failed Exception in app: refused with irritant 7")
+                          ("lines" . "handler-failed Exception in app: two lines")
+                          ("components" . "handler-failed Exception occurred with condition components:   0. &warning"))))
+            (for-each
+             (lambda (r i)
+               (let* ((caught (answer (fetch port (string-append "/caught/" (car r)))))
+                      (circuit-line (let ((lines (until-lines dir (+ 2 (* 2 i)))))
+                                      (and (= (length lines) (+ 2 (* 2 i))) (list-ref lines (+ 1 (* 2 i))))))
+                      (raised (answer (fetch port (string-append "/raised/" (car r)))))
+                      (server-line (let ((lines (until-lines dir (+ 3 (* 2 i)))))
+                                     (and (= (length lines) (+ 3 (* 2 i))) (list-ref lines (+ 2 (* 2 i)))))))
+                 (test-equal (string-append "loopback, its log: " (car r) ", let out, reaches the server, which answers 500, closing, and writes its handler-failed line")
+                             (list (empty-answer "HTTP/1.1 500 Internal Server Error" '("Connection" . "close")) (cdr r))
+                             (list raised server-line))
+                 (test-equal (string-append "loopback, its log: " (car r) ", under wrap-catch, is an empty 500, the connection kept, and the line the server writes for it, byte for byte")
+                             (list (empty-answer "HTTP/1.1 500 Internal Server Error")
+                                   (if (and (string? server-line) (>= (string-length server-line) 15)
+                                            (string=? (substring server-line 0 15) "handler-failed "))
+                                       server-line
+                                       (list 'no-server-line server-line)))
+                             (list caught circuit-line))))
+             raises (counting (length raises)))
+            (test-equal "loopback, its log: a client that leaves mid-stream, with no write due for 29 s, is heard within 5 s: wrap-log's line ends client-closed"
+                        (list 28 "1\n" "request GET /stream 200 client-closed N")
+                        (let* ((r (capture-command (list "curl" "-sS" "-N" "--max-time" "1" (url port "/stream"))))
+                               (n (+ 2 (* 2 (length raises))))
+                               (lines (until-lines dir n)))
+                          (list (car r) (cadr r) (and (= (length lines) n) (car (blank-ms (list-ref lines (- n 1))))))))
+            (test-equal "loopback, its log: its standard output, each line whole and in order, a request line's ms aside"
+                        (append (list (string-append "listening 127.0.0.1 " (number->string port)))
+                                (apply append (map (lambda (r) (list (cdr r) (cdr r))) raises))
+                                (list "request GET /stream 200 client-closed N"))
+                        (map car (map blank-ms (lines-in dir)))))))
 
       (with-program "loopback, CIRCUIT_PORT_PIECE_BYTES=12x" "tests/loopback-app.sps"
         '("CIRCUIT_PORT_PIECE_BYTES=12x")

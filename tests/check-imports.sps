@@ -78,8 +78,12 @@
 ;; its header may not import. Adding one is a reviewed change (ADR-0006).
 ;; getenv is the adapter's default environment, as it is `serve`'s;
 ;; port-has-port-length? and port-length size a port body from Chez's own
-;; length of it, which plain R6RS can't ask (design §5, §15.8).
-(define chez-names '(getenv port-has-port-length? port-length))
+;; length of it, which plain R6RS can't ask (design §5, §15.8). real-time
+;; is request logging's default clock: R6RS has none, and it counts
+;; milliseconds from the process's start in a fixnum. display-condition
+;; shows a condition in the catch helper's default line as the server's log
+;; shows it, which R6RS can't (design §6).
+(define chez-names '(getenv port-has-port-length? port-length real-time display-condition))
 
 ;; wrappers : (Listof Symbol)
 ;; The import-set forms that wrap one import set, in their second element.

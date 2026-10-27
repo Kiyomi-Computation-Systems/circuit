@@ -32,7 +32,11 @@
 ;;; through the adapter; through the adapter under five middlewares that
 ;;; each `req-set` a key; through the adapter with the app parked once,
 ;;; `(sleep-ms 0)`; the adapter's app, and the parked one, inside the catch
-;;; helper, nothing raised; through the adapter as a bytevector body, and
+;;; helper, nothing raised; the adapter's app registering a no-op
+;;; req-on-done! procedure; inside wrap-log, its lines written to
+;;; /dev/null; inside wrap-timeout, its deadline never passing, the app
+;;; parked once inside it and not; through
+;;; the adapter as a bytevector body, and
 ;;; as a bytevector port body, which the adapter reads whole, a port of
 ;;; one piece or less (design §5); and a 13-byte POST read raw, by
 ;;; read-whole-body, and from an `awaiting` thunk and through the adapter,
@@ -42,8 +46,9 @@
 ;;; The adapter is circuit's own, (circuit http-server)'s circuit->handler,
 ;;; given an environment that answers #f for every name, so the process's
 ;;; environment moves no figure: the server under it is started with a
-;;; lookup of its own. The catch helper is S2's, by call/cc, a stand-in for
-;;; slice 5's in (circuit middleware waits), until slice 5 brings it.
+;;; lookup of its own. The catch helper, wrap-log and wrap-timeout are
+;;; circuit's own, (circuit middleware waits)'s. Every run's standard output
+;;; goes to /dev/null, so wrap-log's lines cost what they cost on a file.
 ;;;
 ;;; Run from the checkout's root, inside the Guix container, through make,
 ;;; once `make oha` has fetched oha on the host:
@@ -52,7 +57,10 @@
 ;;;   scripts/guix-env make gate-rps
 (import (rnrs) (rnrs mutable-pairs)
         (only (chezscheme) printf statistics sstats-bytes collect scheme-version machine-type
-              open-process-ports native-transcoder)
+              open-process-ports native-transcoder parameterize)
+        ;; (rnrs)'s current-output-port is a procedure, not Chez's parameter,
+        ;; which display reads: parameterize takes Chez's.
+        (rename (only (chezscheme) current-output-port) (current-output-port chez:current-output-port))
         (only (libuv) make-uv-loop make-uv-pipe uv-spawn! uv-read-start! uv-close! uv-version)
         (only (uv-testing) make-byte-collector collect-span! collector-bytes)
         (http-server)
@@ -60,9 +68,10 @@
         (only (http-server private shell) shell-run-turns!)
         (only (http-server private serve) start-server)
         (only (circuit request) make-req-view make-req req-body req-header req-ref req-set
-              make-req-key)
+              make-req-key req-on-done! test-req-done!)
         (only (circuit response) make-res res? res-status)
         (only (circuit middleware) wrap)
+        (only (circuit middleware waits) wrap-catch wrap-timeout wrap-log)
         (only (circuit http-server) circuit->handler))
 
 ;;; ------------------------------------------------------------------------
@@ -84,10 +93,10 @@
 (define rps-seconds 5)
 (define rps-floor 9/10)
 
-;; make-gate : String String String Nat Nat Boolean String -> Gate
+;; make-gate : String String String Nat (U Nat #f) Boolean String -> Gate
 ;; A gate: its name; the variant over its base, paired round by round and
-;; divided by `per`; its bound in bytes; whether it is held, failing the
-;; gate, or printed; and what it measures.
+;; divided by `per`; its bound in bytes, or #f for a printed one with none;
+;; whether it is held, failing the gate, or printed; and what it measures.
 (define-record-type (gate make-gate gate?)
   (fields name variant base per bound held? what))
 
@@ -110,31 +119,25 @@
    (make-gate "G5 park" "catch-none-park" "get-adapter-park" 1 512 #t
               "the catch helper over the unwrapped app, nothing raised, the app parked once inside it")
    (make-gate "G7" "get-adapter-port" "get-adapter-bytes" 1 384 #t
-              "a 6-byte bytevector port body over the same bytes as a bytevector, through the adapter, the port made per request and read whole")))
+              "a 6-byte bytevector port body over the same bytes as a bytevector, through the adapter, the port made per request and read whole")
+   (make-gate "G8" "log" "get-adapter" 1 #f #f
+              "wrap-log over the unwrapped app, its line written to /dev/null")
+   (make-gate "G8 own" "log" "get-ondone" 1 384 #t
+              "wrap-log's own work: wrap-log over the app, over the app registering a no-op req-on-done! procedure")
+   (make-gate "G8 on-done" "get-ondone" "get-adapter" 1 #f #f
+              "a no-op req-on-done! procedure, registered by the app, what wrap-log pays the server (chez-http-server #245)")
+   (make-gate "G9" "timeout" "get-adapter" 1 768 #t
+              "wrap-timeout over the unwrapped app, its deadline never passing")
+   (make-gate "G9 park" "timeout-park" "get-adapter-park" 1 768 #t
+              "wrap-timeout over the unwrapped app, its deadline never passing, the app parked once inside it")))
 
 ;;; ------------------------------------------------------------------------
-;;; The adapter's environment, and the stand-in catch helper.
+;;; The adapter's environment.
 
 ;; no-env : String -> #f — every adapter's environment: no setting is set,
 ;; so circuit->handler takes its defaults whatever the process's
 ;; environment holds.
 (define (no-env name) #f)
-
-;; wrap-catch : Handler -> Handler
-;; S2's catch helper, a stand-in for slice 5's in (circuit middleware
-;; waits): an escape by call/cc around with-exception-handler.
-;; &client-closed and &deadline-passed are raised again, to the handler
-;; outside, from where they were raised; anything else answers a 500 res.
-(define (wrap-catch handler)
-  (lambda (req)
-    (call/cc
-     (lambda (k)
-       (with-exception-handler
-        (lambda (e) (if (or (client-closed? e) (deadline-passed? e)) (raise e) (k (error-res))))
-        (lambda () (handler req)))))))
-
-;; error-res : -> Res — the catch's 500.
-(define (error-res) (make-res 500 text-headers "circuit: internal server error\n"))
 
 ;;; ------------------------------------------------------------------------
 ;;; The apps and the raw handlers. A POST answers 200 only for the body oha
@@ -165,6 +168,13 @@
 ;; body, and as a bytevector port body, a port made per request.
 (define (bytes-hello req) (make-res 200 text-headers hello-bytes))
 (define (port-hello req) (make-res 200 text-headers (open-bytevector-input-port hello-bytes)))
+
+;; ondone-hello : Req -> Res — hello, after registering a no-op req-on-done!
+;; procedure.
+(define (ondone-hello req) (req-on-done! req ignore-ending) (make-res 200 text-headers "hello\n"))
+
+;; ignore-ending : Symbol -> #f
+(define (ignore-ending how) #f)
 
 ;; post-hello : Req -> Res — hello, once the body is read by
 ;; get-bytevector-n of its declared length.
@@ -226,6 +236,11 @@
         (make-variant "catch-none" "get-adapter" 'GET (circuit->handler (wrap-catch hello) no-env))
         (make-variant "catch-none-park" "get-adapter-park" 'GET
                       (circuit->handler (wrap-catch parked-hello) no-env))
+        (make-variant "get-ondone" "get-adapter" 'GET (circuit->handler ondone-hello no-env))
+        (make-variant "log" "get-adapter" 'GET (circuit->handler (wrap-log hello) no-env))
+        (make-variant "timeout" "get-adapter" 'GET (circuit->handler ((wrap-timeout 30000) hello) no-env))
+        (make-variant "timeout-park" "get-adapter-park" 'GET
+                      (circuit->handler ((wrap-timeout 30000) parked-hello) no-env))
         (make-variant "get-adapter-bytes" "get-adapter" 'GET (circuit->handler bytes-hello no-env))
         (make-variant "get-adapter-port" "get-adapter-bytes" 'GET (circuit->handler port-hello no-env))
         (make-variant "post-raw" #f 'POST post-raw)
@@ -266,23 +281,43 @@
       (refuse (call-with-string-output-port
                (lambda (p) (put-string p "the five middlewares set ") (write keys p)
                        (put-string p ", not their five keys"))))))
-  (for-each
-   (lambda (probe)
-     (let* ((label (car probe)) (app (cadr probe)) (expected (caddr probe))
-            (got (outcome (lambda ()
-                            (let ((r ((wrap-catch app) (probe-req))))
-                              (if (res? r) (list 'res (res-status r)) r))))))
-       (unless (equal? got expected)
-         (refuse (call-with-string-output-port
-                  (lambda (p) (put-string p "the catch helper, ") (put-string p label)
-                          (put-string p ", answered ") (write got p) (put-string p ", not ")
-                          (write expected p)))))))
-   (list (list "nothing raised" hello '(res 200))
-         (list "an error raised" (lambda (req) (error 'app "boom")) '(res 500))
-         (list "&deadline-passed raised" (lambda (req) (raise (make-deadline-passed)))
-               '(raised . deadline-passed))
-         (list "&client-closed raised" (lambda (req) (raise (make-client-closed)))
-               '(raised . client-closed)))))
+  (let-values (((out said) (open-string-output-port)))
+    (parameterize ((chez:current-output-port out))
+      (for-each
+       (lambda (probe)
+         (let* ((label (car probe)) (app (cadr probe)) (expected (caddr probe))
+                (got (outcome (lambda ()
+                                (let ((r ((wrap-catch app) (probe-req))))
+                                  (if (res? r) (list 'res (res-status r)) r))))))
+           (unless (equal? got expected)
+             (refuse (call-with-string-output-port
+                      (lambda (p) (put-string p "the catch helper, ") (put-string p label)
+                              (put-string p ", answered ") (write got p) (put-string p ", not ")
+                              (write expected p)))))))
+       (list (list "nothing raised" hello '(res 200))
+             (list "an error raised" (lambda (req) (error 'app "boom")) '(res 500))
+             (list "&deadline-passed raised" (lambda (req) (raise (make-deadline-passed)))
+                   '(raised . deadline-passed))
+             (list "&client-closed raised" (lambda (req) (raise (make-client-closed)))
+                   '(raised . client-closed)))))
+    (let ((text (said)))
+      (unless (string=? text "handler-failed Exception in app: boom\n")
+        (refuse (call-with-string-output-port
+                 (lambda (p) (put-string p "the catch helper wrote ") (write text p)
+                         (put-string p ", not its one handler-failed line")))))))
+  (let-values (((out said) (open-string-output-port)))
+    (let* ((req (probe-req))
+           (got (parameterize ((chez:current-output-port out))
+                  (outcome (lambda ()
+                             (let ((r ((wrap-log hello (lambda () 7)) req)))
+                               (test-req-done! req 'written)
+                               (if (res? r) (list 'res (res-status r)) r))))))
+           (text (said)))
+      (unless (and (equal? got '(res 200)) (string=? text "request GET / 200 written 0\n"))
+        (refuse (call-with-string-output-port
+                 (lambda (p) (put-string p "wrap-log answered ") (write got p)
+                         (put-string p " and wrote ") (write text p)
+                         (put-string p ", not (res 200) and its one request line"))))))))
 
 ;;; ------------------------------------------------------------------------
 ;;; The server, and oha spawned on its loop.
@@ -314,13 +349,19 @@
                          log!))
   (set! url (string-append "http://127.0.0.1:" (number->string (cadr listening)) "/")))
 
+;; null-port : TextualOutputPort — /dev/null, every run's standard output,
+;; flushed as standard output is: wrap-log flushes each line.
+(define null-port
+  (open-file-output-port "/dev/null" (file-options no-fail) (buffer-mode block) (native-transcoder)))
+
 ;; allocated : -> Nat — the bytes this process has allocated, all told.
 (define (allocated) (sstats-bytes (statistics)))
 
 ;; spawn : String (Listof String) -> (Values Nat (U Nat #f) String)
 ;; Run `program` with `args` to its end, turning the server's loop as
-;; `serve` does meanwhile: the bytes allocated from its start to its end,
-;; its exit status, and what it wrote on standard output.
+;; `serve` does meanwhile, with this process's standard output at
+;; /dev/null: the bytes allocated from its start to its end, its exit
+;; status, and what it wrote on standard output.
 (define (spawn program args)
   (let* ((out (make-uv-pipe loop)) (said (make-byte-collector)) (exit #f)
          (b0 (allocated))
@@ -328,7 +369,8 @@
                            (list (cons 'stdio (list 'ignore (list 'pipe out 'from-child) 'ignore)))
                            (lambda (status signal) (set! exit (list status signal))))))
     (uv-read-start! out (lambda (bv start end) (collect-span! said bv start end)) (lambda () #f) (lambda (e) #f))
-    (shell-run-turns! sh (lambda () (not exit)))
+    (parameterize ((chez:current-output-port null-port))
+      (shell-run-turns! sh (lambda () (not exit))))
     (let ((b1 (allocated)))
       (uv-close! child)
       (uv-close! out)
@@ -509,12 +551,12 @@
   (printf "|:--|:--|--:|--:|--:|--:|--:|:--|\n")
   (fold-left
    (lambda (failed g)
-     (let* ((worst (gate-worst g)) (ok? (<= worst (gate-bound g))))
+     (let* ((worst (gate-worst g)) (bound (gate-bound g)) (ok? (or (not bound) (<= worst bound))))
        (printf "| ~a | ~a over ~a~a | ~a | ~a | ~a | ~a | ~a | ~a |\n"
                (gate-name g) (gate-variant g) (gate-base g)
                (if (= (gate-per g) 1) "" (string-append ", over " (number->string (gate-per g))))
                (span (gate-figures g 1) signed) (span (gate-figures g 50) signed)
-               (signed worst) (whole (gate-bound g)) (whole (- (gate-bound g) worst))
+               (signed worst) (if bound (whole bound) "-") (if bound (whole (- bound worst)) "-")
                (cond ((not (gate-held? g)) "printed") (ok? "held, pass") (else "held, FAIL")))
        (if (and (gate-held? g) (not ok?)) (append failed (list g)) failed)))
    '() gates))

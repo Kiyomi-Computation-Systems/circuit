@@ -19,8 +19,9 @@ Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server
 
 ** Status
 
-Early. Requests, responses, middleware and the adapter onto the server work. The waiting
-middleware (a timeout, a catch for errors), upgrades and a router are still to come.
+Early. Requests, responses, middleware, the adapter onto the server, and the middleware
+that knows the server's waits (a catch for errors, a timeout, request logging) work.
+Upgrades and a router are still to come.
 
 ** Build and test
 
@@ -48,6 +49,27 @@ A handler takes a request and gives back a response:
 
 ~make run PROGRAM=examples/hello.sps~ runs it on ~127.0.0.1:8080~. [[file:examples/README.md][examples/]] has more:
 reading a body, streaming, and a handler that waits.
+
+Middleware takes a handler and gives back one. ~wrap~ puts the last outermost.
+~(circuit middleware waits)~ has three:
+
+#+begin_src scheme
+(import (rnrs) (circuit) (circuit http-server) (circuit middleware waits))
+
+(run-server (wrap app wrap-catch (wrap-timeout 5000) wrap-log))
+#+end_src
+
+- ~wrap-catch~ turns a raise into an empty ~500~, and logs a ~handler-failed~ line, as
+  the server does. ~(wrap-catch handler on-raise)~ answers with your own response
+  instead.
+- ~wrap-timeout~ answers an empty ~504~ when its milliseconds pass while the handler
+  waits, reading the body included. Put it outside ~wrap-catch~, so an ~on-raise~ that
+  waits still gets a ~504~.
+- ~wrap-log~ logs a line on standard output once each response is done:
+  ~request GET /users/7 200 written 3~, the last number in milliseconds. The status is
+  the handler's: ~failed~ means the server ended it, perhaps with its own. A request the
+  server refuses before any handler runs, such as a ~413~ for a body past its cap, isn't
+  logged.
 
 ** Configuration
 
