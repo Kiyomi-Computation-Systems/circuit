@@ -447,8 +447,10 @@ Rules for middleware authors, each a fact about the server:
   handler that then waits again parks for good. A handler that catches it
   may still answer: a client that half-closed its side reads the response;
   only a reset drops it. Swallowing the deadline turns a 504 into a 500. So
-  `wrap-timeout` goes **outside** the catch middleware, and the catch
-  middleware's helper re-raises both before catching the rest.
+  the catch middleware's helper re-raises both before catching the rest.
+  Since it does, an app's own wait meets a 504 with `wrap-timeout` on
+  either side of it. `wrap-timeout` still goes **outside** the catch,
+  for an `on-raise` that waits (below).
 - **Catch with `call/cc` around `with-exception-handler`.** S2 measured
   each way to catch on a coroutine, over the app alone. With nothing
   raised, the helper by `call/cc` costs 309–365 B, `guard` 377–414 B, and
@@ -475,6 +477,31 @@ Rules for middleware authors, each a fact about the server:
   gets its own status, and a `&client-closed` nothing, its client gone.
   Each failing request costs the client its connection: 7.2–8.3 KB a
   request, and under a third of the rate at 50 connections (S2).
+- **The catch helper reports what it answers 500** (§15.13). A raise it
+  turns into a response never reaches the server, so the server logs
+  nothing for it. `(wrap-catch handler [on-raise])` hands any raise but the
+  three above to `on-raise`, `Req Any -> Res`, inside the catch's handler,
+  where the raise happened, before the app's `dynamic-wind` after thunks
+  run. A raise from `on-raise` goes on to the handler outside, since R6RS
+  calls a handler with the one outside it current. Its answer is the
+  response, which is how an app gives its own error page or reports
+  elsewhere. Calling it after the escape instead would have put a frame
+  after the `call/cc`, which costs about 100 B a request with nothing
+  raised: G5 read 485–487 B that way, and 374–384 B with the `call/cc` in
+  tail position (slice 5). So `on-raise` runs under every `with-deadline`
+  in force where the raise happened, while only the handlers outside the
+  catch are current. One that waits past a deadline raises
+  `&deadline-passed`: with `wrap-timeout` outside the catch, that is the
+  timeout's 504; with it inside, or under an app's own `with-deadline`,
+  the raise reaches the server, which answers 500, closes the connection
+  and logs `handler-failed` (reproduced in the test host). The default
+  writes one line on the current output port as it is at the raise,
+  standard output unless the app has rebound it, flushed at once, and
+  answers an empty 500. The line is the one
+  `serve` writes for a raise that reaches it: `handler-failed`, then the
+  raise as the server writes a detail. A condition is shown as Chez's
+  `display-condition` shows it, its line breaks made spaces, so the
+  helper takes `display-condition` from `(chezscheme)` (ADR-0006).
 - **Don't free a resource in a `dynamic-wind` after thunk.** A park leaves
   every `dynamic-wind` around it and re-enters it at the resume (S1). The
   server's own `with-deadline` relies on it: its after thunk asks
@@ -483,8 +510,8 @@ Rules for middleware authors, each a fact about the server:
   after thunk runs at every wait inside the handler, a body read included.
   Free the resource when the call returns, and on a raise with an exception
   handler that raises on.
-- **A timeout is `with-deadline`.** `(wrap-timeout ms)` answers 504 when
-  `&deadline-passed` reaches it. The deadline covers the body's reads,
+- **A timeout is `with-deadline`.** `(wrap-timeout ms)` answers an empty
+  504 when `&deadline-passed` reaches it. The deadline covers the body's reads,
   which run inside the handler call (§4). It never covers a producer (§2),
   and it cuts nothing short that isn't waiting: CPU work and a blocking
   port read run on.
@@ -517,13 +544,16 @@ Rules for middleware authors, each a fact about the server:
     the app has returned. So it may wait, and may read `req-body`. But no
     middleware's dynamic extent covers it, so a raise from it gets the
     server's empty 500, not the catch helper's answer. The producer it
-    gives back runs as any producer does (§2). Once the client has gone
-    while the app waited, the request is done, and the close the adapter
-    registers for a port of more than one piece runs at once, before `f`
-    (§9): `f` is handed a
-    producer over a closed port, so an `f` that reads a piece eagerly
-    raises. The response goes nowhere, but the server may log the raise
-    (slice 4 saw it in the test host, which doesn't log it).
+    gives back runs as any producer does (§2). In the test host, once
+    the client has gone while the app waited, the request is done, and the
+    close the adapter registers for a port of more than one piece runs at
+    once, before `f` (§9): `f` is handed a producer over a closed port, so
+    an `f` that reads a piece eagerly raises, and the test host drops the
+    raise (slice 4). Over a real socket, a client that leaves with a FIN
+    leaves the request open until its response is written: `f` reads its
+    port, and the write fails, logged `read-error EPIPE` (slice 5,
+    reproduced). Whether a reset makes `f` meet a closed port is
+    unverified: curl can't be made to send one.
   - **The wrapped producer keeps the server's rules**: never an empty
     piece, so a compressor loops until it has bytes or reaches eof. A
     sized body's producer is never asked past its length, so under a
@@ -538,8 +568,9 @@ Rules for middleware authors, each a fact about the server:
   called directly in a test, since `with-deadline` is refused off a
   coroutine; it is tested through the server's test host (§10). One
   wrapped only in the catch helper can be, when it doesn't wait: the
-  helper is plain R6RS and needs only the server's predicates and
-  `body-failed-status`. Its answer to `&body-failed` is tested directly
+  helper needs only the server's predicates and `body-failed-status`, and
+  Chez's `display-condition` for its default line, none of them refused
+  off a coroutine. Its answer to `&body-failed` is tested directly
   too. The facade exports no constructor for the condition, but
   `(http-server awaiting)`, a public library, exports `make-body-failed`,
   so a test builds one. A body that fails in the test host checks the
@@ -605,6 +636,55 @@ calls them by the same rules, and answers what they raised:
 - **An ending other than `written`, `client-closed` or `failed`** is an
   assertion violation, as it is in the server.
 
+**Request logging is `(wrap-log handler [clock])`** (§15.13), in
+`(circuit middleware waits)`. It logs at the third moment, once the
+response is done. When its handler is called, it reads the clock and
+registers a `req-on-done!` procedure before it calls the handler inside,
+so it hears last of everything registered inside it. It catches nothing.
+When the handler inside returns, it notes the status: the response's
+status, `raised` for a raise, which goes on untouched, or `-` for an
+answer that isn't a `res`. Once told how the response ended, it reads the
+clock again and writes one line on standard output, flushed at once, in
+the server's own shape, a word and then its details:
+
+```text
+request GET /users/7 200 written 3
+request GET /feed 200 client-closed 30012
+request GET /boom raised failed 0
+```
+
+The details are the method, the path without its query, the status, the
+ending, and the milliseconds between the two readings. Like the server's
+lines, it carries no timestamp: the environment that collects standard
+output adds one.
+
+- **It logs each request that reaches its handler.** A request the
+  server answers before any handler runs, such as a 400, 408, 431 or 505,
+  or a 413 for a declared length past the cap, registers nothing, and
+  nothing logs it, circuit or the server (reproduced in the test host).
+- **The status is the one the handler answered**, not always the one
+  sent. When the server answers in the app's place (§7's `failed`), the
+  line reads, say, `200 failed` while the client got a 500: for a response
+  whose body is its request's `req-body` (§9), or a 101 before upgrades. Placed outside the catch helper and `wrap-timeout`, it
+sees the 500, 504 and 413 they answer: `(wrap app wrap-catch (wrap-timeout
+ms) wrap-log)`.
+
+- **The clock is Chez's `real-time`** by default: monotonic, milliseconds
+  since the process started, read by `CLOCK_MONOTONIC`, allocating
+  nothing. It works in a `req-on-done!` procedure, which runs on no
+  coroutine, where the waits' clock can't be read. A test passes its own
+  clock, such as one reading `test-host-now`.
+- **It pays for a `req-on-done!` procedure on every request.** A no-op one
+  costs 859–870 B a request through the adapter at 1 connection, and
+  529–548 B at 50 (slice 5's probe, the gate's G8 on-done and the
+  review's reruns), of which circuit's registration is one pair, 16 B. On
+  the server alone, one costs 706–843 B and a second about 330 B more.
+  The shape of the server's `tell-done!` costs 240 B a call in plain Chez,
+  so about 500 B is spent elsewhere, once for any procedure. Filed as
+  [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245)
+  on 2026-10-26. The gate prints logging's cost, G8, and holds
+  `wrap-log`'s own share, G8 own, without the server's (§15.6).
+
 ## 8. Upgrades
 
 `(make-upgrade-res headers take-over)` is a response with status 101 and
@@ -648,10 +728,11 @@ libraries that import `(http-server)`.
   keeps the order for it: it calls the adapter's `measure`, then its
   `on-port`, where the adapter registers the close, and only then any
   `f`; a raise from either, or from the read, closes the port (§11). On
-  a request already done, a client that left while the app waited, the
-  registration runs the close at once, so `f` then meets a closed port
-  (§6). A port read whole leaves `f` its bytes, so this is only a longer
-  port's.
+  a request already done, as the test host's is once a client has left
+  while the app waited, the registration runs the close at once, so `f`
+  then meets a closed port (§6). Over a real socket a FIN leaves the
+  request open until the write fails. A port read whole leaves `f` its
+  bytes, so this is only a longer port's.
 - **A response whose body is its request's `req-body`** is an assertion
   violation in the thunk, so the server answers 500 before the head. Its
   producer couldn't read the port (§4). The adapter looks through sized
@@ -753,6 +834,26 @@ libraries that import `(http-server)`.
   forgotten, each ordered by the example's `GET /waiting`. The long
   poll's 504, 30 s away, is held in its shape by the adapter's suite: an
   app that awaits inside `with-deadline`.
+  Slice 5 adds `examples/middleware.sps`, the three middlewares composed,
+  and rows for it and `tests/loopback-app.sps`:
+  - its answers, and every line it writes on standard output, whole and
+    in order, a request line's milliseconds aside;
+  - the timeout's 504 at 1,000 ms or more by the real clock, and under
+    1,500 ms, which bounds the loop's lateness alone: measured, 3–6 ms.
+    That holds the timeout from below only to within the lateness: an
+    example with a 997 ms or 998 ms timeout passes (slice 5's review);
+  - `/slow?ms=1001` answered 504 with no timing at all. The server ends
+    due waits earliest first, and a sleep armed after a deadline around
+    it is due after it, however late the loop runs;
+  - the catch helper's line equal to `serve`'s own `handler-failed` line,
+    byte for byte, for three raises, one with an irritant and two whose
+    text holds a line break;
+  - a client that leaves mid-stream with a FIN, logged `client-closed`
+    within 5 s, as it was in 40 runs of 40, 1–5 ms after curl exited.
+
+  `tests/loopback-app.sps` writes through a block-buffered standard output.
+  Chez's own console port writes out at each line feed when standard
+  output is a file, so on it a missing flush is invisible.
 - **Names don't clash, by test.** A suite imports `(http-server)`,
   `(http-server testing)`, `(circuit)`, `(circuit http-server)` and
   `(circuit test)` together with no `only` or `rename`, so an export that
@@ -788,7 +889,8 @@ libraries that import `(http-server)`.
                         header-names-downcase
 (circuit middleware)    wrap, and the pure middleware
 (circuit middleware waits)
-                        wrap-timeout and the catch helper; imports (http-server)
+                        wrap-catch, wrap-timeout and wrap-log; imports
+                        (http-server)
 (circuit test)          make-test-req, test-req-done!, res-body->bytevector
 (circuit http-server)   the adapter; imports (http-server)
 
@@ -859,13 +961,16 @@ server's too (ADR-0005). Slice 3 settled the names:
 
 The core is plain R6RS and imports nothing of the server's. The two
 impure libraries import `(http-server)`, and take from `(chezscheme)` only
-what ADR-0006's allowlist names, through `only`: `getenv`, and
+what ADR-0006's allowlist names, through `only`: `getenv`;
 `port-has-port-length?` and `port-length`, which the adapter sizes a port
-body with (§5, §15.8). Slice 4 amended the allowlist and ADR-0006 with the
-code that needs them. The catch helper is plain R6RS, and lives in
-`(circuit middleware waits)` because it needs the server's
-`client-closed?`, `deadline-passed?`, `body-failed?` and
-`body-failed-status`. chez-http-server is a pinned submodule under
+body with (§5, §15.8); and `real-time` and `display-condition`, which
+`wrap-log` times a request with and the catch helper's line shows a raise
+with (§6, §7, §15.13). Slices 4 and 5 amended the allowlist and ADR-0006
+with the code that needs them. The catch helper's escape is plain R6RS,
+and the helper lives in `(circuit middleware waits)` because it needs the
+server's `client-closed?`, `deadline-passed?`, `body-failed?` and
+`body-failed-status`. `wrap-log` lives there because it reads Chez's
+clock, and ADR-0006 allows two impure libraries, not a third. chez-http-server is a pinned submodule under
 `vendor/`, as it is in chez-websocket, at v0.9.0 (§15.7). It isn't on the
 Akku index, so it can't be an Akku dependency yet (ADR-0003).
 
@@ -1118,10 +1223,20 @@ The owner's answers to this draft's open questions (2026-10-25):
      two `guard`s. Read whole (§5), with one `with-exception-handler` for
      the guards, it reads 300–310 B. G7 was watched failing on the
      streamed code (5,098 B) and with the `guard`s back (658 B).
+   - **Slice 5 moved G5 onto the real catch helper and added G8 and G9**
+     (2026-10-26, ADR-0007). G5 reads 374–384 B, and 323–351 B with a
+     park. G8, `wrap-log` over the app, is printed: 1,132–1,145 B at 1
+     connection, 859–870 B of it the server's running of the `req-on-done!`
+     procedure (G8 on-done, §7). G8 own, `wrap-log`'s own share without the
+     server's, is held at 384 B, so building the line in a string port
+     first, which no suite row can see, fails it at 653–688 B. G9,
+     `wrap-timeout` over the app, is held at 768 B with a park and without.
+     It reads 582–614 B, and a `call/1cc` escape, which no suite row can
+     see, reads 1,131–1,137 B and 3,895–3,904 B with a park. Holding G8 own
+     and G9 are the owner's decisions; their bounds await acceptance.
    - **What the gate doesn't hold.** A port of more than one piece, which
-     streams, and a sized body. G5 holds the stand-in catch helper, which
-     no change under `src/` moves until slice 5. Per-connection costs
-     cancel under keep-alive, so the gate doesn't see them.
+     streams, and a sized body. Per-connection costs cancel under
+     keep-alive, so the gate doesn't see them.
 
 The owner's answers once the asks had landed (2026-10-26):
 
@@ -1164,6 +1279,40 @@ The owner's answers in slice 4 (2026-10-26):
     `res-body-stream`'s close on a raise made cheaper alone, which saved
     about 634 B.
 
+The owner's answers before slice 5 (2026-10-26):
+
+13. **Request logging and the catch helper's report** (§6, §7):
+    - **The log's clock is Chez's `real-time`**, taken onto ADR-0006's
+      allowlist, and `wrap-log` takes an optional clock for tests.
+      Weighed: an ask for the server to export its loop's clock, readable
+      on a coroutine and in a `req-on-done!` procedure, which would let
+      the test host's advance drive it, but would hold logging until a
+      new tag; and no duration, with no clock at all.
+    - **It logs once the response is done**, on `req-on-done!`, and
+      the gate prints its cost. The ask for a cheaper procedure is filed
+      as chez-http-server #245. Weighed: accepting the cost with no
+      ask; and logging when the handler returns, as Ring's logger does,
+      which pays nothing for a procedure but has no ending and misses a
+      streamed body's time.
+    - **The catch helper reports through `on-raise`**, whose default
+      writes the server's `handler-failed` line and answers an empty 500.
+      Weighed: the line alone, with nothing an app can override; and a
+      silent 500, as the gate's stand-in was.
+    - **The line has the server's shape**, a word and then its details.
+      Weighed: JSON lines; and a writer the app supplies.
+
+The owner's answers in slice 5 (2026-10-26):
+
+14. **`wrap-timeout`'s cost is held, G9, with a park and without** (§15.6),
+    since no suite row can tell a `call/1cc` escape from `call/cc`.
+    Weighed: G9 alone, which catches `call/1cc` at 1 connection only; and
+    keeping it printed.
+15. **`wrap-log`'s own share of logging is held, G8 own, at 384 B**
+    (§15.6), after slice 5's review found that building the line in a
+    string port first passed every suite and the gate. The server's share
+    stays printed, G8 on-done. Weighed: keeping all of G8 printed, as
+    §15.13 had it.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body.** This draft has none
@@ -1172,10 +1321,7 @@ The owner's answers in slice 4 (2026-10-26):
    its deployer sets one. A per-route cap would be middleware's. The pull
    fixes its cap at the first read, so such middleware would set the cap
    on the request, and `req-body` would make its port with it.
-2. **A clock for request logging** (slice 5). R6RS has none, and the
-   server's facade exports none. The server's own clock, the one its waits
-   and its test host use, is the one to read, so a test's advance would
-   drive it. That is likely an ask on the server.
+2. **A clock for request logging**: decided before slice 5 (§15.13).
 3. **A response can't stream the request's body back** (§4): only the
    `awaiting` thunk may pull. An echo or a proxy that streams both ways at
    once would need the server to let a producer pull. That would be an
@@ -1205,6 +1351,11 @@ The owner's answers in slice 4 (2026-10-26):
    amended for `port-has-port-length?` and `port-length`, and examples
    run over loopback: hello, echo, a stream, a long poll. The gate's final
    numbers, from the real adapter, in a decision record (§15.6).
-5. `(circuit middleware waits)`: the catch helper and `wrap-timeout`,
-   through `(http-server testing)`; request logging on `req-on-done!`.
+5. `(circuit middleware waits)`: the catch helper `wrap-catch` and
+   `wrap-timeout`, through `(http-server testing)`, and request logging,
+   `wrap-log`, on `req-on-done!` (§15.13). ADR-0006's allowlist takes
+   `real-time` and `display-condition`. The gate holds G5 on the real
+   helper, `wrap-log`'s own share (G8 own) and `wrap-timeout` (G9), and
+   prints logging's whole cost (G8). `examples/middleware.sps` composes
+   the three, run over loopback.
 6. Upgrades; then the router and WebSocket, each its own library.

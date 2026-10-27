@@ -26,3 +26,12 @@ release before 1.0.
   loopback by `make test`.
 - The cost gate measures the real adapter, with its final bounds, and holds a port
   body's cost, G7 (ADR-0007).
+- `(circuit middleware waits)`: `wrap-catch`, which answers a raise with a response,
+  passes the server's `&client-closed` and `&deadline-passed` on, answers a
+  `&body-failed` with its status, and by default logs a `handler-failed` line and
+  answers 500; `wrap-timeout`, which answers 504 once a deadline passes; and `wrap-log`,
+  which logs a line for each request once its response is done. The import audit allows
+  `real-time` and `display-condition`. `examples/middleware.sps` composes the three, and
+  `make test` runs it over loopback.
+- The cost gate holds the real catch helper, G5, `wrap-log`'s own work, G8 own, and
+  `wrap-timeout`'s cost, G9, and prints what logging costs, G8.

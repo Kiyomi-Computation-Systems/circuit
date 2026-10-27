@@ -50,7 +50,8 @@ provisional. They bind until that record is accepted or amended.
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`
   may import the server's libraries, never `(http-server private ...)`, and they take from
   `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's
-  allowlist, `getenv`, `port-has-port-length?` and `port-length` today. Every file under
+  allowlist, `getenv`, `port-has-port-length?`, `port-length`, `real-time` and
+  `display-condition` today. Every file under
   `src/` begins with the line `#!r6rs` and holds `#!` nowhere else. `make check-imports`
   holds it, and `make test` runs it once `src/` exists (ADR-0006).
 
@@ -60,4 +61,7 @@ provisional. They bind until that record is accepted or amended.
   at most 384 B a GET and 352 B a POST (G3); one `req-set` at most 88 B, and five at most
   440 B (G4); the catch helper over the app, with nothing raised, at most 512 B, with a
   park and without (G5); a 6-byte port body over the same bytes as a bytevector at most
-  384 B (G7). CI fails over any of them (ADR-0007).
+  384 B (G7); `wrap-log`'s own work, over the app registering a no-op `req-on-done!`, at
+  most 384 B (G8 own); `wrap-timeout` over the app, its deadline never passing, at most
+  768 B, with a park and without (G9). G8 own's and G9's bounds are provisional until the
+  owner accepts them. CI fails over any of them (ADR-0007).
