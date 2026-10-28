@@ -15,20 +15,21 @@ An HTTP abstraction layer in the manner of [[https://github.com/ring-clojure/rin
 - libuv 1.48 or later that ~pkg-config~ can see, and a C compiler: the
   server's libuv binding builds a small C shim
 
-Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], pinned under ~vendor/~.
+Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], and takes WebSockets from
+[[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]], both pinned under ~vendor/~.
 
 ** Status
 
 Early. Requests, responses, middleware, the adapter onto the server, the middleware
 that knows the server's waits (a catch for errors, a timeout, request logging),
-upgrades and a router work. WebSockets are still to come.
+upgrades, a router and WebSockets work.
 
 ** Build and test
 
 #+begin_src sh
 git clone https://github.com/Kiyomi-Computation-Systems/circuit.git
 cd circuit
-make submodules   # clones the pinned server and what it needs
+make submodules   # clones the pinned server, what it needs, and chez-websocket
 make test         # builds the libuv shim, then runs every tests/test-*.sps
 #+end_src
 
@@ -48,7 +49,7 @@ A handler takes a request and gives back a response:
 #+end_src
 
 ~make run PROGRAM=examples/hello.sps~ runs it on ~127.0.0.1:8080~. [[file:examples/README.md][examples/]] has more:
-reading a body, streaming, and a handler that waits.
+reading a body, streaming, a handler that waits, and a WebSocket.
 
 Middleware takes a handler and gives back one. ~wrap~ puts the last outermost.
 ~(circuit middleware waits)~ has three:
@@ -79,7 +80,38 @@ transport is how you read and write from then on (~transport-write!~,
 take-over answers ~(awaiting thunk)~. [[file:examples/upgrade.sps][examples/upgrade.sps]] echoes every byte back.
 Middleware can change an upgrade's headers, but not its status or body:
 ~res-upgrade-body?~ tells one apart, and ~make-upgrade-res~ around
-~res-upgrade-body-take-over~ wraps its take-over.
+~res-upgrade-body-take-over~ wraps its take-over. What a take-over answers goes to the
+server, so a wrapper answers what the take-over it wraps answers: drop it, and the
+~101~ goes out but a WebSocket's procedure never runs.
+
+~(circuit websocket)~ answers a WebSocket handshake, and chez-websocket's ~(websocket)~
+does the rest:
+
+#+begin_src scheme
+(import (rnrs) (circuit) (circuit http-server) (circuit websocket) (websocket))
+
+(define (echo ws)
+  (let loop ()
+    (websocket-send! ws (websocket-receive ws))
+    (loop)))
+
+(run-server (lambda (req) (websocket-res req echo)))
+#+end_src
+
+- ~(websocket-res req proc)~ answers ~101~, then runs ~(proc ws)~. A request that is no
+  handshake gets an empty ~400~, and a browser's page from another site an empty ~403~.
+- ~websocket-receive~ waits for the next message; ~websocket-send!~ sends a string as
+  text, a bytevector as binary.
+- Subprotocols and origins come third, as ~(make-handshake-settings '("chat"))~, and
+  limits fourth: see chez-websocket's [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.0/docs/handlers.md][handlers]].
+- [[file:examples/websocket.sps][examples/websocket.sps]] is an echo. Try it with curl 8.11 or later, which sends
+  its input as one binary message, prints what comes back, and waits for ~--max-time~;
+  or, to type messages yourself, with [[https://github.com/vi/websocat][websocat]]:
+
+  #+begin_src sh
+  printf hi | curl -s --max-time 1 -T - ws://127.0.0.1:8080/echo
+  websocat ws://127.0.0.1:8080/echo
+  #+end_src
 
 A router picks the handler by the path, then the method:
 
@@ -121,6 +153,19 @@ Settings come from the environment. The server's are its own ~CHEZ_HTTP_~ variab
 
 The server caps no request body by default: an app that reads one whole should set
 ~CHEZ_HTTP_MAX_BODY_BYTES~.
+
+A WebSocket's limits are chez-websocket's ~CHEZ_WS_~ variables (see its [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.0/docs/configuration.md][configuration]]).
+They are read from the process's environment once, as the program starts: an ~env~
+given to ~run-server~ doesn't set them. Limits given to ~websocket-res~, its fourth
+argument, set them for that handshake alone. To take them from your ~env~, build them
+from it:
+
+#+begin_src scheme
+(define settings (make-handshake-settings '()))
+(define limits (websocket-limits-from-environment env))
+
+(run-server (lambda (req) (websocket-res req echo settings limits)) env)
+#+end_src
 
 ** License
 

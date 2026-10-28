@@ -15,6 +15,9 @@
 ;;;                    line, and its 500
 ;;;   GET  /stream     a logged stream: the line "1", then, 30 s later, "2";
 ;;;                    wrap-log's line once the response is done
+;;;   GET  /websocket  a WebSocket echo, through websocket-res given
+;;;                    settings and no limits, so its limits are the
+;;;                    process environment's CHEZ_WS_ ones
 ;;;
 ;;; R names a raise: irritant, (error 'app "refused" 7); lines,
 ;;; (error 'app "two\nlines"), its message on two lines; or components, a
@@ -27,7 +30,8 @@
 ;;; missing would reach it anyway.
 ;;;
 ;;; Not named test-*.sps, so make test doesn't run it as a suite.
-(import (rnrs) (circuit) (circuit http-server) (circuit middleware waits)
+(import (rnrs) (circuit) (circuit http-server) (circuit middleware waits) (circuit websocket)
+        (websocket)
         (only (chezscheme) parameterize)
         ;; (rnrs)'s current-output-port is no parameter; it reads Chez's.
         (rename (only (chezscheme) current-output-port standard-output-port)
@@ -89,6 +93,15 @@
 (define stream
   (wrap-log (lambda (req) (make-res 200 '(("content-type" . "text/plain")) (ticking 2 30000)))))
 
+;; echo : WebSocket -> Void — each message back, until the client goes.
+(define (echo ws)
+  (let loop ()
+    (websocket-send! ws (websocket-receive ws))
+    (loop)))
+
+;; The handshake's settings for /websocket: the defaults, given.
+(define websocket-settings (make-handshake-settings '()))
+
 ;; app : Req -> Res
 (define (app req)
   (let ((path (req-path req)))
@@ -97,6 +110,7 @@
           ((and (after "/raised/" path) (raise-named (after "/raised/" path)))
            => (lambda (raise-it) (raise-it)))
           ((string=? path "/stream") (stream req))
+          ((string=? path "/websocket") (websocket-res req echo websocket-settings))
           ((string=? path "/addresses")
            (make-res 200 '(("content-type" . "text/plain")) (addresses req)))
           ((string=? path "/pieces")

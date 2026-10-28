@@ -1,0 +1,12 @@
+#!r6rs
+(library (circuit websocket)
+  (export)
+  (import (rnrs)
+          (websocket)
+          (only (websocket) websocket-handshake handshake-accepted?)
+          (prefix (websocket) ws:)
+          (rename (only (websocket) websocket-limits?) (websocket-limits? limits?))
+          (websocket (0 3))
+          (library (websocket))
+          (circuit request)
+          (circuit response)))

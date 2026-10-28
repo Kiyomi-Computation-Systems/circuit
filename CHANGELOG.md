@@ -67,3 +67,20 @@ release before 1.0.
     `req-mount-path`.
   - **The example:** `examples/router.sps`, which `make test` runs over loopback.
 - The cost gate holds the router's own work for a word, a parameter and a miss, G10.
+- `(circuit websocket)`: `websocket-res` answers a WebSocket handshake through
+  chez-websocket's `websocket-handshake`. Taken, it answers the 101, whose take-over runs
+  the app's procedure with the WebSocket; refused, the handshake's 400 or 403, with no
+  body. Its settings and limits are chez-websocket's, and an app imports `(websocket)` for
+  the rest. `examples/websocket.sps` echoes each message, and `make test` runs it over
+  loopback.
+- A WebSocket's limits are chez-websocket's `CHEZ_WS_` variables, read from the process's
+  environment as the program starts, not from the `env` given to `run-server`. An app
+  that wants them from its `env` builds them with chez-websocket's
+  `websocket-limits-from-environment` and gives them to `websocket-res`.
+- The build: chez-websocket v0.4.0 as a second pinned submodule. Its own server pin must
+  be `SERVER_PIN`, which `make check-pins` holds; circuit doesn't clone that server. The
+  import audit lets `(circuit websocket)` alone import `(websocket)`, and no library
+  import any other `(websocket ...)` library, nor `(circuit websocket)`.
+- A take-over's answer goes to the server, so a middleware that wraps a take-over must
+  answer what it answers. Dropped, the 101 is written, and a WebSocket's procedure never
+  runs.

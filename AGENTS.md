@@ -9,8 +9,11 @@
   chez-http-server, the adapter `(circuit http-server)` and
   `(circuit middleware waits)`. No other library imports `(http-server)`,
   and those two take from `(chezscheme)` only through `only`, naming what
-  the audit allows (ADR-0006). `make check-imports` holds it, and `make test`
-  runs it once `src/` exists.
+  the audit allows (ADR-0006). A third, `(circuit websocket)`, imports
+  chez-websocket's facade `(websocket)`, which imports the server. No other
+  library imports `(websocket)`, none imports another `(websocket ...)`
+  library, and none imports `(circuit websocket)` (ADR-0006).
+  `make check-imports` holds it, and `make test` runs it once `src/` exists.
 * Follow the 12 Factor Apps philosophy
 * Project is built for Chez Scheme but should be mostly portable to R6RS:
   the core is plain R6RS, and only the two libraries above may use Chez's
@@ -27,11 +30,19 @@
   a submodule under `vendor/` pinned at a release tag. It carries its own
   pins, which circuit uses through it: chez-libuv, chez-httparse (with
   byte-machine), uriparse, and chez-srfi for the tests.
+* chez-websocket https://github.com/Kiyomi-Computation-Systems/chez-websocket,
+  a second submodule under `vendor/`, pinned at a release tag
+  (`WEBSOCKET_PIN`), for `(circuit websocket)`. Its own server submodule
+  isn't cloned: circuit's server is the one on the path, so chez-websocket's
+  server gitlink must equal `SERVER_PIN`. The server's pin moves only with a
+  chez-websocket release on that server.
 * `make submodules`, on the host, clones the server and the pins it
-  carries, not its test clients. `make check-pins`, on the host and in CI,
-  holds the server at `SERVER_PIN` and each pin it carries where the server
-  records it, and refuses a checkout with local edits. Move the gitlink and
-  `SERVER_PIN` on one commit.
+  carries, not its test clients, and chez-websocket, not its server.
+  `make check-pins`, on the host and in CI, holds the server at
+  `SERVER_PIN`, each pin it carries where the server records it, and
+  chez-websocket at `WEBSOCKET_PIN` with its server gitlink at `SERVER_PIN`,
+  and refuses a checkout with local edits. Move a gitlink and its pin
+  (`SERVER_PIN` or `WEBSOCKET_PIN`) on one commit.
 * chez-http-server isn't on the Akku index, so Akku can't install it for
   circuit: the submodule is the only way in.
 * Circuit's tests run handlers through the server's test host,
@@ -110,11 +121,13 @@
 * A suite cannot vouch for the verdict it exits through. A suite that tests
   `suite-exit-status` must also exit 1 on its own failures, before the
   shared form.
-* Chez evaluates arguments right to left in compiled library code, left to
-  right when interpreted, and `map` calls its procedure in no fixed order. A
-  `let`'s inits are arguments too, and so is the operator: in
-  `((view-proc (check r)) (field r))` an operand can run before the
-  operator's check. No assertion may depend on either order; use
+* Chez chooses the order of a call's arguments as it compiles each call.
+  In slice 6c, a probe library's calls ran left to right, a `begin`
+  argument included, while in `(circuit websocket)` a `begin` in the last
+  argument ran before the reads ahead of it. `map` calls its procedure in
+  no fixed order. A `let`'s inits are arguments too, and so is the
+  operator: in `((view-proc (check r)) (field r))` an operand can run before
+  the operator's check. No assertion may depend on any order; use
   `for-each` for effects, bind a check's result with `let` before the
   call that needs it, and use `let*` when one init must follow another.
 * A setter that refuses a value keeps the one it had. Give each round trip
@@ -123,6 +136,9 @@
   Assert whole outputs, not substrings, and build a test's base from
   non-default values. Test a scan at every position, an encoding on bytes
   where encodings differ, and an allowlist against its whole complement.
+* A property suite's generators draw every kind of value the interface
+  takes, not only the kinds the design's examples show: a middleware that
+  makes a fresh request, as well as one that passes the request on.
 * SRFI-64 keeps one result per runner. Never run a test inside another test's
   actual expression: the outer verdict is reported under the inner test's name.
 

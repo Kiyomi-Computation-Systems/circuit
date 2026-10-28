@@ -704,15 +704,17 @@ a request without `Connection: upgrade`, and an HTTP/1.0 one, both
 checked in the test host and over loopback. Slice 6a settles the rest
 ([2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md) §2):
 `res-upgrade-body?` and `res-upgrade-body-take-over` in the facade, so
-middleware can rebuild an upgrade around a wrapped take-over; an upgrade
+middleware can rebuild an upgrade around a wrapped take-over, which answers
+what the one it wraps answers (§15.19); an upgrade
 body only in a 101 that `make-upgrade-res` made; `res-remove-header`,
 which keeps an upgrade one; and the transport procedures and `awaiting`
 re-exported by the adapter (§9, §15.17, §15.18).
 
-WebSocket through circuit needs chez-websocket's handshake to work from a
-circuit request. Today `websocket-accept` takes the server's request. That
-belongs to the WebSocket slice: chez-websocket gains a handshake neutral to
-the host, and circuit maps it onto its own responses
+WebSocket through circuit takes chez-websocket's handshake from a circuit
+request. chez-websocket's `websocket-accept` takes the server's request, so
+its v0.3.0 added `websocket-handshake`, neutral to the host (its ADR-0009),
+and slice 6c's `(circuit websocket)` maps that handshake's answer onto
+circuit's own responses, `websocket-res`
 ([2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md) §6, §15.16).
 
 ## 9. The adapter
@@ -943,8 +945,13 @@ libraries that import `(http-server)`.
                         (http-server)
 (circuit test)          make-test-req, test-req-done!, res-body->bytevector
 (circuit http-server)   the adapter; imports (http-server)
+(circuit router)        make-router, its table's constructors, and the
+                        match's readers (slice 6b)
+(circuit websocket)     websocket-res; imports chez-websocket's
+                        (websocket), which imports (http-server)
+                        (slice 6c)
 
-later: (circuit router), (circuit websocket), middleware libraries
+later: middleware libraries
 ```
 
 **`(res-body->bytevector res [req])` reads a body as the adapter sends
@@ -1020,9 +1027,13 @@ with the code that needs them. The catch helper's escape is plain R6RS,
 and the helper lives in `(circuit middleware waits)` because it needs the
 server's `client-closed?`, `deadline-passed?`, `body-failed?` and
 `body-failed-status`. `wrap-log` lives there because it reads Chez's
-clock, and ADR-0006 allows two impure libraries, not a third. chez-http-server is a pinned submodule under
+clock, and ADR-0006 allows two impure libraries, not a third. Slice 6c's
+`(circuit websocket)` is a library of a third kind: it imports chez-websocket's
+facade, `(websocket)`, which imports the server, and nothing of the server's
+itself, and no library imports it (ADR-0006, amended). chez-http-server is a pinned submodule under
 `vendor/`, as it is in chez-websocket, at v0.9.0 (§15.7). It isn't on the
-Akku index, so it can't be an Akku dependency yet (ADR-0003).
+Akku index, so it can't be an Akku dependency yet (ADR-0003). chez-websocket
+is one too, at v0.4.0, its own server pin circuit's (ADR-0003, amended).
 
 ## 12. Upstream asks: all landed
 
@@ -1407,7 +1418,11 @@ The owner's answers to slice 6a's review (2026-10-27):
     wrapped take-over with `make-upgrade-res`. The review found that
     removing a header through `make-res` turned every upgrade into a 500.
     Weighed: the accessor alone; and the helper alone, which keeps the
-    take-over the adapter's.
+    take-over the adapter's. What a take-over answers goes to the server,
+    and may be `awaiting`, so a middleware that wraps one must answer what
+    the wrapped one answers: with that answer dropped, the 101 is written
+    and a WebSocket's procedure never runs (chez-websocket's ADR-0009,
+    from its review's probe; slice 6c).
 
 The owner's answer to slice 6b's review (2026-10-27):
 
@@ -1496,4 +1511,6 @@ The owner's answers to slice 6b's final review (2026-10-27):
    designed in [2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md)
    as 6a, 6b and 6c, with chez-websocket's handshake between (§15.16).
    6a, upgrades, is
-   [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6).
+   [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6); 6b, the router,
+   [PR #7](https://github.com/Kiyomi-Computation-Systems/circuit/pull/7); and 6c,
+   WebSocket, [PR #8](https://github.com/Kiyomi-Computation-Systems/circuit/pull/8).

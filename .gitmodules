@@ -1,3 +1,6 @@
 [submodule "vendor/chez-http-server"]
 	path = vendor/chez-http-server
 	url = https://github.com/Kiyomi-Computation-Systems/chez-http-server.git
+[submodule "vendor/chez-websocket"]
+	path = vendor/chez-websocket
+	url = https://github.com/Kiyomi-Computation-Systems/chez-websocket.git

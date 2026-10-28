@@ -19,7 +19,12 @@ provisional. They bind until that record is accepted or amended.
   tag**, now v0.9.0 (`d928e41`). Circuit uses the pins the server carries and pins none
   itself. Move the gitlink and `SERVER_PIN` on one commit, `SERVER_PIN` naming the tag's
   commit; `make check-pins` holds them (ADR-0003).
-- **No Akku dependency on the server** while it isn't on the Akku index (ADR-0003).
+- **chez-websocket is a second submodule, at `vendor/chez-websocket`, pinned at a release
+  tag**, now v0.4.0 (`4456814`). Its own gitlink for the server must equal `SERVER_PIN`,
+  and circuit doesn't clone that server: circuit's is the one on the path. Move its
+  gitlink and `WEBSOCKET_PIN` on one commit; `make check-pins` holds them (ADR-0003).
+- **No Akku dependency on the server**, nor on chez-websocket, while they aren't on the
+  Akku index (ADR-0003).
 
 ## Tooling
 
@@ -55,6 +60,10 @@ provisional. They bind until that record is accepted or amended.
   `display-condition` today. Every file under
   `src/` begins with the line `#!r6rs` and holds `#!` nowhere else. `make check-imports`
   holds it, and `make test` runs it once `src/` exists (ADR-0006).
+- **Only `(circuit websocket)` may import `(websocket)`, chez-websocket's facade**, which
+  imports the server. No circuit library imports any other `(websocket ...)` library,
+  nor `(circuit websocket)`, and `(circuit websocket)` imports neither `(chezscheme)` nor
+  the server's libraries. `make check-imports` holds it (ADR-0006).
 
 ## Cost
 

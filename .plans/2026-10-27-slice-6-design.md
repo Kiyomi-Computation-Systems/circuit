@@ -21,8 +21,9 @@ This part is the circuit design's §8, with what 6a settles:
 
 - **The response:** `(make-upgrade-res headers take-over)` is a response with status 101
   and the headers as given, checked as `make-res` checks them. Its body is an upgrade
-  holding `take-over : Transport Bytevector -> Any`. A take-over that is no procedure is
-  an assertion violation.
+  holding `take-over : Transport Bytevector -> Answer`, whose answer goes to the server
+  and may be `awaiting` (6c). A take-over that is no procedure is an assertion
+  violation.
 - **The body kind:**
   - `res-upgrade-body? : Any -> Boolean` is in the `(circuit)` facade, so middleware can
     pass an upgrade by;
@@ -30,6 +31,9 @@ This part is the circuit design's §8, with what 6a settles:
     upgrade around a wrapped take-over with `make-upgrade-res`. The draft kept it out, as
     the sized and wrapped bodies' accessors are; the review showed middleware then
     couldn't change an upgrade at all (the owner, design §15.19).
+  - A wrapping take-over answers what the one it wraps answers, which goes to the
+    server: dropped, the 101 is written and a WebSocket's procedure never runs (6c,
+    chez-websocket's ADR-0009).
 - **`res-remove-header : Res String -> Res`** joins the response helpers. It drops every
   field of a name, in any case, and keeps the body as `res-set-header` does, an
   upgrade's included (§15.19).
@@ -418,7 +422,8 @@ response types.
 ### Circuit's side (6c)
 
 - **The dependency:** chez-websocket becomes a submodule at `vendor/chez-websocket`,
-  pinned at v0.3.0 (ADR-0003's rule).
+  pinned at v0.4.0 (ADR-0003's rule), whose facade adds `websocket-limits-from-environment`
+  to v0.3.0's (§7.5, §7.6).
   - Its own server pin must equal `SERVER_PIN`, and `make check-pins` holds that.
   - Circuit uses its own server checkout, and doesn't clone chez-websocket's.
 - **The library:** `(circuit websocket)` exports `websocket-res : Req (WebSocket -> Any)
@@ -446,3 +451,17 @@ The owner answered these on 2026-10-27:
 4. **WebSocket's glue:** a small `(circuit websocket)`. 6c amends ADR-0006 and the audit
    to allow a third library that depends on the server, through `(websocket)`. The
    alternative was no library, with an example showing apps the five lines.
+
+And these during 6c, on 2026-10-28:
+
+5. **A WebSocket's limits and `run-server`'s env:** the app passes them. chez-websocket
+   reads its `CHEZ_WS_` variables from the process's environment as the program starts,
+   so an `env` given to `run-server` never reaches them. An app that wants them from its
+   `env` builds them with `(websocket-limits-from-environment env)` and gives them to
+   `websocket-res`; the default stays the process's. No core change, and no gate moves.
+   The alternative was the adapter carrying its env on every request, for
+   `websocket-res`'s default limits: a new core accessor, a field on every request, and
+   G3 perhaps moved.
+6. **chez-websocket v0.4.0** exports `websocket-limits-from-environment` from its facade,
+   released before 6c pins it. A minor release, as semver has new functionality; v0.3.1
+   was the alternative.
