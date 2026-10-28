@@ -40,8 +40,13 @@ close-out under **Close-outs**, newest first.
   [PR #8](https://github.com/Kiyomi-Computation-Systems/circuit/pull/8) on 2026-10-28;
   its close-out is below. chez-websocket is pinned at v0.4.0 (4456814). The owner's
   answers in it are the slice 6 design §7.5–§7.6. Slice 6 is done.
-- **Next:** the design plans no slice past 6 (§17). What follows is the owner's call:
-  the open items below, and design §16.
+- **Slice 7, a request's own cap on its body, is merged**, squashed from
+  [PR #9](https://github.com/Kiyomi-Computation-Systems/circuit/pull/9) on 2026-10-28;
+  its close-out is below. The owner's answer is design §15.25, which settles §16.1.
+- **Next:** the design plans no slice past 7 (§17). What follows is the owner's call:
+  the open items below and design §16.4. The server's fixes on its `main` (#242, #244,
+  #246) reach circuit only through a server release, then a chez-websocket release on
+  it.
 
 ## Open
 
@@ -63,10 +68,12 @@ close-out under **Close-outs**, newest first.
 - **The test host logs a line the server doesn't**: `handler-failed` for a `&body-failed`
   the app lets out, where `serve` logs nothing. The libuv shell skips a failure the
   request's notice already told (`private/shell.sls`, `told-failure?`), and the fake shell
-  doesn't. `tests/test-http-server.sps` pins the test host's line, so a fix upstream
-  changes that row. Found by slice 4's review; filed as
+  doesn't. `tests/test-http-server.sps` pins the test host's line, in that row and in
+  slice 7's four cap rows, so a fix upstream changes them. Found by slice 4's review; filed as
   [chez-http-server #243](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/243)
-  on 2026-10-26, reproduced on v0.9.0 in the test host and over loopback.
+  on 2026-10-26, reproduced on v0.9.0 in the test host and over loopback. Fixed on the
+  server's `main` by its #244 (2026-10-26), in no release yet: v0.9.0 is still its
+  latest.
 - **A wrap's `f` can meet a closed port in the test host** once the client has gone while
   the app waited (design §6, §9), and the test host drops `f`'s raise. Over a real socket,
   a FIN is heard at once, but the request stays open until its response is written: `f`
@@ -87,7 +94,8 @@ close-out under **Close-outs**, newest first.
   every request. Filed as
   [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245)
   on 2026-10-26: on the server alone one costs 733–843 B, and `tell-done!`'s shape 240 B
-  of it in plain Chez. Still open on 2026-10-27, and being worked on (the owner).
+  of it in plain Chez. Fixed on the server's `main` by its #246 (2026-10-28), in no
+  release yet. Once circuit pins a release with it, G8 on-done should fall.
 - **Left from the owner's `/code-review` of slice 4, not fixed:**
   - a procfs file such as `/proc/self/status` reports a length of 0, so it is measured at
     0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
@@ -115,20 +123,70 @@ close-out under **Close-outs**, newest first.
   into a capture as it is.** The server refuses one on the wire, so it reaches the router
   only through `req-with-path` or a test request (the slice 6 design §5 refuses raw
   characters past ASCII alone).
-- **A cap of circuit's own on the request body** (design §16.1): the revision has none,
-  and the server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by default.
 - **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
   provisional.
 - **The server's `docs/waiting.md` lists `&body-failed`'s statuses as 413, 400 and 408**,
   leaving out 431, a chunked body's trailers past the header limits (design §12). Filed
   as [chez-http-server #241](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/241)
   on 2026-10-26, reproduced through `(http-server testing)` at v0.9.0, with a note that
-  no server test hands a pull a header reason or `chunk-extensions-too-large`.
+  no server test hands a pull a header reason or `chunk-extensions-too-large`. Fixed on
+  the server's `main` by its #242 (2026-10-26), in no release yet.
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-28: slice 7, a request's own cap on its body, in PR #9
+
+Commits on `slice/7-body-cap`: the slice (b741810), the records with this close-out,
+and its CI run named here. Built, reviewed and fixed on 2026-10-28, by the session.
+`make test` passes 15 suites, 769 rows (check-imports 57, check-suites 14,
+circuit-testing 45, examples 94, headers 24, http-server 77, middleware 13,
+middleware-waits 68, names 20, request 52, response 96, router 101, router-properties 29,
+test 44, websocket 35), and `make gate` passes, no gate moved. Its worst figures: G1
+1,441, G2 1,434, G3 308 a GET and 274 a POST, G4 80 and 400, G5 385 and 343 with a park,
+G7 306, G8 1,146, G8 own 291, G8 on-done 869, G9 606 and 604 with a park, and G10 81, 164
+and 4.
+
+- **The owner's decision** (design §15.25): the server's `CHEZ_HTTP_MAX_BODY_BYTES`
+  stays the one cap a deployer sets, and a request carries one of its own, from code,
+  the innermost winning. Weighed: circuit's own `CIRCUIT_MAX_BODY_BYTES`; asking the
+  server for a finite default; a helper that reads a body whole under a cap;
+- **the build**, the session's, with no build agent:
+  - `req-with-body-cap` and `req-body-cap` in `(circuit request)`, `wrap-body-cap` in
+    `(circuit middleware)`, all in the facade;
+  - the cap is the request record's fifth field: a sealed record of four fields or five
+    is 48 B, so G4 holds as it was;
+  - the view's body is handed the cap, and the adapter hands it to `body-input-port`,
+    calling `(body-input-port)` as before when there is none;
+  - `make-test-req` ignores the cap; `examples/echo.sps` caps its body at 1 MiB;
+  - each new row was watched failing under stubs first. One, the server's cap as the
+    ceiling over a request's, passed under the stubs too: circuit can't raise the
+    server's cap, so the row held only the server. It was dropped (AGENTS.md);
+  - 17 mutants, 16 of the libraries and one of the echo example, their predictions
+    hashed before the run (`31834857`), went as predicted;
+- **a read-only Opus review** (Opus 5.5; 202,453 tokens, 13.3 minutes) found nothing
+  severe. It ran README.org's Configuration snippet in the test host: `/notes` refused
+  65,537 bytes and took 65,536, and `/uploads` took 65,537. Of its 19 mutants, 16 were
+  killed and one, the adapter always naming the cap, is equivalent. Fixed:
+  - the echo example's cap was held only between 300,001 and 1,048,576 B. A row now reads
+    a body of 1 MiB whole, and a 512 KiB echo fails it;
+  - no row took a cap past the fixnum range, so a fixnum-only check survived. 2^100 is
+    now a cap in the request and middleware rows, and that mutant fails both;
+  - comments that said `req-body-cap` is the cap in force (it is the copy's), that the
+    host enforces it (a test request doesn't), and that a read, not the port, fixes it;
+  - this ledger's #243 item: slice 7's four cap rows pin the test host's line too;
+- **corrected in Open:** the server's #241, #243 and #245 are fixed on its `main`, by
+  #242, #244 and #246, in no release yet; §16.1's item is gone;
+- **traps:**
+  - `curl -i` prints a `100 Continue` as a head of its own, which the examples suite would
+    read as the answer. The 1 MiB row sends `Expect:` empty, so curl asks for none
+    whatever its version's threshold;
+  - a failing row that echoes a large body prints it whole, a megabyte here: the rows
+    give a long body as its length;
+  - the server checks a declared length against the pull's cap at the first read, before
+    it sends `100 Continue`, so a client that waits sends nothing.
 
 ### 2026-10-28: slice 6c, `(circuit websocket)`, in PR #8
 
