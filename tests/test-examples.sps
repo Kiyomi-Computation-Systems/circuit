@@ -649,6 +649,32 @@
           (test-equal "echo: a GET with no query and no body"
                       (text-answer "HTTP/1.1 200 OK" "GET /\n")
                       (answer (fetch port "/")))
+          (test-equal "echo: a body of 1 MiB, its cap, is read whole"
+                      (list "HTTP/1.1 200 OK" (list date text-plain (content-length (+ 9 1048576)))
+                            'the-body-sent)
+                      (call-with-temp-directory
+                       (lambda (dir)
+                         (let ((at (make-bytevector 1048576 98)))
+                           (write-file! (file-in dir "at") at)
+                           (let ((a (answer (fetch port "/at" "-H" "Expect:"
+                                                   "--data-binary" (string-append "@" (file-in dir "at"))))))
+                             (if (and (pair? a) (= (length a) 3) (string? (caddr a)))
+                                 (list (car a) (cadr a)
+                                       (if (string=? (caddr a) (string-append "POST /at\n" (utf8->string at)))
+                                           'the-body-sent
+                                           (list 'a-body-of (string-length (caddr a)))))
+                                 a))))))
+          (test-equal "echo: a body declared past its cap, 1 MiB, is answered 413, with no 100 Continue"
+                      (empty-answer "HTTP/1.1 413 Content Too Large" '("Connection" . "close"))
+                      (call-with-temp-directory
+                       (lambda (dir)
+                         (write-file! (file-in dir "past") (make-bytevector (+ 1048576 1) 97))
+                         (let ((a (answer (fetch port "/past" "-H" "Expect: 100-continue"
+                                                 "--data-binary" (string-append "@" (file-in dir "past"))))))
+                           (if (and (pair? a) (= (length a) 3) (string? (caddr a))
+                                    (> (string-length (caddr a)) 100))
+                               (list (car a) (cadr a) (list 'a-body-of (string-length (caddr a))))
+                               a)))))
           (test-equal "echo: a body of 300,000 bytes, sent chunked, is read whole"
                       (list "HTTP/1.1 200 OK" (list date text-plain (content-length (+ 10 big-size)))
                             'the-body-sent)

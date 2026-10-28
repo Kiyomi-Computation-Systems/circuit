@@ -1,7 +1,7 @@
 #!r6rs
 ;;; (circuit request): the view and its refusals, every accessor, the body's
-;;; one port shared by every copy, keys, the req-with- helpers, req-on-done!
-;;; and test-req-done!'s rules.
+;;; one port shared by every copy, the body's cap, keys, the req-with-
+;;; helpers, req-on-done! and test-req-done!'s rules.
 ;;;
 ;;; The views here are the suite's own. Each procedure checks it is handed
 ;;; the host's request, and answers a value no default could: a method of
@@ -34,7 +34,8 @@
     (list 'answer (thunk))))
 
 ;; The log: what the views' body and on-done procedures, and the kept
-;; procedures, were called with, oldest first once taken.
+;; procedures, were called with, oldest first once taken. The body notes the
+;; cap it was handed.
 (define the-log '())
 (define (note! x) (set! the-log (cons x the-log)))
 (define (take-log!)
@@ -61,8 +62,8 @@
   (lambda (h) (if (eq? h host) value (list 'wrong-host h))))
 
 (define (body-from-host bytes)
-  (lambda (h)
-    (note! 'body)
+  (lambda (h cap)
+    (note! (list 'body cap))
     (if (eq? h host) (open-bytevector-input-port bytes) (list 'wrong-host h))))
 
 (define view-names
@@ -106,18 +107,18 @@
                      (lambda (h proc) (note! (list 'on-done (eq? h host) proc))))))
 
 ;; snapshot : Req -> (Listof Any)
-;; Every accessor's answer but the body's.
+;; Every accessor's answer but the body's, and the body's cap.
 (define (snapshot r)
   (list (req-method r) (req-scheme r) (req-host r) (req-path r) (req-query r)
         (req-http-version r) (req-header r "Accept") (req-header-values r "Accept")
         (req-headers r) (req-remote-address r) (req-remote-port r)
-        (req-local-address r) (req-local-port r)))
+        (req-local-address r) (req-local-port r) (req-body-cap r)))
 
 (define full-snapshot
   '(PATCH http "example.test:8443" "/a/b" "x=1&y" (1 . 0) "first Accept"
     ("one Accept" "two Accept")
     (("x-mixed" . "1") ("set-cookie" . "a") ("set-cookie" . "b"))
-    "192.0.2.7" 54321 "198.51.100.1" 8443))
+    "192.0.2.7" 54321 "198.51.100.1" 8443 #f))
 
 ;; probe-proc : Symbol -> Any
 ;; What a hosted snapshot registers through a request.
@@ -150,7 +151,7 @@
   (snapshot (make-req (full-view) host)))
 
 (test-equal "with only the four required procedures: #f, '(), and http"
-  '(GET http "h.test" "/m" #f (1 . 1) #f () () #f #f #f #f)
+  '(GET http "h.test" "/m" #f (1 . 1) #f () () #f #f #f #f #f)
   (snapshot (make-req (minimal-view) host)))
 
 (test-equal "make-req-view: #f is refused for the four required procedures, and taken for the other ten"
@@ -199,7 +200,7 @@
          req-header-values req-headers req-body req-remote-address req-remote-port
          req-local-address req-local-port req-body-made req-on-done! req-ref req-set
          req-with-method req-with-scheme req-with-host req-with-path req-with-query
-         req-with-remote-address req-with-remote-port))
+         req-with-remote-address req-with-remote-port req-body-cap req-with-body-cap))
   (let ((key (make-req-key 'k)))
     (map raised
          (list (lambda () (req-method 'not-a-req))
@@ -226,7 +227,9 @@
                (lambda () (req-with-path 'not-a-req "/"))
                (lambda () (req-with-query 'not-a-req "q"))
                (lambda () (req-with-remote-address 'not-a-req "a"))
-               (lambda () (req-with-remote-port 'not-a-req 1))))))
+               (lambda () (req-with-remote-port 'not-a-req 1))
+               (lambda () (req-body-cap 'not-a-req))
+               (lambda () (req-with-body-cap 'not-a-req 1))))))
 
 ;; --- the body: one port, made once, shared by every copy -----------------------
 
@@ -235,7 +238,7 @@
   (get-bytevector-all (req-body (make-req (full-view) host))))
 
 (test-equal "req-body: one port for every copy, made once, through whichever copy asks first"
-  '((answer #f) () #t #t #t #t #t (body))
+  '((answer #f) () #t #t #t #t #t ((body #f)))
   (begin
     (take-log!)
     (let* ((r (make-req (full-view) host))
@@ -291,7 +294,7 @@
 (test-equal "req-body refuses a binary output port from the view"
   '(#t (answer #f))
   (let-values (((out extract) (open-bytevector-output-port)))
-    (let* ((r (make-req (apply make-req-view (replace-at (full-view-args) 8 (lambda (h) out))) host))
+    (let* ((r (make-req (apply make-req-view (replace-at (full-view-args) 8 (lambda (h cap) out))) host))
            (refusal (raised (lambda () (req-body r)))))
       (list (equal? refusal (list 'assertion-violation 'req-body (list out)))
             (answer (lambda () (req-body-made r)))))))
@@ -301,7 +304,7 @@
   (let* ((text (open-string-input-port "text"))
          (bad (lambda (answer-with)
                 (make-req (apply make-req-view (replace-at (full-view-args) 8
-                                                           (lambda (h) answer-with)))
+                                                           (lambda (h cap) answer-with)))
                           host)))
          (r (bad 'not-a-port))
          (refused (raised (lambda () (req-body r))))
@@ -360,7 +363,8 @@
         (list 'req-with-path req-with-path 3 "/mounted/a/b")
         (list 'req-with-query req-with-query 4 "z=26")
         (list 'req-with-remote-address req-with-remote-address 9 "203.0.113.9")
-        (list 'req-with-remote-port req-with-remote-port 10 40001)))
+        (list 'req-with-remote-port req-with-remote-port 10 40001)
+        (list 'req-with-body-cap req-with-body-cap 13 4096)))
 
 (for-each
  (lambda (c)
@@ -376,7 +380,7 @@
  with-cases)
 
 (test-equal "a req-with- copy keeps the keys and shares the cell"
-  '((kept kept kept kept kept kept kept) #t (body))
+  '((kept kept kept kept kept kept kept kept) #t ((body #f)))
   (begin
     (take-log!)
     (let* ((key (make-req-key 'k))
@@ -388,7 +392,7 @@
             (take-log!)))))
 
 (test-equal "req-set and every req-with- helper keep the view's on-done: a procedure registered through a copy reaches the host"
-  (map (lambda (i) (list 'on-done #t probe-proc)) (range 9))
+  (map (lambda (i) (list 'on-done #t probe-proc)) (range 10))
   (let* ((r (make-req (on-done-view) host))
          (copies (append (list (req-set r (make-req-key 'k) 1)
                                (req-with-path (req-with-method r 'PUT) "/twice"))
@@ -432,6 +436,63 @@
           (raised (lambda () (req-with-remote-port r 1.5)))
           (raised (lambda () (req-with-remote-port r "80")))
           (raised (lambda () (req-with-remote-port r 80.))))))
+
+;; --- the body's cap -------------------------------------------------------------
+
+;; cap-handed : (Req -> Req) -> (Listof Any)
+;; What the view's body is handed when the body is made through (MAKE r),
+;; for a fresh request r.
+(define (cap-handed make)
+  (take-log!)
+  (req-body (make (make-req (full-view) host)))
+  (take-log!))
+
+(test-equal "req-body hands the view's body the request's cap: #f unless given, else the newest given, through any copy made after it, a bignum's included"
+  `(((body #f)) ((body 4096)) ((body 0)) ((body ,(expt 2 100))) ((body 7)) ((body 7)) ((body #f)))
+  (map cap-handed
+       (list (lambda (r) r)
+             (lambda (r) (req-with-body-cap r 4096))
+             (lambda (r) (req-with-body-cap r 0))
+             (lambda (r) (req-with-body-cap r (expt 2 100)))
+             (lambda (r) (req-with-body-cap (req-with-body-cap r 4096) 7))
+             (lambda (r) (req-with-path (req-set (req-with-body-cap r 7) (make-req-key 'k) 1) "/p"))
+             (lambda (r) (req-with-body-cap (req-with-body-cap r 7) #f)))))
+
+(test-equal "req-set and every req-with- helper but req-with-body-cap keep the cap"
+  '(7 7 7 7 7 7 7 7)
+  (let ((r (req-with-body-cap (make-req (full-view) host) 7)))
+    (map req-body-cap
+         (cons (req-set r (make-req-key 'k) 1)
+               (map (lambda (c) ((cadr c) r (cadddr c)))
+                    (filter (lambda (c) (not (eq? (car c) 'req-with-body-cap))) with-cases))))))
+
+(test-equal "req-with-body-cap is refused once the body's port is made, through any copy, with a view body or without, and the request keeps its cap"
+  '((assertion-violation req-with-body-cap (8))
+    (assertion-violation req-with-body-cap (#f))
+    (assertion-violation req-with-body-cap (1))
+    4
+    ((body 4)))
+  (begin
+    (take-log!)
+    (let* ((r (req-with-body-cap (make-req (full-view) host) 4))
+           (copy (req-set r (make-req-key 'k) 1))
+           (minimal (make-req (minimal-view) host)))
+      (req-body copy)
+      (req-body minimal)
+      (let* ((late (raised (lambda () (req-with-body-cap r 8))))
+             (lifted (raised (lambda () (req-with-body-cap (req-with-path copy "/q") #f))))
+             (bodiless (raised (lambda () (req-with-body-cap minimal 1)))))
+        (list late lifted bodiless (req-body-cap r) (take-log!))))))
+
+(test-equal "req-with-body-cap refuses a cap that is neither #f nor a count of bytes"
+  '((assertion-violation req-with-body-cap (-1))
+    (assertion-violation req-with-body-cap (1.5))
+    (assertion-violation req-with-body-cap (4096.))
+    (assertion-violation req-with-body-cap ("4096"))
+    (assertion-violation req-with-body-cap (#t)))
+  (let ((r (make-req (full-view) host)))
+    (map (lambda (cap) (raised (lambda () (req-with-body-cap r cap))))
+         (list -1 1.5 4096. "4096" #t))))
 
 ;; --- req-on-done! ---------------------------------------------------------------
 

@@ -56,7 +56,8 @@
     req-remote-address req-remote-port req-local-address req-local-port
     req-on-done! req-body-made make-req-key req-key? req-ref req-set
     req-with-method req-with-scheme req-with-host req-with-path req-with-query
-    req-with-remote-address req-with-remote-port test-req-done!))
+    req-with-remote-address req-with-remote-port req-body-cap req-with-body-cap
+    test-req-done!))
 
 (define response-names
   '(make-res res? res-status res-headers res-body res-header res-set-header res-add-header
@@ -75,21 +76,21 @@
     req-path-param req-path-params req-route req-mount-path))
 
 ;; What an app uses: the request's accessors, keys and req-with- helpers,
-;; req-on-done!; the response's constructors, accessors and helpers, the
-;; upgrade's predicate and its take-over among them; the header helpers;
-;; wrap.
+;; req-on-done!, the body's cap; the response's constructors, accessors and
+;; helpers, the upgrade's predicate and its take-over among them; the header
+;; helpers; wrap and wrap-body-cap.
 (define facade-names
   '(req? req-method req-scheme req-host req-path req-query req-http-version req-header
     req-header-values req-headers req-body req-remote-address req-remote-port
     req-local-address req-local-port req-on-done!
     make-req-key req-key? req-ref req-set
     req-with-method req-with-scheme req-with-host req-with-path req-with-query
-    req-with-remote-address req-with-remote-port
+    req-with-remote-address req-with-remote-port req-body-cap req-with-body-cap
     make-res res? res-status res-headers res-body res-header res-set-header res-add-header
     res-remove-header res-with-status res-with-body make-sized-body res-wrap-body res-body-length
     make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
     header-value header-values header-set header-add header-remove header-names-downcase
-    wrap))
+    wrap wrap-body-cap))
 
 ;; The server's waits, conditions, transport procedures and awaiting, which
 ;; (circuit http-server) re-exports.
@@ -128,8 +129,8 @@
   (sorted header-names)
   (sorted-exports '(circuit headers)))
 
-(test-equal "(circuit middleware) exports wrap alone"
-  '(wrap)
+(test-equal "(circuit middleware) exports wrap and wrap-body-cap"
+  '(wrap wrap-body-cap)
   (sorted-exports '(circuit middleware)))
 
 (test-equal "(circuit middleware waits) exports its three exactly"

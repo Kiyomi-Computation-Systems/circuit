@@ -191,6 +191,11 @@
          (port (req-body (req-set r (make-req-key 'k) 1))))
     (list (eq? port (req-body r)) (eq? port (req-body (req-with-path r "/other"))))))
 
+(test-equal "a test request's body is read whole whatever its cap: the server enforces a cap, in its test host"
+  (list (string->utf8 "hello") 2)
+  (let ((r (req-with-body-cap (make-test-req 'POST "/" '() "hello") 2)))
+    (list (get-bytevector-all (req-body r)) (req-body-cap r))))
+
 (test-equal "a test request keeps its on-done procedures, and test-req-done! calls them newest first"
   '((answer ()) ((second failed) (first failed)))
   (begin

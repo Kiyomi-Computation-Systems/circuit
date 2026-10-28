@@ -84,3 +84,11 @@ release before 1.0.
 - A take-over's answer goes to the server, so a middleware that wraps a take-over must
   answer what it answers. Dropped, the 101 is written, and a WebSocket's procedure never
   runs.
+- A request's own cap on its body, under the server's `CHEZ_HTTP_MAX_BODY_BYTES`, which
+  stays the one cap a deployer sets. `(wrap-body-cap n)` caps the requests that pass it,
+  and `req-with-body-cap` one request; `req-body-cap` reads the cap. The innermost cap
+  wins, and `#f` leaves the server's alone. The server enforces it: a body past it raises
+  `&body-failed`, 413, at the read that passes it, and a declared length past it fails
+  the first read, before any `100 Continue`. A cap given once the body's port is made is
+  refused. `make-test-req` reads its body whatever the cap. `examples/echo.sps` caps its
+  body at 1 MiB.
