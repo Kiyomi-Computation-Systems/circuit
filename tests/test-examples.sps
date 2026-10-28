@@ -29,8 +29,9 @@
 ;;; asserted whole: its status line, its header fields in order, Date's
 ;;; value aside, and its body. Each example is also read as data: it
 ;;; imports (rnrs), (circuit) and (circuit http-server) alone, but
-;;; middleware.sps, which imports (circuit middleware waits) too, and its
-;;; last form calls run-server.
+;;; middleware.sps, which imports (circuit middleware waits) too, and
+;;; router.sps, which imports (circuit router) too, and its last form calls
+;;; run-server.
 ;;;
 ;;; Where a row reads a program's standard output, it asserts every line,
 ;;; whole and in order, one character a byte, a request line's milliseconds
@@ -542,6 +543,10 @@
       (test-equal "middleware: it imports (rnrs), (circuit), (circuit http-server) and (circuit middleware waits) alone, and ends in run-server"
                   '((import (rnrs) (circuit) (circuit http-server) (circuit middleware waits)) run-server)
                   (program-shape "examples/middleware.sps"))
+      (test-equal (string-append "router: it imports (rnrs), (circuit), (circuit http-server) and"
+                                 " (circuit router) alone, and ends in run-server")
+                  '((import (rnrs) (circuit) (circuit http-server) (circuit router)) run-server)
+                  (program-shape "examples/router.sps"))
 
       (with-server "hello" "examples/hello.sps" '()
         (lambda (port)
@@ -649,6 +654,48 @@
           (test-equal "upgrade: Upgrade: echo over HTTP/1.0, Connection: upgrade and all, is the server's empty 500, the connection closed"
                       (empty-answer "HTTP/1.1 500 Internal Server Error" '("Connection" . "close"))
                       (answer (fetch port "/" "-0" "-H" "Connection: upgrade" "-H" "Upgrade: echo")))))
+
+      (with-server "router" "examples/router.sps" '()
+        (lambda (port)
+          (test-equal "router: GET / is home"
+                      (text-answer "HTTP/1.1 200 OK" "home\n")
+                      (answer (fetch port "/")))
+          (test-equal
+            "router: GET /users is the list, and POST /users adds the user its body names, 201"
+                      (list (text-answer "HTTP/1.1 200 OK" "ann\nbob\n")
+                            (text-answer "HTTP/1.1 201 Created" "created cat\n"))
+                      (list (answer (fetch port "/users"))
+                            (answer (fetch port "/users" "--data-binary" "cat"))))
+          (test-equal "router: GET /users/new is the form: the word beats /users/:id beside it"
+                      (text-answer "HTTP/1.1 200 OK" "the new user form\n")
+                      (answer (fetch port "/users/new")))
+          (test-equal "router: GET /users/42 is user 42, and /users/a%20b user a b, its id decoded"
+                      (list (text-answer "HTTP/1.1 200 OK" "user 42\n")
+                            (text-answer "HTTP/1.1 200 OK" "user a b\n"))
+                      (list (answer (fetch port "/users/42")) (answer (fetch port "/users/a%20b"))))
+          (test-equal "router: HEAD /users/42 is GET's head, with no body"
+                      (list "HTTP/1.1 200 OK" (list date text-plain (content-length 8)) "")
+                      (answer (fetch port "/users/42" "-I")))
+          (test-equal (string-append "router: GET /admin/stats is answered through the group's"
+                                     " middleware, which adds x-admin")
+                      (list "HTTP/1.1 200 OK"
+                            (list date text-plain '("x-admin" . "yes") (content-length 8))
+                            "2 users\n")
+                      (answer (fetch port "/admin/stats")))
+          (test-equal
+            "router: the mount at /files sees the rest of the path, / when nothing follows"
+                      (list (text-answer "HTTP/1.1 200 OK" "file /a/b, mounted at /files\n")
+                            (text-answer "HTTP/1.1 200 OK" "file /, mounted at /files\n"))
+                      (list (answer (fetch port "/files/a/b")) (answer (fetch port "/files"))))
+          (test-equal "router: any other path is an empty 404"
+                      (empty-answer "HTTP/1.1 404 Not Found")
+                      (answer (fetch port "/nope")))
+          (test-equal (string-append "router: DELETE /users/new is an empty 405, its Allow"
+                                     " GET, HEAD, though /users/:id is beside it")
+                      (list "HTTP/1.1 405 Method Not Allowed"
+                            (list date '("allow" . "GET, HEAD") (content-length 0))
+                            "")
+                      (answer (fetch port "/users/new" "-X" "DELETE")))))
 
       ;; Each request's lines are waited for before the next request.
       ;; Sleeps and deadlines run on a timer of their own, not the server's

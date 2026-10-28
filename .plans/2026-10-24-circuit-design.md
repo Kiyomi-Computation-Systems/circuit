@@ -1409,6 +1409,44 @@ The owner's answers to slice 6a's review (2026-10-27):
     Weighed: the accessor alone; and the helper alone, which keeps the
     take-over the adapter's.
 
+The owner's answer to slice 6b's review (2026-10-27):
+
+20. **A mount keeps the path prefix it took, and `req-mount-path` reads
+    it**: `Req -> String`, the part of the path the mounts above a request
+    took, undecoded. Under `mount "/api/:v"`, `/api/2/users/7` reads
+    `"/api/2"`; outside any mount it is `""`. So a sub-app can rebuild the
+    whole path, for a `Location` or a link. The slice's brief had dropped
+    the prefix, since no export read it. The review found that nothing
+    under a mount could then rebuild the path. Weighed: leaving it for
+    later, with reverse routing.
+21. **Around a mount, a group's middleware reads as `req-mount-path` the
+    part the mounts above its router took**, not counting the mount it
+    wraps. So wherever a handler or middleware reads it, `req-mount-path`
+    followed by `req-path` is the path the server read, unless a middleware
+    rewrote the path. One group's
+    middleware wraps routes and mounts alike, and can't tell which it
+    wraps. It costs a second `req-set` on a request to a mount that a
+    group's middleware wraps. Weighed: the mount's own part counted there,
+    at no cost, where a prefix-plus-path redirect would double the mount's
+    part.
+22. **Route matching is tested by property too**, in 6b. A suite generates
+    route tables and paths from a fixed seed, and checks the router against
+    an oracle written from the slice 6 design's §5 alone, by an agent that
+    hasn't read the router. Weighed: a property suite in a later PR.
+
+The owner's answers to slice 6b's final review (2026-10-27):
+
+23. **A request that a group's middleware around a mount hands on without
+    the mount's match reaches the mount's handler as it is**, as it would a
+    route's handler. That is a request the middleware made, or one a router
+    of its own matched. The review found that the router crashed there.
+    Weighed: keeping the mount's rest and match for a request a router in
+    the middleware matched, at a third `req-set`; and refusing the request
+    with an assertion violation.
+24. **The gate holds G10**, the router's own work: 128 B a word route, 256 B
+    a one-parameter route, 64 B a miss. The worst figures over 6b's three
+    final runs were 83, 164 and 4 B. Weighed: keeping G10 printed.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body.** This draft has none

@@ -45,3 +45,25 @@ release before 1.0.
   `res-with-body`, `res-with-status` and `res-wrap-body` refuse an upgrade response;
   `res-body-stream` and `res-body->bytevector` refuse an upgrade. `examples/upgrade.sps`
   echoes bytes back after the 101, and `make test` runs it over loopback.
+- `(circuit router)`, a router that picks a handler by the path, then the method.
+  - **The table:** `make-router` builds one handler from a table of `route`s, `group`s
+    and `mount`s.
+  - **Templates:** they hold words, `:param`s and a last `*catch-all`.
+    - Where two templates differ, the leftmost segment that differs decides, and a word
+      beats a parameter. So the table's order never matters.
+    - Two templates of one shape are refused.
+  - **Captured values** are percent-decoded, strictly, as UTF-8. One that doesn't decode
+    answers 400.
+  - **Methods:**
+    - A route's method entries are `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`,
+      `ANY`, and `METHOD` for any other.
+    - HEAD goes to the route's own HEAD, else its GET, else its ANY.
+    - A method the route doesn't take answers 405, with `allow`.
+    - A path no route takes answers an empty 404, or what the app's not-found handler
+      says.
+  - **Groups:** a group's middleware runs only for its own routes.
+  - **Mounts:** a mount's handler sees the rest of the path.
+  - **Reading the match:** `req-route`, `req-path-param`, `req-path-params` and
+    `req-mount-path`.
+  - **The example:** `examples/router.sps`, which `make test` runs over loopback.
+- The cost gate holds the router's own work for a word, a parameter and a miss, G10.

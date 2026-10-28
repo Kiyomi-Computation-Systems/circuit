@@ -20,8 +20,8 @@ Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server
 ** Status
 
 Early. Requests, responses, middleware, the adapter onto the server, the middleware
-that knows the server's waits (a catch for errors, a timeout, request logging), and
-upgrades work. A router and WebSockets are still to come.
+that knows the server's waits (a catch for errors, a timeout, request logging),
+upgrades and a router work. WebSockets are still to come.
 
 ** Build and test
 
@@ -80,6 +80,35 @@ take-over answers ~(awaiting thunk)~. [[file:examples/upgrade.sps][examples/upgr
 Middleware can change an upgrade's headers, but not its status or body:
 ~res-upgrade-body?~ tells one apart, and ~make-upgrade-res~ around
 ~res-upgrade-body-take-over~ wraps its take-over.
+
+A router picks the handler by the path, then the method:
+
+#+begin_src scheme
+(import (rnrs) (circuit) (circuit http-server) (circuit router))
+
+(run-server
+ (make-router
+  (list (route "/users"     (GET list-users) (POST create-user))
+        (route "/users/new" (GET new-user-form))
+        (route "/users/:id" (GET show-user))
+        (group "/admin" (list wrap-admin)
+          (route "/stats" (GET stats)))
+        (mount "/files" files))))
+#+end_src
+
+- ~:id~ takes one segment, which ~(req-path-param req "id")~ reads percent-decoded.
+- A last ~*rest~ takes the rest of the path.
+- A word beats a parameter, whatever the order: ~/users/new~ never reaches ~show-user~.
+- A path no route takes gets an empty ~404~, or what ~(make-router routes not-found)~'s
+  handler answers.
+- A method the route doesn't take gets an empty ~405~ with ~allow~, unless the route has
+  ~ANY~. HEAD goes to the route's own ~(METHOD 'HEAD h)~, else its GET, else its ANY.
+- A group's middleware runs only for the group's routes.
+- A mount's handler sees the rest of the path: ~/files/a/b~ reaches ~files~ as ~/a/b~,
+  and ~req-mount-path~ is ~/files~.
+- ~req-route~ is the template that matched, such as ~/users/:id~, for logs.
+- Decoded values come from the client and can hold ~/~, ~..~ or NUL: check one before
+  using it as a file name.
 
 ** Configuration
 
