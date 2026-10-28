@@ -123,6 +123,9 @@
   Assert whole outputs, not substrings, and build a test's base from
   non-default values. Test a scan at every position, an encoding on bytes
   where encodings differ, and an allowlist against its whole complement.
+* A property suite's generators draw every kind of value the interface
+  takes, not only the kinds the design's examples show: a middleware that
+  makes a fresh request, as well as one that passes the request on.
 * SRFI-64 keeps one result per runner. Never run a test inside another test's
   actual expression: the outer verdict is reported under the inner test's name.
 
