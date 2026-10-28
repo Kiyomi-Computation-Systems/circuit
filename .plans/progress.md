@@ -140,7 +140,10 @@ http-server 73, middleware 9, middleware-waits 68, names 20, request 47, respons
 router 100, router-properties 29, test 43, websocket 35), and `make gate` passes, no gate
 moved. Its worst figures on the final code: G1 1,441, G2 1,434, G3 305 a GET and 276 a
 POST, G4 81 and 404, G5 382 and 357 with a park, G7 305, G8 1,137, G8 own 295, G8
-on-done 866, G9 605 and 629 with a park, and G10 84, 167 and 2.
+on-done 866, G9 605 and 629 with a park, and G10 84, 167 and 2. CI passed on the PR (run
+40713181539, 4m07s): 15 suites, 751 rows and the curl row skipped, as CI's curl has no
+WebSocket; the gate's worst figures G3 311 and 272, G5 382 and 340, G8 own 298, G9 606
+and 607, G10 84, 164 and 4.
 
 - **chez-websocket first**, each PR closed out in its ledger,
   `.superpowers/sdd/progress.md`: `websocket-handshake`, for a host whose requests and
