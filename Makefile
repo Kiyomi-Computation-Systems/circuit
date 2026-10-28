@@ -3,10 +3,12 @@
 # On a Guix host, run targets through the container:
 #   scripts/guix-env make <target>
 #
-# One dependency, pinned by gitlink at a release tag: chez-http-server, under
-# vendor/. It carries its own pins, and circuit uses them through it:
-# chez-libuv, chez-httparse with byte-machine under it, uriparse, and
-# chez-srfi for SRFI-64. `make submodules` clones those, and not the
+# Two dependencies, each pinned by gitlink at a release tag under vendor/:
+# chez-http-server, and chez-websocket for (circuit websocket). The server
+# carries its own pins, and circuit uses them through it: chez-libuv,
+# chez-httparse with byte-machine under it, uriparse, and chez-srfi for
+# SRFI-64. chez-websocket pins a server of its own, which circuit doesn't
+# clone: it must be SERVER_PIN. `make submodules` clones those, and not the
 # server's test clients; `make check-pins` holds them where the pins say.
 # Both need git and the network, so they run on the host: the container has
 # neither. `make deps` builds chez-libuv's shim and links SRFI-64, and never
@@ -36,9 +38,11 @@ MAKEOVERRIDES =
 # reference picks up whichever recipe is running it.
 GOAL = $(strip $(if $(MAKECMDGOALS),$(MAKECMDGOALS),$@))
 
-# --- the pin -----------------------------------------------------------------
+# --- the pins ----------------------------------------------------------------
 SERVER_DIR := vendor/chez-http-server
 SERVER_PIN := d928e41b7483e512dc10312d0834be8c8d860c44  # v0.9.0
+WEBSOCKET_DIR := vendor/chez-websocket
+WEBSOCKET_PIN := 4456814cef6c32717ebc86ed0ebd3e1400e6dfef  # v0.4.0
 
 # --- the pins it carries ------------------------------------------------------
 LIBUV_DIR        := $(SERVER_DIR)/vendor/chez-libuv
@@ -49,9 +53,9 @@ SRFI_DIR         := $(SERVER_DIR)/vendor/chez-srfi
 
 # --- the library paths --------------------------------------------------------
 # LIBDIRS is the path `make run` and `make dev` use: circuit's src/, then the
-# server's and the libraries it carries. chez-libuv locates its C shim by an
-# absolute path baked into the config.sls its build generates, so only its
-# src/ is needed. build/scheme-libs carries (srfi :64).
+# server's, chez-websocket's and the libraries the server carries. chez-libuv
+# locates its C shim by an absolute path baked into the config.sls its build
+# generates, so only its src/ is needed. build/scheme-libs carries (srfi :64).
 #
 # TEST_LIBDIRS is the suites' path: LIBDIRS, then tests/, which holds
 # (circuit-testing). Test code stays off LIBDIRS.
@@ -61,6 +65,7 @@ EMPTY :=
 SPACE := $(EMPTY) $(EMPTY)
 LIBDIR_LIST := src \
   $(SERVER_DIR)/src \
+  $(WEBSOCKET_DIR)/src \
   $(LIBUV_DIR)/src \
   $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src \
   $(URIPARSE_DIR)/src \
@@ -152,17 +157,19 @@ check-guix-inside: ## (inside the container) Assert the pinned toolchain, isolat
 
 # Targeted, so neither chez-libuv's own vendored libuv nor the server's test
 # clients (vtest2) are cloned: the shim links the libuv pkg-config finds when
-# it meets chez-libuv's floor, as the container's does.
-submodules: ## (host) Clone the pinned server and the pins it carries
+# it meets chez-libuv's floor, as the container's does. chez-websocket's own
+# server isn't cloned either: circuit's is the one on the path.
+submodules: ## (host) Clone the pinned server, the pins it carries, and chez-websocket
 	@scripts/require-tools "$(GOAL)" git
-	git submodule update --init $(SERVER_DIR)
+	git submodule update --init $(SERVER_DIR) $(WEBSOCKET_DIR)
 	git -C $(SERVER_DIR) submodule update --init vendor/chez-libuv vendor/uriparse vendor/chez-srfi
 	git -C $(SERVER_DIR) submodule update --init --recursive vendor/chez-httparse
 
 # Each checkout is asked for its own .git first: in a submodule that was
 # never cloned, `git -C` would climb to the repository around it and answer
-# that one's commit. Read-only.
-check-pins: ## (host) Fail unless the server sits at its pin, and each pin it carries where the server records it
+# that one's commit: for chez-websocket's server, circuit's own gitlink.
+# Read-only.
+check-pins: ## (host) Fail unless the server and chez-websocket sit at their pins, chez-websocket's server pin is SERVER_PIN, and each pin the server carries sits where it records
 	@scripts/require-tools "$(GOAL)" git
 	@fail=0; \
 	check_pin() { \
@@ -171,16 +178,26 @@ check-pins: ## (host) Fail unless the server sits at its pin, and each pin it ca
 	    echo "PIN MISMATCH: $$1 at $${got:-<absent>}, expected $${2:-<no gitlink recorded>}" >&2; fail=1; \
 	  else echo "pin ok: $$1 $$2"; fi; }; \
 	recorded() { git -C "$$1" rev-parse --verify --quiet "HEAD:$$2"; }; \
-	rec=$$(git ls-files -s -- $(SERVER_DIR) | awk '$$1 == "160000" && $$3 == 0 { print $$2 }'); \
-	if [ "$$rec" != "$(strip $(SERVER_PIN))" ]; then \
-	  echo "PIN MISMATCH: the gitlink records $(SERVER_DIR) at $${rec:-<none>}, SERVER_PIN says $(strip $(SERVER_PIN))" >&2; fail=1; \
-	fi; \
+	gitlink() { \
+	  rec=$$(git ls-files -s -- "$$1" | awk '$$1 == "160000" && $$3 == 0 { print $$2 }'); \
+	  if [ "$$rec" != "$$3" ]; then \
+	    echo "PIN MISMATCH: the gitlink records $$1 at $${rec:-<none>}, $$2 says $$3" >&2; fail=1; \
+	  fi; }; \
+	gitlink $(SERVER_DIR) SERVER_PIN $(strip $(SERVER_PIN)); \
 	check_pin $(SERVER_DIR) $(strip $(SERVER_PIN)); \
+	gitlink $(WEBSOCKET_DIR) WEBSOCKET_PIN $(strip $(WEBSOCKET_PIN)); \
+	check_pin $(WEBSOCKET_DIR) $(strip $(WEBSOCKET_PIN)); \
+	if [ -e "$(WEBSOCKET_DIR)/.git" ]; then \
+	  wsrv=$$(recorded $(WEBSOCKET_DIR) vendor/chez-http-server); \
+	  if [ "$$wsrv" != "$(strip $(SERVER_PIN))" ]; then \
+	    echo "PIN MISMATCH: $(WEBSOCKET_DIR) pins the server at $${wsrv:-<no gitlink recorded>}, SERVER_PIN says $(strip $(SERVER_PIN))" >&2; fail=1; \
+	  else echo "pin ok: $(WEBSOCKET_DIR)'s server $$wsrv, SERVER_PIN"; fi; \
+	fi; \
 	for d in chez-libuv chez-httparse uriparse chez-srfi; do \
 	  check_pin $(SERVER_DIR)/vendor/$$d "$$(recorded $(SERVER_DIR) vendor/$$d)"; \
 	done; \
 	check_pin $(BYTE_MACHINE_DIR) "$$(recorded $(HTTPARSE_DIR) vendor/byte-machine)"; \
-	for d in $(SERVER_DIR) $(LIBUV_DIR) $(HTTPARSE_DIR) $(BYTE_MACHINE_DIR) $(URIPARSE_DIR) $(SRFI_DIR); do \
+	for d in $(SERVER_DIR) $(WEBSOCKET_DIR) $(LIBUV_DIR) $(HTTPARSE_DIR) $(BYTE_MACHINE_DIR) $(URIPARSE_DIR) $(SRFI_DIR); do \
 	  if [ -e "$$d/.git" ] && [ -n "$$(git -C $$d status --porcelain --untracked-files=no 2>/dev/null)" ]; then \
 	    echo "PIN DIRTY: $$d has local edits to tracked files" >&2; fail=1; fi; \
 	done; \
@@ -204,7 +221,7 @@ oha: ## (host) Fetch oha, the gate's load client, into build/oha: the server's p
 # stops it following an existing link to a directory into the submodule.
 deps: ## Build chez-libuv's shim and link SRFI-64 into build/scheme-libs; never fetches
 	@scripts/require-tools "$(GOAL)" $(CHEZ) $(CC) pkg-config
-	@for f in $(SERVER_DIR)/src/http-server.sls $(LIBUV_DIR)/Makefile $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src $(URIPARSE_DIR)/src $(SRFI_DIR)/%3a64.sls; do \
+	@for f in $(SERVER_DIR)/src/http-server.sls $(WEBSOCKET_DIR)/src/websocket.sls $(LIBUV_DIR)/Makefile $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src $(URIPARSE_DIR)/src $(SRFI_DIR)/%3a64.sls; do \
 	  if [ ! -e "$$f" ]; then \
 	    echo "deps: $$f not found, so a submodule is empty or missing. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
 	    exit 1; \

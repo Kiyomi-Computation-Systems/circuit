@@ -1,11 +1,11 @@
 name: CI
 
 # Linux only, deliberately (AGENTS.md: do NOT set up macOS runners). One job,
-# on one amd64 image: it gets the pinned server and the pins it carries with
-# `make submodules`, holds them at their pins with `make check-pins`, builds
-# Chez at its floor (once, then cached), and runs `make test`, which builds
-# chez-libuv's shim against the system libuv and runs check-help,
-# check-suites and every suite, then the cost gate, `make gate`.
+# on one amd64 image: it gets the pinned server, the pins it carries, and
+# chez-websocket with `make submodules`, holds them at their pins with `make
+# check-pins`, builds Chez at its floor (once, then cached), and runs `make
+# test`, which builds chez-libuv's shim against the system libuv and runs
+# check-help, check-suites and every suite, then the cost gate, `make gate`.
 #
 # Every action is pinned to a full commit SHA, with its tag in a comment: a tag
 # can be moved to other code, a commit cannot.
@@ -58,12 +58,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Clone the server and the pins it carries, then verify each is where
-      # its parent records before building anything: a drifted pin fails here,
-      # in seconds, not after a cold Chez build. Every one is public, so no
-      # token is needed, and a pull request from a fork, which gets no
-      # secrets, builds as one from this repository does. `make test` needs
-      # the checkouts (deps checks they are there) and never fetches.
+      # Clone the server, the pins it carries, and chez-websocket, then verify
+      # each is where its pin or its parent records before building anything:
+      # a drifted pin fails here, in seconds, not after a cold Chez build.
+      # Every one is public, so no token is needed, and a pull request from a
+      # fork, which gets no secrets, builds as one from this repository does.
+      # `make test` needs the checkouts (deps checks they are there) and never
+      # fetches.
       - name: Init submodules
         run: make submodules
 
