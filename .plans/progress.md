@@ -147,7 +147,9 @@ middleware-waits 68, names 20, request 52, response 96, router 101, router-prope
 test 44, websocket 35), and `make gate` passes, no gate moved. Its worst figures: G1
 1,441, G2 1,434, G3 308 a GET and 274 a POST, G4 80 and 400, G5 385 and 343 with a park,
 G7 306, G8 1,146, G8 own 291, G8 on-done 869, G9 606 and 604 with a park, and G10 81, 164
-and 4.
+and 4. CI passed on the PR (run 40785095018, 2m29s): 15 suites, 768 rows and the curl
+row skipped, as CI's curl has no WebSocket; the gate's worst figures G3 309 and 275, G4
+81 and 404, G5 384 and 339, G7 305, G8 own 291, G9 605 and 610, G10 87, 163 and 2.
 
 - **The owner's decision** (design §15.25): the server's `CHEZ_HTTP_MAX_BODY_BYTES`
   stays the one cap a deployer sets, and a request carries one of its own, from code,
