@@ -33,8 +33,15 @@ close-out under **Close-outs**, newest first.
 - **Slice 6b, `(circuit router)`, is merged**, squashed from
   [PR #7](https://github.com/Kiyomi-Computation-Systems/circuit/pull/7) on 2026-10-27;
   its close-out is below. The owner's answers in it are design §15.20–§15.24.
-- **Next: the handshake in chez-websocket**, host-neutral and released there (the slice 6
-  design), then slice 6c, WebSocket.
+- **The handshake in chez-websocket is released**: `websocket-handshake` in v0.3.0, and
+  `websocket-limits-from-environment` in its facade in v0.4.0, each closed out in its own
+  ledger.
+- **Slice 6c, `(circuit websocket)`, is merged**, squashed from
+  [PR #8](https://github.com/Kiyomi-Computation-Systems/circuit/pull/8) on 2026-10-28;
+  its close-out is below. chez-websocket is pinned at v0.4.0 (4456814). The owner's
+  answers in it are the slice 6 design §7.5–§7.6. Slice 6 is done.
+- **Next:** the design plans no slice past 6 (§17). What follows is the owner's call:
+  the open items below, and design §16.
 
 ## Open
 
@@ -92,6 +99,13 @@ close-out under **Close-outs**, newest first.
   - `examples/long-poll.sps` may wake a waiter whose deadline fired in the same instant,
     answering "woke 1" and logging `late-resume`, as the server's example would.
     Unverified.
+- **CI's curl can't drive a WebSocket:** ubuntu-24.04's curl, 8.5.0, is built without it
+  (curl has it by default from 8.11), so the examples suite's curl echo row is skipped in
+  CI and runs only in the container, on curl 8.20. The `/dev/tcp` rows prove the echo in
+  both (slice 6c).
+- **No test runs README.org's code.** The websocket suite's env row copies its recipe for
+  limits from an app's env, and the names suite loads its imports; the snippets
+  themselves aren't run.
 - **The router's 400 and 405 can't be customised:** only its not-found handler is the
   app's (the slice 6 design §5). A middleware around the router can rewrite them.
 - **Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
@@ -115,6 +129,74 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-28: slice 6c, `(circuit websocket)`, in PR #8
+
+Commits on `slice/6c-websocket`: AGENTS.md's rule from slice 6b's final review (d96b2a4),
+the pin (b1f5401), the slice (32b6e41), the records with this close-out, and its CI run
+named here. Built, reviewed and fixed on 2026-10-28. `make test` passes 15 suites, 752
+rows (check-imports 57, check-suites 14, circuit-testing 45, examples 92, headers 24,
+http-server 73, middleware 9, middleware-waits 68, names 20, request 47, response 96,
+router 100, router-properties 29, test 43, websocket 35), and `make gate` passes, no gate
+moved. Its worst figures on the final code: G1 1,441, G2 1,434, G3 305 a GET and 276 a
+POST, G4 81 and 404, G5 382 and 357 with a park, G7 305, G8 1,137, G8 own 295, G8
+on-done 866, G9 605 and 629 with a park, and G10 84, 167 and 2.
+
+- **chez-websocket first**, each PR closed out in its ledger,
+  `.superpowers/sdd/progress.md`: `websocket-handshake`, for a host whose requests and
+  responses are its own (#97; its decision 0009), released as v0.3.0 (#98); then
+  `websocket-limits-from-environment` in its facade (#99), released as v0.4.0 (#100),
+  the tag signed;
+- **the owner's decisions:**
+  - an app passes limits from its own env, `(websocket-limits-from-environment env)`, to
+    `websocket-res`; the default stays the process's environment, read at start (the
+    slice 6 design §7.5). The adapter carrying its env on every request was set aside;
+  - chez-websocket exports that procedure and releases v0.4.0 before 6c pins it (§7.6);
+  - the README's Try line gives curl, 8.11 or later, and websocat;
+  - AGENTS.md's argument-order rule corrected (the traps below);
+- **the build** (Opus 5.5; 860,914 tokens over two rounds, 40.2 and 17.3 minutes):
+  `src/circuit/websocket.sls`, `tests/test-websocket.sps`, the audit's rule (i) and its
+  five fixtures, the names suite's exact exports, `examples/websocket.sps` and its
+  loopback rows, `/websocket` in the loopback app, and the records. Its mutants'
+  predictions were hashed before each run (`5d8e21ee`, then `0bba6a33`). Round 2's set,
+  43 regenerated from the final library, the example and the audit, went as predicted.
+  L7a and L7b, the procedure checked inside the handshake's first or last argument,
+  survive: equivalent under Chez 10.4.1 as it compiles the library today. The builder
+  added a rule the brief didn't name, that no library imports `(circuit websocket)`;
+  the session kept it (ADR-0006);
+- **curl:** the container's 8.20 speaks `ws://`, but `-T -` sends its whole input as one
+  binary message and exits only at `--max-time`, 28. The docs give websocat for typing
+  messages;
+- **a read-only Opus review of round 1** (Opus 5.5; 223,475 tokens, 16.0 minutes) found,
+  each fixed:
+  - CI's curl, 8.5.0, has no WebSocket, so the curl row would go red there. It now runs
+    only where `curl --version` lists `ws`; under a shim that acts as 8.5 does, the
+    examples suite passed 91 rows, that one skipped;
+  - nothing held that the default limits are the environment's: its m1 and m2 survived.
+    Now two loopback rows with `CHEZ_WS_MAX_MESSAGE_BYTES=4`, for the example's
+    2-argument form and the loopback app's 3-argument form;
+  - nothing held a field's line order: its m3 survived. Now a row splits
+    `X-Forwarded-Proto` over two lines;
+  - `run-server`'s env never reaches the limits: the question behind §7.5 and v0.4.0;
+  - stale records: the slice 6 design's `-> Any`, AGENTS.md's two libraries and its
+    Dependencies, ci.yml's comments, and design §8's handshake as work to come;
+- **round 3, the session's:** the pin at v0.4.0, README.org's recipe for limits from an
+  app's env, and a websocket row that runs it through the test host: an env with
+  `CHEZ_WS_MAX_MESSAGE_BYTES` 4 closes a Hello 1009, and an empty one echoes it. Its
+  predictions were hashed first (`8e4b4df5`): the 4-argument form dropping its limits
+  fails it and the limits row, exactly;
+- **traps:**
+  - Chez chooses a call's argument order as it compiles the call. main's AGENTS.md, and
+    the brief, said compiled library code runs right to left. A probe library's calls ran
+    left to right, `((a b c d) (check method host) (method host check))`, a `begin`
+    argument included. Yet in `(circuit websocket)`, L7b's `begin` in the last argument
+    ran before the reads ahead of it: probed, no field was read before "not a procedure".
+    The session's first correction, that a `begin` runs first wherever it stands, was
+    wrong too, found while writing this; AGENTS.md now says what was seen;
+  - chez-websocket reads `CHEZ_WS_` through `getenv` as its binding loads, so neither a
+    value set later nor `run-server`'s env reaches the default limits;
+  - Chez's `--libdirs` skips a missing directory silently: each mutant folder is a source
+    root, its load proved by a mutant that turns every row red.
 
 ### 2026-10-27: slice 6b, `(circuit router)`, in PR #7
 

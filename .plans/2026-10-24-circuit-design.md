@@ -1511,4 +1511,6 @@ The owner's answers to slice 6b's final review (2026-10-27):
    designed in [2026-10-27-slice-6-design.md](2026-10-27-slice-6-design.md)
    as 6a, 6b and 6c, with chez-websocket's handshake between (§15.16).
    6a, upgrades, is
-   [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6).
+   [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6); 6b, the router,
+   [PR #7](https://github.com/Kiyomi-Computation-Systems/circuit/pull/7); and 6c,
+   WebSocket, [PR #8](https://github.com/Kiyomi-Computation-Systems/circuit/pull/8).
