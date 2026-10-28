@@ -103,6 +103,7 @@ does: keep the strings you read, not the request.
 | `req-header-values` | `Req String -> (Listof String)` | `request-header-values` | v0.8.0 |
 | `req-headers` | `Req -> (Listof (Pair String String))` | `request-header-list`, names as sent | v0.9.0 (A1) |
 | `req-body` | `Req -> BinaryInputPort` | `body-input-port`, §4 | v0.9.0 (A4) |
+| `req-body-cap` | `Req -> (U Nat #f)` | none: the request's own, handed to `body-input-port`, §4 | v0.9.0 (A4) |
 | `req-remote-address` | `Req -> (U String #f)` | `request-remote-address` | v0.9.0 (A3) |
 | `req-remote-port` | `Req -> (U Nat #f)` | `request-remote-port` | v0.9.0 (A3) |
 | `req-local-address` | `Req -> (U String #f)` | `request-local-address` | v0.9.0 (A3) |
@@ -126,7 +127,8 @@ does: keep the strings you read, not the request.
   supplies (`method`, `host`, `path`, `query`, `http-version`, `header`,
   `header-values`, `headers`, `body`, `remote-address`, `remote-port`,
   `local-address`, `local-port`, `on-done`), each taking the host's
-  request. `make-req-view` takes them in that order, and `make-req` makes
+  request, and `body` the request's cap too (§4). `make-req-view` takes
+  them in that order, and `make-req` makes
   a request from a view and the host's request (§11). The adapter's view
   wraps the server's accessors; a test request's view reads a record of
   what the test gave.
@@ -154,14 +156,19 @@ does: keep the strings you read, not the request.
   `req-with-query`, `req-with-remote-address` and `req-with-remote-port`,
   each giving a new request whose view answers the new value for that
   field. A value of another type is an assertion violation.
+- **The body's cap is the record's own**: `(req-with-body-cap req cap)`
+  gives a copy whose body may hold `cap` bytes, or, for `#f`, no cap but
+  the server's; `req-body-cap` reads it, `#f` unless given. `req-body`
+  hands it to the view's body as it makes the port (§4, §15.25).
 - **Every copy shares one cell.** The record holds a cell, made with the
   request, holding the body's port once the first `req-body` has made it
   (§4), and the procedures `req-on-done!` keeps when the view has no
   `on-done`, with the ending once `test-req-done!` has given one.
   `req-set` and the `req-with-` helpers copy the record, not the cell, so
   a port made through one copy is the port every copy answers. The record
-  has four fields, the view, the host's request, the keys and the cell,
-  so a `req-set` stays the 80 B S2 measured (G4, §15.6).
+  has five fields, the view, the host's request, the keys, the cap and
+  the cell, so a `req-set` stays the 80 B S2 measured: Chez sizes a record
+  in 16 B steps, and four fields or five are one step (G4, §15.6).
 
 ## 4. The request body: a port that waits
 
@@ -211,10 +218,27 @@ must wait for the client parks the coroutine.
   for, so a port kept and read in another request's handler reads that
   request's body. A response can't stream the request's body back as it
   arrives: an echo or a proxy reads it before it answers (§16.3).
-- **No cap of circuit's own.** The server's `CHEZ_HTTP_MAX_BODY_BYTES`
-  caps every body. It is unbounded by default, as Ring's `InputStream` and
-  Go's `r.Body` are, so an app that reads a body whole should run with it
-  set (§16.1).
+- **A request carries a cap of its own, under the server's.** The
+  server's `CHEZ_HTTP_MAX_BODY_BYTES` caps every body. It is unbounded by
+  default, as Ring's `InputStream` and Go's `r.Body` are. Under it,
+  `(wrap-body-cap n)` gives each request that passes it a cap of `n`
+  bytes, and `req-with-body-cap` gives one request one (§3, §15.25).
+  - **The innermost wins**: the port is made with the cap of the copy
+    `req-body` is first called through, so a router's group can lift or
+    lower the app's cap for its routes, and `#f` leaves the server's
+    alone.
+  - **The server enforces it.** `req-body` hands the cap to
+    `body-input-port` as it makes the port, and the server takes the
+    lesser of it and its own. A body past it raises `&body-failed`, 413,
+    at the read that passes it. A declared length past it fails the first
+    read, before any `100 Continue`, so a client that waits for one sends
+    nothing.
+  - **The first read fixes the cap** (§12), so `req-with-body-cap` refuses
+    a cap once the port is made, through any copy, with an assertion
+    violation: middleware that reads the body, a parser, goes inside the
+    cap.
+  - `make-test-req` reads its body whole whatever the cap (§10): a test of
+    the cap runs in the server's test host.
 
 A read that must wait parks. S1 showed the first two and the last two of
 these under the server, with a port of its own. The third and the fourth
@@ -776,7 +800,8 @@ libraries that import `(http-server)`.
   gets both, and leaves them alone.
 - Settings come from the environment procedure, as the server's do
   (12-factor): `CIRCUIT_PORT_PIECE_BYTES` for port bodies. The body's cap
-  is the server's `CHEZ_HTTP_MAX_BODY_BYTES` (§4). Given no environment
+  is the server's `CHEZ_HTTP_MAX_BODY_BYTES`, and under it the request's
+  own, from code (§4). Given no environment
   procedure, the adapter reads the process's environment with Chez's
   `getenv`, as `serve` does (ADR-0006).
   - **`circuit->handler` reads them once, when it is called**, not per
@@ -822,7 +847,9 @@ libraries that import `(http-server)`.
 - **A handler that waits**, or one wrapped in `wrap-timeout`, or one that
   reads the server's body, its credit, `100 Continue` and `&body-failed`,
   needs a host where waits work. A test request's own body is a
-  bytevector port, read with no host. One wrapped only in the catch
+  bytevector port, read with no host, whatever the request's cap: the
+  server enforces a cap, so its test runs in the test host. One wrapped
+  only in the catch
   helper needs none either, unless it waits (§6). The server ships one,
   `(http-server testing)` (A7, the server's decision 0038):
   `make-test-host` hosts `(circuit->handler app env)`, a client sends wire
@@ -939,7 +966,8 @@ libraries that import `(http-server)`.
 (circuit headers)       header lists: header-value, header-values,
                         header-set, header-add, header-remove,
                         header-names-downcase
-(circuit middleware)    wrap, and the pure middleware
+(circuit middleware)    wrap, and the pure middleware: wrap-body-cap
+                        (slice 7)
 (circuit middleware waits)
                         wrap-catch, wrap-timeout and wrap-log; imports
                         (http-server)
@@ -1147,7 +1175,8 @@ and the resume its before thunk.
   this design planned until the pull landed. It was never built (§4).
 - **A cap of circuit's own on the body**, the interim's
   `CIRCUIT_MAX_BODY_BYTES`, 1 MiB by default: it bounded a buffer circuit
-  no longer keeps. The server's setting is the one cap (§4, §16.1).
+  no longer keeps. The server's setting is the one cap a deployer sets,
+  and a request's own comes from code (§4, §15.25).
 - **A `content-length` header read as a streamed body's length**, as
   Ring's middleware sets it, and taken off before the server sees it: the
   adapter would rewrite the head the app gave (§15.8).
@@ -1462,14 +1491,25 @@ The owner's answers to slice 6b's final review (2026-10-27):
     a one-parameter route, 64 B a miss. The worst figures over 6b's three
     final runs were 83, 164 and 4 B. Weighed: keeping G10 printed.
 
+The owner's answer to §16.1 (2026-10-28):
+
+25. **No cap of circuit's own from the environment; a request carries one
+    from code.** The server's `CHEZ_HTTP_MAX_BODY_BYTES` stays the one cap
+    a deployer sets, unbounded by default. `wrap-body-cap` and
+    `req-with-body-cap` give a request a cap under it, which the adapter
+    hands `body-input-port` and the server enforces (§4). The innermost
+    wins, so a group can give its routes a cap of their own. Built as
+    slice 7. Weighed: `CIRCUIT_MAX_BODY_BYTES` at 1 MiB, a second knob
+    where the lesser wins, so a deployer who raised the server's cap would
+    find uploads still stopped at 1 MiB; asking the server to default to a
+    finite cap, the server's to decide, which would break its users; and
+    only a helper that reads a body whole under a cap, which a parser
+    reading the port would pass by.
+
 ## 16. Open
 
-1. **A cap of circuit's own on the request body.** This draft has none
-   (§4, §14). The server's `CHEZ_HTTP_MAX_BODY_BYTES` is unbounded by
-   default, so an app that reads a body whole runs without a bound unless
-   its deployer sets one. A per-route cap would be middleware's. The pull
-   fixes its cap at the first read, so such middleware would set the cap
-   on the request, and `req-body` would make its port with it.
+1. **A cap of circuit's own on the request body**: decided in slice 7, a
+   cap a request carries under the server's (§15.25).
 2. **A clock for request logging**: decided before slice 5 (§15.13).
 3. **A response can't stream the request's body back** (§4): only the
    `awaiting` thunk may pull. An echo or a proxy that streams both ways at
@@ -1514,3 +1554,9 @@ The owner's answers to slice 6b's final review (2026-10-27):
    [PR #6](https://github.com/Kiyomi-Computation-Systems/circuit/pull/6); 6b, the router,
    [PR #7](https://github.com/Kiyomi-Computation-Systems/circuit/pull/7); and 6c,
    WebSocket, [PR #8](https://github.com/Kiyomi-Computation-Systems/circuit/pull/8).
+7. A request's own cap on its body (§16.1, §15.25): `req-with-body-cap`
+   and `req-body-cap` in `(circuit request)`, `wrap-body-cap` in
+   `(circuit middleware)`, both in the facade; the view's body handed the
+   cap, and the adapter handing it to `body-input-port`;
+   `examples/echo.sps` capped at 1 MiB. Built and closed out in
+   [PR #9](https://github.com/Kiyomi-Computation-Systems/circuit/pull/9).

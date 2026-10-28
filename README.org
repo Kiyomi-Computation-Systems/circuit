@@ -151,8 +151,26 @@ Settings come from the environment. The server's are its own ~CHEZ_HTTP_~ variab
 |----------------------------+---------+----------------------------------------------------------------------------|
 | ~CIRCUIT_PORT_PIECE_BYTES~ |   65536 | the most a piece of a port body holds; a port this size or less goes whole |
 
-The server caps no request body by default: an app that reads one whole should set
-~CHEZ_HTTP_MAX_BODY_BYTES~.
+The server caps no request body by default. ~CHEZ_HTTP_MAX_BODY_BYTES~ caps every body,
+and ~wrap-body-cap~ caps the bodies of the requests that pass it, under that:
+
+#+begin_src scheme
+(run-server
+ (wrap (make-router
+        (list (route "/notes" (POST add-note))
+              (group "/uploads" (list (wrap-body-cap (* 100 1024 1024)))
+                (route "" (POST upload)))))
+       (wrap-body-cap 65536)))
+#+end_src
+
+- The innermost cap wins: ~/uploads~ takes 100 MiB, the rest 64 KiB. ~(wrap-body-cap
+  #f)~ leaves the server's cap alone.
+- A body past the cap raises ~&body-failed~ at the read that passes it: let out, or
+  caught by ~wrap-catch~, it answers ~413~. A declared ~Content-Length~ past it fails
+  the first read, so a client waiting for ~100 Continue~ gets the ~413~ instead.
+- Cap a body before anything reads it: once ~req-body~ has made the port, a new cap is
+  refused. ~(req-with-body-cap req n)~ caps one request, and ~req-body-cap~ reads it.
+- ~make-test-req~ reads its body whatever the cap. Test a cap in the server's test host.
 
 A WebSocket's limits are chez-websocket's ~CHEZ_WS_~ variables (see its [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.0/docs/configuration.md][configuration]]).
 They are read from the process's environment once, as the program starts: an ~env~

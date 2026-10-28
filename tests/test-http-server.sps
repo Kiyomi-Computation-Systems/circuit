@@ -9,6 +9,9 @@
 ;;;     100-continue sent at the first read, a &body-failed let out answered
 ;;;     with its status, a with-deadline around a read, one port for every
 ;;;     copy of the request;
+;;;   - the request's cap, from wrap-body-cap, reaching the server: a body
+;;;     at it read, one past it refused, declared or chunked, with no 100
+;;;     Continue; the innermost cap winning;
 ;;;   - req-on-done! reaching the server: written, client-closed and failed;
 ;;;   - each body kind's wire form, and port bodies: sized from their
 ;;;     position, past their length, chunked in pieces of the piece size,
@@ -405,6 +408,60 @@
   (exchange (lambda (r) (make-res 200 '() (get-bytevector-all (req-body r))))
             "POST /up HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n9\r\n123456789\r\n0\r\n\r\n"
             (settings "CHEZ_HTTP_MAX_BODY_BYTES" "4")))
+
+;;; --- the request's cap ------------------------------------------------------
+
+;; capped-echo : Middleware ... -> (Req -> Res)
+;; An app that answers its body, read whole, inside MIDDLEWARES.
+(define (capped-echo . middlewares)
+  (apply wrap
+         (lambda (r)
+           (let ((bytes (get-bytevector-all (req-body r))))
+             (make-res 200 '() (if (eof-object? bytes) (make-bytevector 0) bytes))))
+         middlewares))
+
+;; chunked-post : String String ... -> String — a POST of PIECES, chunked.
+(define (chunked-post path . pieces)
+  (string-append "POST " path " HTTP/1.1\r\nHost: x\r\n" chunked "\r\n\r\n" (apply chunks pieces)))
+
+;; echoed : String -> (List (Listof String) Boolean (Listof Any)) — BODY answered.
+(define (echoed body)
+  (list (list (response "200 OK" (list (length-field (string-length body))) body)) #f '()))
+
+;; The exchange of a body past a cap, which the app lets out.
+(define too-large
+  (list (list (response "413 Content Too Large" '("Content-Length: 0" "Connection: close") ""))
+        #t
+        '((handler-failed (body-failed 413 body-too-large)))))
+
+(test-equal "the request's cap reaches the server's port: a body at it is read, one past it refused 413, declared or chunked"
+  (list (echoed "abcd") too-large too-large (echoed "abcd"))
+  (let ((app (capped-echo (wrap-body-cap 4))))
+    (let* ((at (exchange app (post "/up" "abcd")))
+           (declared (exchange app (post "/up" "abcde")))
+           (sent-chunked (exchange app (chunked-post "/up" "abc" "de")))
+           (at-chunked (exchange app (chunked-post "/up" "ab" "cd"))))
+      (list at declared sent-chunked at-chunked))))
+
+(test-equal "a cap of 0 takes an empty body and refuses a byte"
+  (list (echoed "") too-large)
+  (let ((app (capped-echo (wrap-body-cap 0))))
+    (let* ((empty (exchange app (post "/up" "")))
+           (one (exchange app (post "/up" "a"))))
+      (list empty one))))
+
+(test-equal "Expect: 100-continue with a declared body past the request's cap: the first read refuses it, with no 100 Continue"
+  too-large
+  (exchange (capped-echo (wrap-body-cap 4))
+            "POST /up HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: 5\r\n\r\n"))
+
+(test-equal "the innermost cap wins: one inside lifts the cap outside it, #f to the server's alone, and one inside lowers it"
+  (list (echoed "abcdefgh") (echoed "abcdefgh") too-large)
+  (let* ((lifted (exchange (capped-echo (wrap-body-cap 10) (wrap-body-cap 4)) (post "/up" "abcdefgh")))
+         (lifted-to-the-server (exchange (capped-echo (wrap-body-cap #f) (wrap-body-cap 4))
+                                         (post "/up" "abcdefgh")))
+         (lowered (exchange (capped-echo (wrap-body-cap 4) (wrap-body-cap 10)) (post "/up" "abcdefgh"))))
+    (list lifted lifted-to-the-server lowered)))
 
 (test-equal "req-body: a with-deadline around a read raises &deadline-passed, which the app answers"
   (list '() (list (response "504 Gateway Timeout" (list (length-field 4) "Connection: close") "late")) '())

@@ -1,6 +1,11 @@
 #!r6rs
 ;;; (circuit middleware): wrap's order, the last middleware outermost, and
-;;; its refusals.
+;;; its refusals; wrap-body-cap's cap, the innermost winning, and its
+;;; refusals.
+;;;
+;;; wrap-body-cap's rows read the cap a handler sees through (circuit test)'s
+;;; requests, which never enforce one: the adapter's suite holds the
+;;; server enforcing it.
 ;;;
 ;;; Each middleware here notes when it is applied, when a request passes it
 ;;; on the way in and when the response passes it on the way out, and tags
@@ -9,6 +14,8 @@
         (srfi :64)
         (circuit-testing)
         (circuit response)
+        (only (circuit request) req-body req-body-cap)
+        (only (circuit test) make-test-req)
         (circuit middleware))
 
 (define runner (test-runner-simple))
@@ -106,6 +113,48 @@
 (test-equal "wrap refuses a middleware that answers no handler"
   '(assertion-violation wrap (not-a-handler))
   (raised (lambda () (wrap handler (lambda (next) 'not-a-handler)))))
+
+;; --- wrap-body-cap ---------------------------------------------------------------
+
+;; cap-seen : Middleware ... -> (List Any Any)
+;; What a handler inside MIDDLEWARES answers for a POST, and the cap it saw.
+(define (cap-seen . middlewares)
+  (let* ((seen 'handler-not-called)
+         (app (apply wrap (lambda (req) (set! seen (req-body-cap req)) 'answered) middlewares)))
+    (let ((answered (app (make-test-req 'POST "/" '() "body"))))
+      (list answered seen))))
+
+(test-equal "wrap-body-cap gives the request it passes on its cap: the innermost given wins, #f lifting one outside it; 0 and a bignum are caps"
+  `((answered 4) (answered 10) (answered 4) (answered #f) (answered 0) (answered ,(expt 2 100)))
+  (list (cap-seen (wrap-body-cap 4))
+        (cap-seen (wrap-body-cap 10) (wrap-body-cap 4))
+        (cap-seen (wrap-body-cap 4) (wrap-body-cap 10))
+        (cap-seen (wrap-body-cap #f) (wrap-body-cap 4))
+        (cap-seen (wrap-body-cap 0))
+        (cap-seen (wrap-body-cap (expt 2 100)))))
+
+(test-equal "wrap-body-cap answers its handler's response as it is"
+  #t
+  (let ((res (make-res 201 '(("x-a" . "1")) "made")))
+    (eq? res (((wrap-body-cap 4) (lambda (req) res)) (make-test-req 'GET "/")))))
+
+(test-equal "wrap-body-cap refuses a cap that is neither #f nor a count of bytes when it is called, and a handler that is no procedure when it is applied"
+  '((assertion-violation wrap-body-cap (-1))
+    (assertion-violation wrap-body-cap (1.5))
+    (assertion-violation wrap-body-cap (4.))
+    (assertion-violation wrap-body-cap ("4"))
+    (assertion-violation wrap-body-cap (not-a-handler)))
+  (append (map (lambda (cap) (raised (lambda () (wrap-body-cap cap)))) (list -1 1.5 4. "4"))
+          (list (raised (lambda () ((wrap-body-cap 4) 'not-a-handler))))))
+
+(test-equal "wrap-body-cap refuses a request whose body was read outside it: the cap would come too late"
+  '(assertion-violation req-with-body-cap (4))
+  (let* ((reading (lambda (next)
+                    (lambda (req)
+                      (get-bytevector-all (req-body req))
+                      (next req))))
+         (app (wrap (lambda (req) 'answered) (wrap-body-cap 4) reading)))
+    (raised (lambda () (app (make-test-req 'POST "/" '() "body"))))))
 
 (test-end "middleware")
 

@@ -11,6 +11,8 @@
 ;;; A test request's view reads a record of what it was made with. It has
 ;;; no addresses, as the server's test host has none, and no on-done, so the
 ;;; request keeps the procedures req-on-done! is given until test-req-done!.
+;;; Its body is read whole whatever the request's cap: the server enforces a
+;;; cap, so a test of one runs in the server's test host.
 (library (circuit test)
   (export make-test-req test-req-done! res-body->bytevector)
   (import (rnrs)
@@ -29,7 +31,7 @@
 
   (define (source-header s name) (header-value (source-headers s) name))
   (define (source-header-values s name) (header-values (source-headers s) name))
-  (define (source-body-port s) (open-bytevector-input-port (source-body s)))
+  (define (source-body-port s cap) (open-bytevector-input-port (source-body s)))
   (define (http/1.1 s) (cons 1 1))
 
   (define (test-view body)

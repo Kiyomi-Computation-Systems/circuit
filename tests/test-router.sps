@@ -584,6 +584,17 @@
                                 (GET "/u/7?q=7")))))
       (list answers (take-log!)))))
 
+(test-equal "wrap-body-cap in a group gives its routes a cap of their own, inside the app's: the innermost wins"
+  '((POST "/small" 4) (POST "/up/file" 100))
+  (let* ((seen (lambda (req) (list (req-method req) (req-path req) (req-body-cap req))))
+         (app (wrap (make-router (list (route "/small" (POST seen))
+                                       (group "/up" (list (wrap-body-cap 100))
+                                         (route "/file" (POST seen)))))
+                    (wrap-body-cap 4))))
+    (let* ((small (app (make-test-req 'POST "/small?q=7")))
+           (file (app (make-test-req 'POST "/up/file?q=7"))))
+      (list small file))))
+
 (test-equal "(route \"\" ...) inside a group takes the group's prefix as its template"
   '((m admin GET "/admin" "/admin" () "q=7") (m stats GET "/admin/stats" "/admin/stats" () "q=7"))
   (let ((app (make-router (list (group "/admin" (list (tagging 'm))

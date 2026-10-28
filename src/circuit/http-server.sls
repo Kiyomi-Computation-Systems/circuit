@@ -122,11 +122,12 @@
   (define default-piece-bytes 65536)
 
   ;; The view over the server's request, made once: the version as major
-  ;; then minor, the body the server's port, read with the server's own cap.
+  ;; then minor, the body the server's port, read with the request's cap
+  ;; under the server's own, or with the server's alone.
   (define (http-version request)
     (cons (request-http-major request) (request-http-minor request)))
 
-  (define (body-port request) (body-input-port))
+  (define (body-port request cap) (if cap (body-input-port cap) (body-input-port)))
 
   (define view
     (make-req-view request-method request-host request-path request-query http-version

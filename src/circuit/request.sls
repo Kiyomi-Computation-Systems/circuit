@@ -8,14 +8,17 @@
 ;;; method, host, path and http-version; the rest may be #f, and then the
 ;;; accessor answers #f, or '() for a list.
 ;;;
-;;; A request is the view, the host's request, its keys and one cell. The
-;;; keys are an alist, newest first, that req-set conses onto a copy of the
-;;; record. The cell is made with the request and shared by every copy
-;;; (req-set and the req-with- helpers copy the record, not the cell). It
-;;; holds the body's one port once req-body has made it, so every copy
-;;; answers the same port, and the on-done state: the procedures kept when
-;;; the view has no on-done, and the ending once test-req-done! has given
-;;; one.
+;;; A request is the view, the host's request, its keys, the body's cap and
+;;; one cell. The keys are an alist, newest first, that req-set conses onto
+;;; a copy of the record. The cap is the most the body may hold, or #f for
+;;; none of the request's own; req-body hands it to the view's body as it
+;;; makes the port. The adapter's server enforces it; a test request
+;;; ignores it. The cell is made with the
+;;; request and shared by every copy (req-set and the req-with- helpers copy
+;;; the record, not the cell). It holds the body's one port once req-body has
+;;; made it, so every copy answers the same port, and the on-done state: the
+;;; procedures kept when the view has no on-done, and the ending once
+;;; test-req-done! has given one.
 ;;;
 ;;; Also exported for the adapter and the tests, and left out of the
 ;;; (circuit) facade: make-req-view, make-req, req-body-made and
@@ -27,7 +30,7 @@
           req-on-done! req-body-made
           make-req-key req-key? req-ref req-set
           req-with-method req-with-scheme req-with-host req-with-path req-with-query
-          req-with-remote-address req-with-remote-port
+          req-with-remote-address req-with-remote-port req-body-cap req-with-body-cap
           test-req-done!)
   (import (rnrs) (only (circuit headers) header-names-downcase))
 
@@ -48,6 +51,7 @@
     (fields (immutable view req-view-of)
             (immutable source req-source)
             (immutable keys req-keys)
+            (immutable cap req-cap)
             (immutable cell req-cell))
     (sealed #t)
     (opaque #t))
@@ -62,14 +66,16 @@
   ;;   (H -> Symbol) (H -> String) (H -> String) (U (H -> (U String #f)) #f)
   ;;   (H -> (Pair Nat Nat)) (U (H String -> (U String #f)) #f)
   ;;   (U (H String -> (Listof String)) #f)
-  ;;   (U (H -> (Listof (Pair String String))) #f) (U (H -> BinaryInputPort) #f)
+  ;;   (U (H -> (Listof (Pair String String))) #f)
+  ;;   (U (H (U Nat #f) -> BinaryInputPort) #f)
   ;;   (U (H -> (U String #f)) #f) (U (H -> (U Nat #f)) #f)
   ;;   (U (H -> (U String #f)) #f) (U (H -> (U Nat #f)) #f)
   ;;   (U (H (Symbol -> Any) -> Any) #f)
   ;;   -> View
   ;; A view from its fourteen procedures, in this order. method, host, path
   ;; and http-version must be procedures; each of the rest a procedure or
-  ;; #f. Anything else is an assertion violation naming the field.
+  ;; #f. Anything else is an assertion violation naming the field. The body
+  ;; procedure is handed the request's cap with the host's request.
   (define (make-req-view method host path query http-version header header-values headers
                          body remote-address remote-port local-address local-port on-done)
     (required 'method method)
@@ -101,11 +107,11 @@
 
   ;; make-req : View Any -> Req
   ;; A request read through VIEW from SOURCE, the host's request, with no
-  ;; keys and a fresh cell: the record and the cell, nothing else.
+  ;; keys, no cap and a fresh cell: the record and the cell, nothing else.
   (define (make-req view source)
     (unless (req-view? view)
       (assertion-violation 'make-req "not a request view" view))
-    (%make-req view source '() (make-cell #f '() #f)))
+    (%make-req view source '() #f (make-cell #f '() #f)))
 
   ;; view-of : Symbol Any -> View
   ;; R's view, once R is a request; otherwise an assertion violation from WHO.
@@ -175,16 +181,19 @@
 
   ;; req-body : Req -> BinaryInputPort
   ;; The body's one port, the same for every copy of the request. The first
-  ;; call makes it, from the view's body, or as an empty port that reads eof
-  ;; at once when the view has none, and keeps it in the cell. A view body
-  ;; that answers anything but a binary input port is an assertion
-  ;; violation, and nothing is kept.
+  ;; call makes it, from the view's body, handed the cap of the copy it was
+  ;; called through, or as an empty port that reads eof at once when the
+  ;; view has none, and keeps it in the cell. A view body that answers
+  ;; anything but a binary input port is an assertion violation, and nothing
+  ;; is kept.
   (define (req-body r)
     (let* ((view (view-of 'req-body r))
            (cell (req-cell r)))
       (or (cell-port cell)
           (let* ((proc (req-view-body view))
-                 (port (if proc (proc (req-source r)) (open-bytevector-input-port #vu8()))))
+                 (port (if proc
+                           (proc (req-source r) (req-cap r))
+                           (open-bytevector-input-port #vu8()))))
             (unless (and (port? port) (input-port? port) (binary-port? port))
               (assertion-violation 'req-body "the view's body is not a binary input port" port))
             (cell-port-set! cell port)
@@ -250,7 +259,8 @@
   (define (req-set r key value)
     (let ((view (view-of 'req-set r)))
       (check-key 'req-set key)
-      (%make-req view (req-source r) (cons (cons key value) (req-keys r)) (req-cell r))))
+      (%make-req view (req-source r) (cons (cons key value) (req-keys r)) (req-cap r)
+                 (req-cell r))))
 
   (define (check-key who key)
     (unless (req-key? key)
@@ -265,8 +275,8 @@
   ;; req-with-query : Req (U String #f) -> Req
   ;; req-with-remote-address : Req (U String #f) -> Req
   ;; req-with-remote-port : Req (U Nat #f) -> Req
-  ;; Each a copy of R, sharing its keys and its cell, whose view answers
-  ;; VALUE for that field. A value of another type is an assertion
+  ;; Each a copy of R, sharing its keys, its cap and its cell, whose view
+  ;; answers VALUE for that field. A value of another type is an assertion
   ;; violation.
   (define (req-with-method r value)
     (with-field 'req-with-method r 'method value symbol?))
@@ -291,7 +301,7 @@
       (unless (ok? value)
         (assertion-violation who "not a value for this field" value))
       (%make-req (view-with view field (lambda (source) value))
-                 (req-source r) (req-keys r) (req-cell r))))
+                 (req-source r) (req-keys r) (req-cap r) (req-cell r))))
 
   ;; view-with : View Symbol Procedure -> View
   ;; VIEW with FIELD's procedure replaced by PROC.
@@ -312,6 +322,35 @@
                     (req-view-local-address view)
                     (req-view-local-port view)
                     (req-view-on-done view)))
+
+  ;; --- the body's cap ------------------------------------------------------------
+
+  ;; req-body-cap : Req -> (U Nat #f)
+  ;; This copy's cap, as req-with-body-cap gave it, or #f. The cap in force
+  ;; is the one of the copy the port was made through, under the host's.
+  (define (req-body-cap r)
+    (view-of 'req-body-cap r)
+    (req-cap r))
+
+  ;; req-with-body-cap : Req (U Nat #f) -> Req
+  ;; A copy of R, sharing its keys and its cell, whose body may hold CAP
+  ;; bytes at most, #f for no cap of its own: the host's alone. The port is
+  ;; made with the cap of the copy req-body is first called through, so
+  ;; along a chain of copies the newest given before then wins. A cap
+  ;; neither #f nor a count of bytes is an assertion violation, and so is
+  ;; any once the body's port is made, through any copy: the host took the
+  ;; cap it was made with.
+  (define (req-with-body-cap r cap)
+    (let ((view (view-of 'req-with-body-cap r)))
+      (unless (byte-count-or-false? cap)
+        (assertion-violation 'req-with-body-cap "a cap is #f or a count of bytes" cap))
+      (when (cell-port (req-cell r))
+        (assertion-violation 'req-with-body-cap
+                             "the body's port is made, and its cap with it: give the cap before anything reads the body"
+                             cap))
+      (%make-req view (req-source r) (req-keys r) cap (req-cell r))))
+
+  (define (byte-count-or-false? x) (or (not x) (and (integer? x) (exact? x) (>= x 0))))
 
   ;; --- when the response is done ------------------------------------------------
 

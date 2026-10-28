@@ -6,8 +6,9 @@
 ;;;   curl 'http://127.0.0.1:8080/some/path?x=1'
 ;;;   curl --data hi 'http://127.0.0.1:8080/a?b=1'
 ;;;
-;;; It reads the body whole, so run it with CHEZ_HTTP_MAX_BODY_BYTES set,
-;;; as any app that does should: the server caps no body by default.
+;;; It reads the body whole, so it caps the body at 1 MiB with wrap-body-cap,
+;;; as any app that reads one whole should: the server caps no body by
+;;; default. A body past the cap gets 413.
 (import (rnrs) (circuit) (circuit http-server))
 
 ;; first-line : Req -> String — "METHOD PATH[?QUERY]" and a newline.
@@ -35,4 +36,4 @@
                  (put-bytevector out (string->utf8 (first-line req)))
                  (put-bytevector out body))))))
 
-(run-server app)
+(run-server (wrap app (wrap-body-cap 1048576)))
