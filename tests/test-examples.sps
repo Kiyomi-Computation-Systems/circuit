@@ -3,7 +3,14 @@
 ;;; process of its own and asked over loopback with curl: what the server's
 ;;; test host, which has no socket, leaves out (design §10). upgrade.sps's
 ;;; switch is asked with bash's /dev/tcp instead, since curl can't talk past
-;;; a 101. Run it from the checkout's root, as make test does.
+;;; a 101. So is each WebSocket's handshake, its frames written by hand,
+;;; websocket.sps's and the loopback program's /websocket: the command line
+;;; of curl 8.11 and later talks past a WebSocket's 101, but sends its
+;;; standard input as one binary message, never a text or a close, and ends
+;;; only at its --max-time. A row holds that, skipped where curl --version
+;;; lists no ws, as CI's 8.5.0 doesn't. A row runs each with
+;;; CHEZ_WS_MAX_MESSAGE_BYTES=4, which chez-websocket reads as the program
+;;; starts. Run it from the checkout's root, as make test does.
 ;;;
 ;;; Each program runs with the Chez that CHEZ names, on this suite's own
 ;;; library path, in an environment of PATH, CHEZ_HTTP_HOST=127.0.0.1,
@@ -29,9 +36,12 @@
 ;;; asserted whole: its status line, its header fields in order, Date's
 ;;; value aside, and its body. Each example is also read as data: it
 ;;; imports (rnrs), (circuit) and (circuit http-server) alone, but
-;;; middleware.sps, which imports (circuit middleware waits) too, and
-;;; router.sps, which imports (circuit router) too, and its last form calls
-;;; run-server.
+;;; middleware.sps, which imports (circuit middleware waits) too,
+;;; router.sps, which imports (circuit router) too, and websocket.sps, which
+;;; imports (circuit websocket) and (websocket) too; and its last form calls
+;;; run-server. For websocket.sps, RFC 6455 is an oracle too: §1.3's key
+;;; and its accept, §5.7's masked Hello and its unmasked form, and §5.5.1's
+;;; close answered with its code.
 ;;;
 ;;; Where a row reads a program's standard output, it asserts every line,
 ;;; whole and in order, one character a byte, a request line's milliseconds
@@ -479,6 +489,73 @@
   (capture-command (list "bash" "-c" echo-script "bash" (number->string port))))
 
 ;;; ------------------------------------------------------------------------
+;;; The WebSocket
+
+;; RFC 6455's frames, as bash's printf writes them: §5.7's masked Hello, and
+;; a close of code 1000 (§7.4.1), its body 03 e8 masked with §5.7's key
+;; (§5.3).
+(define masked-hello "\\x81\\x85\\x37\\xfa\\x21\\x3d\\x7f\\x9f\\x4d\\x51\\x58")
+(define masked-close "\\x88\\x82\\x37\\xfa\\x21\\x3d\\x34\\x12")
+
+;; The 101 for RFC 6455 §1.3's key, as the server writes it: no Date, and
+;; its Connection: upgrade after the handshake's fields.
+(define websocket-head
+  (string-append "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                 "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
+                 "Connection: upgrade\r\n\r\n"))
+
+;; websocket-script : String (Listof (Pair String Nat)) -> String
+;; A bash script, its port its first argument: RFC 6455 §1.3's handshake to
+;; PATH, its Origin and subprotocols left out. It writes on standard output
+;; the 101's head, a line at a time, up to its blank line; then, for each
+;; (FRAME . N) of SENDS, it sends FRAME, once the answer before it is in, and
+;; writes in hex, on a line of their own, the N bytes that answer it; then
+;; the status of a read past them, 1 at the end of the stream. Each read is
+;; bounded by 10 s. bash reads a socket a byte at a time, so no read takes
+;; bytes past its own, and none of these frames holds a NUL, which bash
+;; would drop.
+(define (websocket-script path sends)
+  (string-append
+   "LC_ALL=C\n"
+   "exec 3<>/dev/tcp/127.0.0.1/\"$1\" || exit 3\n"
+   "printf 'GET " path " HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\n"
+   "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r\\nSec-WebSocket-Version: 13\\r\\n\\r\\n' >&3\n"
+   "while IFS= read -r -t 10 line <&3; do\n"
+   "  printf '%s\\n' \"$line\"\n"
+   "  [ \"$line\" = $'\\r' ] && break\n"
+   "done\n"
+   (apply string-append
+          (map (lambda (send)
+                 (string-append
+                  "printf '" (car send) "' >&3\n"
+                  "IFS= read -r -t 10 -N " (number->string (cdr send))
+                  " got <&3; printf '%s' \"$got\" | od -An -tx1 | tr -d ' \\n'; echo\n"))
+               sends))
+   "IFS= read -r -t 10 -N 1 got <&3; echo \"read $?\"\n"
+   "exec 3>&-\n"))
+
+;; websocket-talked : Nat String (Listof (Pair String Nat)) -> (List Nat String String)
+;; websocket-script for PATH and SENDS, run against PORT: its exit status,
+;; what it wrote, and its standard error.
+(define (websocket-talked port path sends)
+  (capture-command (list "bash" "-c" (websocket-script path sends) "bash" (number->string port))))
+
+;; curl-speaks-ws? : Boolean
+;; Whether curl --version lists ws among its protocols. curl turns
+;; WebSocket on by default from 8.11; CI's, Ubuntu 24.04's 8.5.0, lists no
+;; ws and refuses a ws:// URL. A curl that can't be asked speaks none.
+(define curl-speaks-ws?
+  (guard (e (#t #f))
+    (let ((r (capture-command '("curl" "--version"))))
+      (and (= (car r) 0)
+           (exists (lambda (line)
+                     (let ((words (split line " ")))
+                       (and (pair? words) (string=? (car words) "Protocols:")
+                            (member "ws" (cdr words))
+                            #t)))
+                   (split (cadr r) "\n"))))))
+
+;;; ------------------------------------------------------------------------
 ;;; The loopback program
 
 ;; addresses-verdict : Fetched String Nat (Pair String String) ... -> Any
@@ -547,6 +624,10 @@
                                  " (circuit router) alone, and ends in run-server")
                   '((import (rnrs) (circuit) (circuit http-server) (circuit router)) run-server)
                   (program-shape "examples/router.sps"))
+      (test-equal (string-append "websocket: it imports (rnrs), (circuit), (circuit http-server),"
+                                 " (circuit websocket) and (websocket) alone, and ends in run-server")
+                  '((import (rnrs) (circuit) (circuit http-server) (circuit websocket) (websocket)) run-server)
+                  (program-shape "examples/websocket.sps"))
 
       (with-server "hello" "examples/hello.sps" '()
         (lambda (port)
@@ -654,6 +735,52 @@
           (test-equal "upgrade: Upgrade: echo over HTTP/1.0, Connection: upgrade and all, is the server's empty 500, the connection closed"
                       (empty-answer "HTTP/1.1 500 Internal Server Error" '("Connection" . "close"))
                       (answer (fetch port "/" "-0" "-H" "Connection: upgrade" "-H" "Upgrade: echo")))))
+
+      (with-server "websocket" "examples/websocket.sps" '()
+        (lambda (port)
+          (test-equal (string-append "websocket: RFC 6455 §1.3's handshake to /echo is switched, a 101 of"
+                                     " Upgrade and §1.3's accept, no Date; §5.7's masked Hello, twice, comes"
+                                     " back unmasked each time; a masked close 1000 is answered 1000, and"
+                                     " the stream ends")
+                      (list 0 (string-append websocket-head "810548656c6c6f\n810548656c6c6f\n880203e8\nread 1\n") "")
+                      (websocket-talked port "/echo"
+                                        (list (cons masked-hello 7) (cons masked-hello 7) (cons masked-close 4))))
+          ;; Skipped, and so reported, where curl lists no ws: CI's 8.5.0.
+          ;; The row above is the echo's proof.
+          (unless curl-speaks-ws?
+            (test-skip 1))
+          (test-equal (string-append "websocket: curl's -T - over ws:// sends its standard input, hello, as"
+                                     " one message, and prints the echo, then waits for its --max-time:"
+                                     " exit 28; skipped where curl --version lists no ws, below 8.11")
+                      (list 28 "hello" "")
+                      (capture-command
+                       (list "sh" "-c"
+                             (string-append "printf hello | curl -s --max-time 2 -T - "
+                                            (shell-quote (string-append "ws://127.0.0.1:" (number->string port)
+                                                                        "/echo"))))))
+          (test-equal "websocket: GET /echo that is no handshake is refused, an empty 400, the connection kept"
+                      (empty-answer "HTTP/1.1 400 Bad Request")
+                      (answer (fetch port "/echo")))
+          (test-equal (string-append "websocket: a handshake from another site's page is refused, an empty"
+                                     " 403, the connection closed after: it asked to switch")
+                      (empty-answer "HTTP/1.1 403 Forbidden" '("Connection" . "close"))
+                      (answer (fetch port "/echo" "-H" "Connection: Upgrade" "-H" "Upgrade: websocket"
+                                     "-H" "Sec-WebSocket-Version: 13"
+                                     "-H" "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="
+                                     "-H" "Origin: https://elsewhere.example")))
+          (test-equal "websocket: any other path is 404, with a hint"
+                      (text-answer "HTTP/1.1 404 Not Found" "open a WebSocket to /echo\n")
+                      (answer (fetch port "/")))))
+
+      ;; chez-websocket reads its CHEZ_WS_ variables as the program starts.
+      (with-server "websocket, CHEZ_WS_MAX_MESSAGE_BYTES=4" "examples/websocket.sps"
+        '("CHEZ_WS_MAX_MESSAGE_BYTES=4")
+        (lambda (port)
+          (test-equal (string-append "websocket, CHEZ_WS_MAX_MESSAGE_BYTES=4: websocket-res with no limits"
+                                     " takes the environment's, so §5.7's Hello of 5 bytes is closed 1009,"
+                                     " and the stream ends")
+                      (list 0 (string-append websocket-head "880203f1\nread 1\n") "")
+                      (websocket-talked port "/echo" (list (cons masked-hello 4))))))
 
       (with-server "router" "examples/router.sps" '()
         (lambda (port)
@@ -770,6 +897,10 @@
                       (list "HTTP/1.1 200 OK" (list date text-plain chunked)
                             "4\r\nabcd\r\n4\r\nefgh\r\n2\r\nij\r\n0\r\n\r\n")
                       (answer (fetch port "/pieces" "--raw")))
+          (test-equal (string-append "loopback: /websocket, websocket-res given settings and no limits,"
+                                     " echoes §5.7's Hello, and answers a close 1000 with 1000")
+                      (list 0 (string-append websocket-head "810548656c6c6f\n880203e8\nread 1\n") "")
+                      (websocket-talked port "/websocket" (list (cons masked-hello 7) (cons masked-close 4))))
           (test-equal "loopback: a body as long as the CHEZ_HTTP_MAX_BODY_BYTES its environment set is read whole"
                       (list "HTTP/1.1 200 OK" (list date (content-length 4)) "abcd")
                       (answer (fetch port "/body" "--data-binary" "abcd")))
@@ -836,6 +967,15 @@
                                 (apply append (map (lambda (r) (list (cdr r) (cdr r))) raises))
                                 (list "request GET /stream 200 client-closed N"))
                         (map car (map blank-ms (lines-in dir)))))))
+
+      (with-server "loopback, CHEZ_WS_MAX_MESSAGE_BYTES=4" "tests/loopback-app.sps"
+        '("CHEZ_WS_MAX_MESSAGE_BYTES=4")
+        (lambda (port)
+          (test-equal (string-append "loopback, CHEZ_WS_MAX_MESSAGE_BYTES=4: websocket-res given settings and"
+                                     " no limits takes the environment's, so §5.7's Hello of 5 bytes is"
+                                     " closed 1009, and the stream ends")
+                      (list 0 (string-append websocket-head "880203f1\nread 1\n") "")
+                      (websocket-talked port "/websocket" (list (cons masked-hello 4))))))
 
       (with-program "loopback, CIRCUIT_PORT_PIECE_BYTES=12x" "tests/loopback-app.sps"
         '("CIRCUIT_PORT_PIECE_BYTES=12x")

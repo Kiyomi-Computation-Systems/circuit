@@ -1,0 +1,13 @@
+#!r6rs
+(library (circuit websocket)
+  (export)
+  (import (rnrs)
+          (websocket)
+          (circuit request)
+          (http-server)
+          (only (chezscheme) getenv)
+          (http-server private x)
+          (rnrs eval)
+          (srfi :1)
+          (circuit http-server)
+          (http-server waits)))

@@ -1,0 +1,10 @@
+#!r6rs
+(library (circuit websocket)
+  (export)
+  (import (rnrs)
+          (websocket)
+          (websocket handshake)
+          (only (websocket limits) make-websocket-limits)
+          (websocket private binding)
+          (prefix (websocket frame) f:)
+          (websockets)))

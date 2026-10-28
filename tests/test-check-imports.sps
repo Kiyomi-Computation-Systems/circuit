@@ -111,6 +111,20 @@
   (string-append "but no library may import an impure library: " name
                  " is one, and the core stays free of the server"))
 
+;; Rule (i)'s: chez-websocket's facade, the rest of its libraries,
+;; (circuit websocket) imported, and what it imports.
+(define facade-tail
+  "but only (circuit websocket) may import (websocket), chez-websocket's facade")
+
+(define inner-tail
+  "but no library may import a (websocket ...) library but the facade, (websocket), which only (circuit websocket) may import")
+
+(define glue-import-tail
+  "but no library may import (circuit websocket): it reaches the server through (websocket), and the core stays free of the server")
+
+(define glue-tail
+  "but (circuit websocket) may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and (websocket)")
+
 ;; imports : String String String String String -> String
 ;; The complaint about the library LIB, in FILE of the tree CASE, importing
 ;; IMPORTED, ended with TAIL.
@@ -335,6 +349,64 @@
          (refused (undefined "undefined-circuit" "circuit.sls" "(circuit)" "(circuit nope)")
                   (undefined "undefined-circuit" "circuit/http-server.sls" "(circuit http-server)"
                              "(circuit nope-too)")))
+
+   ;; --- rule (i): chez-websocket, through (circuit websocket) alone ---
+   (list "websocket-facade"
+         "rule (i): (circuit websocket) imports (websocket), bare, through only, prefix, rename and library, and with a version reference, beside core libraries; an impure library beside it still imports the server"
+         (ok 4))
+   (list "websocket-elsewhere"
+         "rule (i): (websocket) in a core library, in each impure library, and in lookalikes of (circuit websocket), longer and plural, which are core"
+         (refused (imports "websocket-elsewhere" "circuit.sls" "(circuit)" "(websocket)" facade-tail)
+                  (imports "websocket-elsewhere" "circuit/http-server.sls" "(circuit http-server)"
+                           "(websocket)" facade-tail)
+                  (imports "websocket-elsewhere" "circuit/middleware/waits.sls" "(circuit middleware waits)"
+                           "(websocket)" facade-tail)
+                  (imports "websocket-elsewhere" "circuit/websocket/extra.sls" "(circuit websocket extra)"
+                           "(websocket)" facade-tail)
+                  (imports "websocket-elsewhere" "circuit/websockets.sls" "(circuit websockets)"
+                           "(websocket)" facade-tail)))
+   (list "websocket-inner"
+         "rule (i): a (websocket ...) library past the facade, (websocket handshake), (websocket limits), (websocket frame) and (websocket private binding), in a core library, an impure one and (circuit websocket), wrapped or not; (websocket-extras) and (websockets), no family of it, are each library's own refusal"
+         (refused (imports "websocket-inner" "circuit.sls" "(circuit)" "(websocket handshake)" inner-tail)
+                  (imports "websocket-inner" "circuit/http-server.sls" "(circuit http-server)"
+                           "(websocket private binding)" inner-tail)
+                  (imports "websocket-inner" "circuit/request.sls" "(circuit request)"
+                           "(websocket-extras)" core-tail)
+                  (imports "websocket-inner" "circuit/websocket.sls" "(circuit websocket)"
+                           "(websocket handshake)" inner-tail)
+                  (imports "websocket-inner" "circuit/websocket.sls" "(circuit websocket)"
+                           "(websocket limits)" inner-tail)
+                  (imports "websocket-inner" "circuit/websocket.sls" "(circuit websocket)"
+                           "(websocket private binding)" inner-tail)
+                  (imports "websocket-inner" "circuit/websocket.sls" "(circuit websocket)"
+                           "(websocket frame)" inner-tail)
+                  (imports "websocket-inner" "circuit/websocket.sls" "(circuit websocket)"
+                           "(websockets)" glue-tail)))
+   (list "websocket-glue-limits"
+         "rule (i): (circuit websocket) beside the facade imports none of the server's libraries, (chezscheme) even through only, an impure library, (rnrs eval) or a third party's"
+         (refused (imports "websocket-glue-limits" "circuit/websocket.sls" "(circuit websocket)"
+                           "(http-server)" edge-tail)
+                  (imports "websocket-glue-limits" "circuit/websocket.sls" "(circuit websocket)"
+                           "(chezscheme)" edge-tail)
+                  (imports "websocket-glue-limits" "circuit/websocket.sls" "(circuit websocket)"
+                           "(http-server private x)" private-tail)
+                  (imports "websocket-glue-limits" "circuit/websocket.sls" "(circuit websocket)"
+                           "(rnrs eval)" glue-tail)
+                  (imports "websocket-glue-limits" "circuit/websocket.sls" "(circuit websocket)"
+                           "(srfi :1)" glue-tail)
+                  (imports "websocket-glue-limits" "circuit/websocket.sls" "(circuit websocket)"
+                           "(circuit http-server)" (impure-import-tail "(circuit http-server)"))
+                  (imports "websocket-glue-limits" "circuit/websocket.sls" "(circuit websocket)"
+                           "(http-server waits)" edge-tail)))
+   (list "websocket-imported"
+         "rule (i): (circuit websocket) imported by a core library, by an impure one, through only, through prefix with a version reference, and by itself"
+         (refused (imports "websocket-imported" "circuit.sls" "(circuit)" "(circuit websocket)" glue-import-tail)
+                  (imports "websocket-imported" "circuit/http-server.sls" "(circuit http-server)"
+                           "(circuit websocket)" glue-import-tail)
+                  (imports "websocket-imported" "circuit/router.sls" "(circuit router)"
+                           "(circuit websocket)" glue-import-tail)
+                  (imports "websocket-imported" "circuit/websocket.sls" "(circuit websocket)"
+                           "(circuit websocket)" glue-import-tail)))
 
    ;; --- rule (h): the #!r6rs line ---
    (list "header-missing"
@@ -580,6 +652,10 @@
 (test-equal "the impure libraries are exactly (circuit http-server) and (circuit middleware waits)"
   (sorted-libraries '((circuit http-server) (circuit middleware waits)))
   (sorted-libraries (declared 'impure)))
+
+(test-equal "the one library that may import (websocket) is exactly (circuit websocket)"
+  '(circuit websocket)
+  (declared 'websocket-library))
 
 (test-end "check-imports")
 

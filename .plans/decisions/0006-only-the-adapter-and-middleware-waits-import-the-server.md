@@ -11,7 +11,9 @@
   (design §5, §15 item 8, the owner's decision); 2026-10-26, before slice 5: it takes
   `real-time` and `display-condition` too, the request log's clock and the catch helper's
   line (design §6, §7, §15 item 13, the owner's decision; both names accepted at slice
-  5's review, 2026-10-27)
+  5's review, 2026-10-27); 2026-10-28, in slice 6c: a third library, `(circuit
+  websocket)`, may import chez-websocket's facade, `(websocket)`, which imports the server
+  (item 4; the slice 6 design §6 and §7 item 4, design §15.16, the owner's decision)
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
@@ -31,10 +33,15 @@ file or a bytevector port with its length, which it reads with Chez's
 request logging times a request with, nor a way to show a condition as the server's log
 shows it, which the catch helper's line does (design §6, §7).
 
+A WebSocket's logic is chez-websocket's. Its `websocket-handshake` takes what a host reads
+of a request and answers string pairs and a take-over, so a host maps it onto its own
+responses. But the take-over runs on the server's transport, so `(websocket)`, its facade,
+imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
+
 ## Decision
 
-1. **The core is plain R6RS**: every circuit library but two imports only `(rnrs ...)`
-   libraries other than `(rnrs eval)`, and core circuit libraries.
+1. **The core is plain R6RS**: every circuit library but the three below imports only
+   `(rnrs ...)` libraries other than `(rnrs eval)`, and core circuit libraries.
 2. **`(circuit http-server)`, the adapter, and `(circuit middleware waits)`**, which holds
    `wrap-timeout`, the catch helper `wrap-catch` and request logging `wrap-log`, may also
    import the server's libraries, but none of
@@ -44,12 +51,18 @@ shows it, which the catch helper's line does (design §6, §7).
    bare `(chezscheme)` would give a
    library's body `import`, `eval` and `load`, which reach any library, the private ones
    included, whatever its header says.
-3. **`make check-imports` holds both rules**, reading every file under `src/` as data.
-   It reads the header's imports alone, which is enough because neither rule lets a
+3. **`make check-imports` holds these rules**, reading every file under `src/` as data.
+   It reads the header's imports alone, which is enough because no rule lets a
    library's body import anything. It also requires every file to begin with the line
    `#!r6rs` and hold `#!` nowhere else: without it, or after `#!chezscheme`, Chez reads a
    file with its own syntax (`'#3(0)`, `'#vfx(1 2)`), which no import shows. `make test`
    runs it once `src/` exists.
+4. **`(circuit websocket)` may also import `(websocket)`**, chez-websocket's facade, and no
+   other library may. No circuit library imports any other `(websocket ...)` library:
+   not `(websocket handshake)`, nor any under `(websocket private ...)`. `(circuit
+   websocket)` imports neither `(chezscheme)` nor an `(http-server ...)` library, as a
+   core library doesn't, and since `(websocket)` imports the server, no library imports
+   `(circuit websocket)`, as none imports an impure one. The audit's rule (i) holds it.
 
 ## Consequences
 
@@ -60,6 +73,11 @@ shows it, which the catch helper's line does (design §6, §7).
   keeps out.
 - **An app that uses `wrap-timeout` imports three circuit libraries.**
 - **A second adapter would carry its own copy of the waiting middleware**, or import this one.
+- **An app that takes a WebSocket imports `(circuit websocket)` and `(websocket)`**, beside
+  `(circuit)` and `(circuit http-server)`. The names suite imports them all together.
+- **`(circuit websocket)` is tested through the server's test host**, since its take-over
+  runs on the server's transport.
+- **A fourth library that reaches the server is a reviewed change**, as the third was.
 - **Taking another name from `(chezscheme)` is a reviewed change** to the audit's
   allowlist, and the name must not be one that can import, evaluate or load.
 - **The allowlist took `port-has-port-length?` and `port-length` in slice 4**, for the

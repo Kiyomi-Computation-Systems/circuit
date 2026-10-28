@@ -6,7 +6,10 @@
 ;;; before any test runs, so the suite fails. The adapter, (circuit
 ;;; http-server), re-exports the server's waits, conditions, transport
 ;;; procedures and awaiting, which the import takes from both libraries at
-;;; once only because each is the server's own binding.
+;;; once only because each is the server's own binding. chez-websocket's
+;;; facade, (websocket), is imported beside (circuit websocket), as an app
+;;; that takes a WebSocket imports both: a name of either that another
+;;; library here exports is a clash too.
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
 ;;; its list, so the (circuit) facade keeps the adapter's, the tests' and the
@@ -30,6 +33,8 @@
         (circuit router)
         (circuit test)
         (circuit http-server)
+        (circuit websocket)
+        (websocket)
         (prefix (http-server) server:)
         (prefix (circuit http-server) adapter:))
 
@@ -106,10 +111,10 @@
 
 (test-begin "names")
 
-(test-equal "the server's libraries and circuit's are all loaded, side by side"
-  '(#t #t #t #t #t #t #t #t #t)
+(test-equal "the server's libraries, chez-websocket's facade and circuit's are all loaded, side by side"
+  '(#t #t #t #t #t #t #t #t #t #t #t)
   (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler
-                        wrap-catch make-router)))
+                        wrap-catch make-router websocket-res websocket-handshake)))
 
 (test-equal "(circuit request) exports its list exactly"
   (sorted request-names)
@@ -134,6 +139,10 @@
 (test-equal "(circuit router) exports its list exactly"
   (sorted router-names)
   (sorted-exports '(circuit router)))
+
+(test-equal "(circuit websocket) exports websocket-res alone: an app takes the rest from (websocket)"
+  '(websocket-res)
+  (sorted-exports '(circuit websocket)))
 
 (test-equal "(circuit test) exports its three"
   '(make-test-req res-body->bytevector test-req-done!)

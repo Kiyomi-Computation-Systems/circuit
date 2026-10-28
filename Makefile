@@ -289,13 +289,14 @@ check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared ex
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-suites.sps $(SUITES)
 
 # Reads every file under src as data and fails unless each is a .sls library
-# at its name's path, and only (circuit http-server) and (circuit middleware
-# waits) import the server or (chezscheme): the core is plain R6RS, importing
-# its own libraries and (rnrs ...) alone (tests/check-imports.sps). It names
-# each breach on stderr. make test runs it once src/ exists; an src/ with no
-# library fails it. Its own suite, tests/test-check-imports.sps, runs in
-# make test whether src/ exists or not.
-check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), and the core imports nothing else
+# at its name's path, only (circuit http-server) and (circuit middleware
+# waits) import the server or (chezscheme), and only (circuit websocket)
+# imports chez-websocket, through its facade (websocket) alone: the core is
+# plain R6RS, importing its own libraries and (rnrs ...) alone
+# (tests/check-imports.sps). It names each breach on stderr. make test runs
+# it once src/ exists; an src/ with no library fails it. Its own suite,
+# tests/test-check-imports.sps, runs in make test whether src/ exists or not.
+check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), only (circuit websocket) imports (websocket), and the core imports nothing else
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src
 

@@ -29,7 +29,8 @@
 ;;; res-add-header and res-remove-header keep it one. res-body-length and res-body-port answer #f
 ;;; for it, and res-body-stream refuses it: after the 101 the stream is the
 ;;; taker's. make-res with 101 and any other body is still a response, which
-;;; the server answers 500.
+;;; the server answers 500. What a take-over answers goes to the server, so
+;;; a middleware that wraps one answers what it answers (TakeOver, below).
 ;;;
 ;;; res-wrap-body's shape is provisional (design §15.11, §16.4).
 ;;;
@@ -49,7 +50,11 @@
 
   ;; Producer = (-> (U Bytevector Eof))
   ;; Body = (U #f Bytevector String Producer BinaryInputPort SizedBody WrappedBody)
-  ;; TakeOver = (Transport Bytevector -> Any), Transport the server's
+  ;; TakeOver = (Transport Bytevector -> Answer), Transport the server's, and
+  ;;   Answer what goes back to the server, which may be awaiting. A
+  ;;   middleware that wraps a take-over answers what the wrapped one
+  ;;   answers: with that answer dropped, the 101 is written, and a
+  ;;   WebSocket's procedure never runs (chez-websocket's ADR-0009)
   ;; UpgradeBody = the body of make-upgrade-res's 101, holding its TakeOver
 
   ;; res? : Any -> Boolean

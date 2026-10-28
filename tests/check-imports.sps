@@ -9,11 +9,12 @@
 ;;;       and is named (circuit ...). Any other file is named, and so is a
 ;;;       symbolic link to a directory, which is not followed;
 ;;;   (b) two libraries are impure, (circuit http-server) and
-;;;       (circuit middleware waits). Every other library is core;
+;;;       (circuit middleware waits), and one is the WebSocket library,
+;;;       (circuit websocket). Every other library is core;
 ;;;   (c) a core library imports only the (rnrs ...) libraries except
 ;;;       (rnrs eval), and core (circuit ...) libraries. So it imports neither
-;;;       impure library, nor (chezscheme), nor an (http-server ...) library,
-;;;       nor anything else;
+;;;       impure library, nor (circuit websocket), nor (chezscheme), nor an
+;;;       (http-server ...) or (websocket ...) library, nor anything else;
 ;;;   (d) an impure library may also import (chezscheme), but only through an
 ;;;       only right around it that names nothing but chez-names: bare, its
 ;;;       body would have import, eval and load, and reach any library, which
@@ -41,7 +42,15 @@
 ;;;       this check cannot tell a directive from text, so a #! in a comment
 ;;;       or a string is refused too, and the complaint says so. The file is
 ;;;       read as bytes: the line is #!r6rs and a line feed, with no space,
-;;;       carriage return or byte order mark.
+;;;       carriage return or byte order mark;
+;;;   (i) (circuit websocket) may also import (websocket), chez-websocket's
+;;;       facade, and no other library may. No library may import any other
+;;;       (websocket ...) library, (websocket handshake) or one under
+;;;       (websocket private ...) among them. (websocket) imports the server,
+;;;       so no library imports (circuit websocket), as none imports an
+;;;       impure one; and (circuit websocket) imports neither (chezscheme)
+;;;       nor an (http-server ...) library, as a core library doesn't
+;;;       (ADR-0006).
 ;;;
 ;;; The lists are allowlists: a library that is not on one is refused, so a
 ;;; route nobody thought of is closed until a reviewer opens it. Exports are
@@ -58,6 +67,15 @@
 ;; The libraries that may import the server, and use Chez's own procedures.
 ;; Adding one is a reviewed change to the architecture (AGENTS.md).
 (define impure '((circuit http-server) (circuit middleware waits)))
+
+;; websocket-library : (Listof Symbol)
+;; The one library that may import (websocket), chez-websocket's facade,
+;; which imports the server: so no library may import it. Changing it is a
+;; reviewed change to the architecture (ADR-0006).
+(define websocket-library '(circuit websocket))
+
+;; websocket-facade : (Listof Symbol)
+(define websocket-facade '(websocket))
 
 ;; rnrs-libraries : (Listof (Listof Symbol))
 ;; The standard libraries a library under the directory may import: R6RS's, but
@@ -294,7 +312,8 @@
 ;; libraries defined under ROOT.
 (define (import-complaints path root name impure? spec defined)
   (let ((imported (spec-name spec '()))
-        (library (written name)))
+        (library (written name))
+        (websocket? (equal? name websocket-library)))
     (define (refuse imported reason)
       (list (string-append path ": " library " imports " (written imported)
                            ", but " reason)))
@@ -306,11 +325,27 @@
        (refuse imported
                (string-append "no library may import an impure library: "
                               (written imported) " is one, and the core stays free of the server")))
+      ((equal? imported websocket-library)
+       (refuse imported
+               (string-append "no library may import " (written websocket-library)
+                              ": it reaches the server through " (written websocket-facade)
+                              ", and the core stays free of the server")))
       ((member imported rnrs-libraries) '())
       ((eq? (car imported) 'circuit)
        (if (member imported defined)
            '()
            (refuse imported (string-append "no library under " root " defines it"))))
+      ((eq? (car imported) (car websocket-facade))
+       (cond ((not (equal? imported websocket-facade))
+              (refuse imported
+                      (string-append "no library may import a (websocket ...) library but the facade, "
+                                     (written websocket-facade) ", which only "
+                                     (written websocket-library) " may import")))
+             (websocket? '())
+             (else
+              (refuse imported
+                      (string-append "only " (written websocket-library) " may import "
+                                     (written websocket-facade) ", chez-websocket's facade")))))
       ((and impure? (equal? imported '(chezscheme)))
        (if (narrow-chez? spec)
            '()
@@ -328,6 +363,11 @@
       (impure?
        (refuse imported
                "an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme) through only, and the (http-server ...) libraries except (http-server private ...)"))
+      (websocket?
+       (refuse imported
+               (string-append (written websocket-library)
+                              " may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and "
+                              (written websocket-facade))))
       (else
        (refuse imported
                "a core library may import only the (rnrs ...) libraries except (rnrs eval), and core (circuit ...) libraries")))))
