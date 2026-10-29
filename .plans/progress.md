@@ -50,10 +50,11 @@ close-out under **Close-outs**, newest first.
 - **Two testing rules are in AGENTS.md**, from slices 7 and 8, squashed from
   [PR #11](https://github.com/Kiyomi-Computation-Systems/circuit/pull/11) on 2026-10-29;
   its close-out is below.
+- **The pins are at the server's v0.9.1 and chez-websocket's v0.4.1**, squashed from
+  [PR #12](https://github.com/Kiyomi-Computation-Systems/circuit/pull/12) on 2026-10-29;
+  its close-out is below. The server's fixes for #241, #243 and #245 reach circuit.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
-  the open items below, and a first release. The server's fixes on its `main` (#242,
-  #244, #246) reach circuit only through a server release, then a chez-websocket
-  release on it.
+  the open items below, among them an arm64 CI runner, and a first release.
 
 ## Open
 
@@ -69,18 +70,11 @@ close-out under **Close-outs**, newest first.
   - the audit's rule (g) assumes `src` comes first on the library path.
 - **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
   2026-10-26, with the docs fix; see PR #2's close-out. **chez-http-server is submitted
-  to the Akku index and awaits review** (the owner, 2026-10-25). Until it is published,
+  to the Akku index and awaits review**: the owner submitted 0.8.0 on 2026-10-24, then
+  0.9.0 and 0.9.1. On 2026-10-29 the index, last rebuilt on 2026-10-25, listed no
+  version of it, and its four dependencies at the versions it needs. Until it is published,
   circuit can't be installed with Akku, and the submodule stays its only way in
   (ADR-0003).
-- **The test host logs a line the server doesn't**: `handler-failed` for a `&body-failed`
-  the app lets out, where `serve` logs nothing. The libuv shell skips a failure the
-  request's notice already told (`private/shell.sls`, `told-failure?`), and the fake shell
-  doesn't. `tests/test-http-server.sps` pins the test host's line, in that row and in
-  slice 7's four cap rows, so a fix upstream changes them. Found by slice 4's review; filed as
-  [chez-http-server #243](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/243)
-  on 2026-10-26, reproduced on v0.9.0 in the test host and over loopback. Fixed on the
-  server's `main` by its #244 (2026-10-26), in no release yet: v0.9.0 is still its
-  latest.
 - **A wrap's `f` can meet a closed port in the test host** once the client has gone while
   the app waited (design §6, §9), and the test host drops `f`'s raise. Over a real socket,
   a FIN is heard at once, but the request stays open until its response is written: `f`
@@ -96,13 +90,6 @@ close-out under **Close-outs**, newest first.
   purpose. Reproduced in slice 5; not filed.
 - **Unverified off Linux:** the adapter suite's FIFO row opens a FIFO read-write, which
   POSIX leaves undefined; it works on Linux. CI runs Linux alone.
-- **A `request-on-done!` procedure costs 858–870 B a request** through the adapter at 1
-  connection, and 528–557 B at 50, a no-op one (design §7; the gate's G8 on-done). Request logging pays it on
-  every request. Filed as
-  [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245)
-  on 2026-10-26: on the server alone one costs 733–843 B, and `tell-done!`'s shape 240 B
-  of it in plain Chez. Fixed on the server's `main` by its #246 (2026-10-28), in no
-  release yet. Once circuit pins a release with it, G8 on-done should fall.
 - **Left from the owner's `/code-review` of slice 4, not fixed:**
   - a procfs file such as `/proc/self/status` reports a length of 0, so it is measured at
     0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
@@ -130,17 +117,43 @@ close-out under **Close-outs**, newest first.
   into a capture as it is.** The server refuses one on the wire, so it reaches the router
   only through `req-with-path` or a test request (the slice 6 design §5 refuses raw
   characters past ASCII alone).
-- **The server's `docs/waiting.md` lists `&body-failed`'s statuses as 413, 400 and 408**,
-  leaving out 431, a chunked body's trailers past the header limits (design §12). Filed
-  as [chez-http-server #241](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/241)
-  on 2026-10-26, reproduced through `(http-server testing)` at v0.9.0, with a note that
-  no server test hands a pull a header reason or `chunk-extensions-too-large`. Fixed on
-  the server's `main` by its #242 (2026-10-26), in no release yet.
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-29: the pins at the server's v0.9.1 and chez-websocket's v0.4.1, in PR #12
+
+On the owner's "lets go ahead and pin chez-websocket and then move the circuit pins", and
+their "Run the whole chain". Before it: the server's v0.9.1, its #248 tagged on b7381a0,
+and chez-websocket's v0.4.1, its #101 and #102 tagged on 579c118, each closed out in its
+own ledger. Commits on `chore/pins-server-v0.9.1-websocket-v0.4.1`: the pins and the rows
+(d1e54b8), the records with this close-out, and its CI run named here. `make test` passes
+15 suites, 783 rows, as on `main`. `make gate` passes in two runs; no held gate moved.
+Their worst figures: G1 1,446, G2 1,438, G3 312 a GET and 276 a POST, G4 81 and 403, G5
+382 and 347 with a park, G7 310, G8 532, G8 own 296, G8 on-done 246, G9 611 and 597 with
+a park, and G10 83, 168 and 1. CI passed on the PR (run 40878917032, 2m45s): 15 suites,
+782 rows and the curl row skipped; the gate's worst figures G3 308 and 272, G4 81 and
+405, G5 382 and 351, G7 304, G8 535, G8 own 292, G8 on-done 243, G9 609 and 610, G10 81,
+168 and 3.
+
+- **the pins**, on one commit: both gitlinks with `SERVER_PIN` and `WEBSOCKET_PIN`.
+  `make check-pins` was watched failing first, with the gitlinks moved and the pins not
+  (five mismatches, the carried pins ok), then passing;
+- **the rows:** on the new pins, exactly the five rows this ledger named failed: slice 4's
+  let-out `&body-failed` row and slice 7's four cap rows. Each expected the test host's
+  `handler-failed` line, which v0.9.1 leaves out, as `serve` does (#243). They now expect
+  none, and say so. No other row moved;
+- **the gate:** G8 on-done, a no-op `req-on-done!` procedure, reads 236–243 B at 1
+  connection and 231–246 B at 50, from 858–870 B and 528–557 B (#245). G8 reads 524–531 B
+  and 518–532 B, from about 1,145 B and 834 B. G8 own reads 284–296 B, where it was;
+- **the records:** the design's opening, §7, §11 and §12; ADR-0003 and ADR-0007 amended;
+  the global constraints; README.org's links at the new tags, each answering 200; the
+  CHANGELOG's build lines. Open loses the items for #241, #243 and #245, and the Akku item
+  says where the index stands;
+- **no agents ran.** No review: the change moves pins and five rows' expected logs, and
+  no library's code.
 
 ### 2026-10-29: two testing rules in AGENTS.md, in PR #11
 

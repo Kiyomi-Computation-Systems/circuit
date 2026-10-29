@@ -5,7 +5,8 @@
 - **Amended:** 2026-10-26: the pin moved to v0.9.0 (`d928e41`), and the server's package now
   installs the test host circuit's tests use; 2026-10-28, in slice 6c: chez-websocket is a
   second submodule, pinned at v0.4.0 (`4456814`), its own server pin held to `SERVER_PIN`
-  and not cloned (item 6; the slice 6 design §6)
+  and not cloned (item 6; the slice 6 design §6); 2026-10-29: the pins moved together to
+  the server's v0.9.1 (`b7381a0`) and chez-websocket's v0.4.1 (`579c118`), on one commit
 - **Scope:** circuit's dependencies
 - **Prior art:** chez-websocket, which takes the server the same way
 - **Related:** [ADR-0002](0002-builds-and-tests-run-in-a-pinned-guix-container-with-no-network.md)
@@ -25,7 +26,8 @@ either, and takes the server as a submodule.
 ## Decision
 
 1. **The server is a submodule at `vendor/chez-http-server`, pinned at a release tag**,
-   v0.8.0 (`a996eef`) first, v0.9.0 (`d928e41`) since 2026-10-26. `SERVER_PIN` in the
+   v0.8.0 (`a996eef`) first, v0.9.0 (`d928e41`) from 2026-10-26, v0.9.1 (`b7381a0`) since
+   2026-10-29. `SERVER_PIN` in the
    Makefile names the same commit, the tag's commit and not the tag object.
 2. **Circuit uses the pins the server carries**, through the server's checkout. It clones
    none of them itself and pins none of them itself.
@@ -37,7 +39,7 @@ either, and takes the server as a submodule.
    local edits to tracked files in any of them.
 5. **No Akku dependency on the server** while it isn't on the index.
 6. **chez-websocket is a submodule at `vendor/chez-websocket`, pinned at a release tag**,
-   v0.4.0 (`4456814`), for `(circuit websocket)`. `WEBSOCKET_PIN` names the same commit.
+   v0.4.0 (`4456814`) first, v0.4.1 (`579c118`) since 2026-10-29, for `(circuit websocket)`. `WEBSOCKET_PIN` names the same commit.
    It pins a server of its own, which circuit doesn't clone: circuit's checkout is the one
    on the library path. So chez-websocket's gitlink for its server must equal
    `SERVER_PIN`. `make submodules` clones chez-websocket alone, none of its submodules;

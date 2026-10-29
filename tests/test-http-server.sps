@@ -401,10 +401,10 @@
         (test-client-send! c (b "hello"))
         (list first second (wire c) (logged host))))))
 
-(test-equal "req-body: a &body-failed let out is answered with its status, under the env's cap"
+(test-equal "req-body: a &body-failed let out is answered with its status, under the env's cap, and logged nothing, as serve logs nothing"
   (list (list (response "413 Content Too Large" '("Content-Length: 0" "Connection: close") ""))
         #t
-        '((handler-failed (body-failed 413 body-too-large))))
+        '())
   (exchange (lambda (r) (make-res 200 '() (get-bytevector-all (req-body r))))
             "POST /up HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n9\r\n123456789\r\n0\r\n\r\n"
             (settings "CHEZ_HTTP_MAX_BODY_BYTES" "4")))
@@ -428,11 +428,12 @@
 (define (echoed body)
   (list (list (response "200 OK" (list (length-field (string-length body))) body)) #f '()))
 
-;; The exchange of a body past a cap, which the app lets out.
+;; The exchange of a body past a cap, which the app lets out: answered 413,
+;; and logged nothing, as serve logs nothing.
 (define too-large
   (list (list (response "413 Content Too Large" '("Content-Length: 0" "Connection: close") ""))
         #t
-        '((handler-failed (body-failed 413 body-too-large)))))
+        '()))
 
 (test-equal "the request's cap reaches the server's port: a body at it is read, one past it refused 413, declared or chunked"
   (list (echoed "abcd") too-large too-large (echoed "abcd"))

@@ -103,7 +103,7 @@ does the rest:
 - ~websocket-receive~ waits for the next message; ~websocket-send!~ sends a string as
   text, a bytevector as binary.
 - Subprotocols and origins come third, as ~(make-handshake-settings '("chat"))~, and
-  limits fourth: see chez-websocket's [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.0/docs/handlers.md][handlers]].
+  limits fourth: see chez-websocket's [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.1/docs/handlers.md][handlers]].
 - [[file:examples/websocket.sps][examples/websocket.sps]] is an echo. Try it with curl 8.11 or later, which sends
   its input as one binary message, prints what comes back, and waits for ~--max-time~;
   or, to type messages yourself, with [[https://github.com/vi/websocat][websocat]]:
@@ -145,7 +145,7 @@ A router picks the handler by the path, then the method:
 ** Configuration
 
 Settings come from the environment. The server's are its own ~CHEZ_HTTP_~ variables
-(where it listens, its limits; see its [[https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.0/docs/configuration.md][configuration]]). Circuit adds one:
+(where it listens, its limits; see its [[https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/configuration.md][configuration]]). Circuit adds one:
 
 | Variable                   | Default | What it sets                                                               |
 |----------------------------+---------+----------------------------------------------------------------------------|
@@ -172,7 +172,7 @@ and ~wrap-body-cap~ caps the bodies of the requests that pass it, under that:
   refused. ~(req-with-body-cap req n)~ caps one request, and ~req-body-cap~ reads it.
 - ~make-test-req~ reads its body whatever the cap. Test a cap in the server's test host.
 
-A WebSocket's limits are chez-websocket's ~CHEZ_WS_~ variables (see its [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.0/docs/configuration.md][configuration]]).
+A WebSocket's limits are chez-websocket's ~CHEZ_WS_~ variables (see its [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.1/docs/configuration.md][configuration]]).
 They are read from the process's environment once, as the program starts: an ~env~
 given to ~run-server~ doesn't set them. Limits given to ~websocket-res~, its fourth
 argument, set them for that handshake alone. To take them from your ~env~, build them

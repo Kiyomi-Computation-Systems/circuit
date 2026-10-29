@@ -16,11 +16,11 @@ provisional. They bind until that record is accepted or amended.
 ## Dependency
 
 - **chez-http-server is a submodule at `vendor/chez-http-server`, pinned at a release
-  tag**, now v0.9.0 (`d928e41`). Circuit uses the pins the server carries and pins none
+  tag**, now v0.9.1 (`b7381a0`). Circuit uses the pins the server carries and pins none
   itself. Move the gitlink and `SERVER_PIN` on one commit, `SERVER_PIN` naming the tag's
   commit; `make check-pins` holds them (ADR-0003).
 - **chez-websocket is a second submodule, at `vendor/chez-websocket`, pinned at a release
-  tag**, now v0.4.0 (`4456814`). Its own gitlink for the server must equal `SERVER_PIN`,
+  tag**, now v0.4.1 (`579c118`). Its own gitlink for the server must equal `SERVER_PIN`,
   and circuit doesn't clone that server: circuit's is the one on the path. Move its
   gitlink and `WEBSOCKET_PIN` on one commit; `make check-pins` holds them (ADR-0003).
 - **No Akku dependency on the server**, nor on chez-websocket, while they aren't on the
