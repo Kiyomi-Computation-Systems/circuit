@@ -13,7 +13,7 @@ release before 1.0.
   container, and `make test`.
 - The pure core, `(circuit)`: requests (`req`) read through a view, with keys and
   `req-with-` helpers; responses (`res`) with bytevector, string, producer, port, sized
-  and wrapped bodies (`res-wrap-body` provisional); header helpers; and `wrap`.
+  and wrapped bodies; header helpers; and `wrap`.
 - `(circuit test)`: `make-test-req`, `test-req-done!` and `res-body->bytevector`, for
   testing a handler with no server.
 - `(circuit http-server)`, the adapter: `circuit->handler` and `run-server`, with every
@@ -92,3 +92,9 @@ release before 1.0.
   the first read, before any `100 Continue`. A cap given once the body's port is made is
   refused. `make-test-req` reads its body whatever the cap. `examples/echo.sps` caps its
   body at 1 MiB.
+- `res-wrap-body` takes `f` alone, `Producer -> Producer`, and its body has no length, so
+  it goes out chunked; `same?` is gone. `res-tap-body` hands each piece of a body to
+  `on-piece` as it goes out, unchanged, so its body keeps the length of the one under it.
+  `on-piece` may wait, and never sees the end: a total is reported from `req-on-done!`. A
+  piece that is no bytevector, an empty one, or one past the length raises before
+  `on-piece` sees it.

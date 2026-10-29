@@ -329,8 +329,11 @@ Body = #f                          no body
      | BinaryInputPort             streamed, closed once the response is done
      | SizedBody                   (make-sized-body n body): a producer or
                                    port of n bytes, sent with Content-Length
-     | WrappedBody                 (res-wrap-body res f [same?]): another
-                                   body, its producer passed through f (§6)
+     | WrappedBody                 (res-wrap-body res f): another body,
+                                   its producer passed through f (§6)
+     | TappedBody                  (res-tap-body res on-piece): another
+                                   body, each piece handed to on-piece
+                                   as it is sent (§6)
      | Upgrade                     §8; status 101
 ```
 
@@ -349,13 +352,15 @@ Body = #f                          no body
 - **Helpers**, each giving a new response: `res-header` (look one up),
   `res-set-header` (replace), `res-add-header` (append),
   `res-remove-header` (drop every field of a name, since slice 6a), `res-with-status`,
-  `res-with-body`, and `res-wrap-body` (§6). `res-with-body` replaces the
+  `res-with-body`, `res-wrap-body` and `res-tap-body` (§6). `res-with-body` replaces the
   body outright, so it closes the port the old body holds, wherever it
-  sits: a port body, or one under a sized body or a wrap, at any depth.
+  sits: a port body, or one under a sized body, a wrap or a tap, at any
+  depth.
   It leaves the port open when the new body holds that same port (`eq?`),
   so `(res-with-body r (make-sized-body n (res-body r)))` keeps it.
-  Middleware that keeps the bytes and changes how they go out uses
-  `res-wrap-body`, which closes nothing. `res-with-status` on
+  Middleware that changes the bytes as they go out uses `res-wrap-body`,
+  and middleware that watches them `res-tap-body`; neither closes
+  anything. `res-with-status` on
   an upgrade response, or a 1xx status on any other, is an assertion
   violation: the server refuses both.
 - **A producer runs on a coroutine of its own for each piece**, after the
@@ -391,8 +396,8 @@ Body = #f                          no body
   for a sized port, at its length, and closes the port then. It never
   reads 0 bytes: Chez's `get-bytevector-n` of 0 answers an empty
   bytevector, even on a closed port, and an empty piece is no piece. The
-  server never asks a sized producer past its length, but a wrap may
-  (§6). The adapter also closes the port from a `request-on-done!`
+  server never asks a sized producer past its length, nor does a wrap's
+  `f`, which is handed a producer that stops at it (§6). The adapter also closes the port from a `request-on-done!`
   procedure it registers, so the port is closed however the response
   ends: sent whole, a HEAD, a 204 or a 304 where the server never calls
   the producer, or a client that leaves mid-stream (§7). Closing a port
@@ -441,12 +446,12 @@ Body = #f                          no body
   - a string: the length of its UTF-8 bytes;
   - a sized body: its `n`;
   - a port with a length: from its position to its length, or 0 past it;
-  - a wrap that keeps the bytes (§6), over any of these.
+  - a tap (§6), over any of these.
 
   A body with a length goes out with `Content-Length`. A producer, a port
-  with no length, and a wrap that drops the length go out chunked.
+  with no length, and a wrap go out chunked.
   `res-body-length` answers the length where the core can tell it. It
-  answers `#f` for a port, and for a wrap that keeps the bytes over one:
+  answers `#f` for a port, and for a tap over one:
   a port's length is Chez's, which the core can't ask (ADR-0006), so the
   adapter reads it. It answers `#f` for a body with no length too.
 - What the server refuses (a `Content-Length` or `Transfer-Encoding`
@@ -540,31 +545,41 @@ Rules for middleware authors, each a fact about the server:
   which run inside the handler call (§4). It never covers a producer (§2),
   and it cuts nothing short that isn't waiting: CPU work and a blocking
   port read run on.
-- **Streaming middleware wraps the body with `res-wrap-body`.**
-  `(res-wrap-body res f)` gives a response whose body is the old one
-  passed through `f`, a `Producer -> Producer`. The adapter hands `f` the
-  old body as a producer and sends the producer `f` gives back. A port
-  is read in pieces, and a bytevector or string is one piece. `#f`, or an
-  empty bytevector or string, answers eof at once: never an empty piece.
-  Wrapping an upgrade is an assertion violation. So middleware handles
-  one shape, compression or byte counting alike.
-  - **The wrap is lazy**, because only the adapter can turn a port into a
+- **Streaming middleware wraps the body with `res-wrap-body`, or taps it
+  with `res-tap-body`** (§15.26).
+  - **`(res-wrap-body res f)`** gives a response whose body is the old one
+    passed through `f`, a `Producer -> Producer`: for middleware that
+    changes the bytes, compression or transcoding. The adapter hands `f`
+    the old body as a producer and sends the producer `f` gives back. A
+    port is read in pieces, and a bytevector or string is one piece. `#f`,
+    or an empty bytevector or string, answers eof at once: never an empty
+    piece.
+  - **`(res-tap-body res on-piece)`** gives a response whose body is the
+    old one, each piece handed to `on-piece`, `Bytevector -> Any`, before
+    it goes out as it is: for middleware that watches the bytes, counting,
+    teeing or throttling. `on-piece` must not change the piece, and what
+    it answers is dropped.
+  - Wrapping or tapping an upgrade is an assertion violation. Wraps and
+    taps nest.
+  - **Both are lazy**, because only the adapter can turn a port into a
     producer: it knows the piece size and the port's length. So a port
-    under a wrap is still the adapter's to close however the response
-    ends, and nothing closes it early, as `res-with-body` would (§5).
-  - **The new body has no length**, since a compressor's bytes differ.
-    `(res-wrap-body res f #t)` says `f` gives back as many bytes as it is
-    given, as a counter does. So the body keeps the length of the one
-    under it, whenever that has one (§5), a port's included.
-  - **A wrap that drops a length still stops at it.** The server asks
-    nothing past a sized body's length, but a compressor asks again for
-    eof. So when the wrap drops the length of a body that had one, the
-    adapter hands `f` a producer that counts to the length and then
-    answers eof itself, never asking the producer under it again. A piece
-    that would take it past the length is a mismatch, so the counting
-    producer raises after the head, and the connection closes, logged
-    `handler-failed`. An end short of the length just ends: the wrap's
-    body has no length to fall short of.
+    under a wrap or a tap is still the adapter's to close however the
+    response ends, and nothing closes it early, as `res-with-body` would
+    (§5).
+  - **A wrap's body has no length**, since `f` may change the bytes, so it
+    goes out chunked. **A tap's keeps the length of the body under it**,
+    whenever that has one (§5), a port's included: its bytes are the ones
+    under it, so there is no promise to break. A wrap that changes bytes
+    but keeps their count goes out chunked all the same.
+  - **A wrap still stops at the length of the body under it.** The server
+    asks nothing past a sized body's length, but a compressor asks again
+    for eof. So when the body under a wrap has a length, the adapter hands
+    `f` a producer that counts to the length and then answers eof itself,
+    never asking the producer under it again. A piece that would take it
+    past the length is a mismatch, so the counting producer raises after
+    the head, and the connection closes, logged `handler-failed`. An end
+    short of the length just ends: the wrap's body has no length to fall
+    short of.
   - **`f` runs in the adapter's thunk**, on the request's coroutine, after
     the app has returned. So it may wait, and may read `req-body`. But no
     middleware's dynamic extent covers it, so a raise from it gets the
@@ -579,11 +594,24 @@ Rules for middleware authors, each a fact about the server:
     port, and the write fails, logged `read-error EPIPE` (slice 5,
     reproduced). Whether a reset makes `f` meet a closed port is
     unverified: curl can't be made to send one.
+  - **`on-piece` runs where the body's producer runs**, on a coroutine of
+    its own for each piece, so it may wait, and a raise from it after the
+    head closes the connection, logged `handler-failed`.
+  - **A tap sees pieces, never the end.** A sized body's producer is never
+    asked past its length, so the eof never comes under one, and a body
+    that sends no bytes, an empty one or one to a HEAD, a 204 or a 304,
+    calls `on-piece` never, unless a wrap over the tap reads the body: a
+    wrap's `f` runs before the head, and what it reads, it reads through
+    the tap. A counter reports its total from a `req-on-done!` procedure
+    (§7).
+  - **A tap sees only pieces that go out.** A piece that is no bytevector,
+    an empty one, or one that would take the body past its length raises
+    before `on-piece` sees it: the server would refuse each of them. The
+    raise comes after the head, so the connection closes, logged
+    `handler-failed`, where without the tap the server would log the bad
+    piece itself (slice 8's review).
   - **The wrapped producer keeps the server's rules**: never an empty
-    piece, so a compressor loops until it has bytes or reaches eof. A
-    sized body's producer is never asked past its length, so under a
-    wrap that keeps the bytes it never sees eof. A counter reports its
-    total from a `req-on-done!` procedure (§7).
+    piece, so a compressor loops until it has bytes or reaches eof.
 - **`wrap-timeout` and the catch helper need the server's verbs**
   (`with-deadline`, `deadline-passed?`, `client-closed?`, `body-failed?`,
   `body-failed-status`), and
@@ -827,8 +855,9 @@ libraries that import `(http-server)`.
 | port with a longer length | the same, with `(sized-body n producer)`: `n` from the port's position to its length; the producer reading no more than is left, answering eof at the last byte and closing the port then; the port closed by a `request-on-done!` procedure too (§5) |
 | any other port | the same, with a producer of `get-bytevector-n`, the port closed at its eof and by a `request-on-done!` procedure |
 | sized body | `(sized-body n producer)`, a port's producer as above, never read whole |
-| wrapped body | the body under it as a producer, passed through `f`: whole bytes, a small port's included, as one piece. Sized when the wrap keeps the bytes and the body under it has a length (§5). Otherwise sent as a producer, the one handed to `f` stopping at the length the body under it had. A port read whole or closed as above (§6) |
-| the request's `req-body`, bare, sized or wrapped | refused: an assertion violation, a 500 before the head |
+| wrapped body | the body under it as a producer, passed through `f`: whole bytes, a small port's included, as one piece. Sent as a producer, chunked, the one handed to `f` stopping at the length the body under it had. A port read whole or closed as above (§6) |
+| tapped body | the body under it as a producer, each piece handed to `on-piece`: whole bytes, a small port's included, as one piece. Sized when the body under it has a length (§5). A port read whole or closed as above (§6) |
+| the request's `req-body`, bare, sized, wrapped or tapped | refused: an assertion violation, a 500 before the head |
 | upgrade | `(switch-protocols headers take-over)` |
 
 ## 10. Testing
@@ -943,14 +972,14 @@ libraries that import `(http-server)`.
     HEAD, 204 and 304, and when the client leaves mid-stream, wrapped or
     not;
   - a port with a length sent sized; one that shrinks ending short; one
-    under a wrap that keeps the bytes still sized;
-  - a wrap that drops a length stopping at it, and an empty body reaching
-    `f` as eof;
+    under a tap still sized, each piece handed to `on-piece`;
+  - a wrap stopping at the length of the body under it, and an empty body
+    reaching `f` as eof;
   - `res-with-body` closing the old port at any depth, but not one the
     new body holds;
   - one `req-body` port for every copy of a request;
   - refusals: a response whose body is its request's `req-body`, bare,
-    sized or wrapped; a non-`res`; a view without one of the four
+    sized, wrapped or tapped; a non-`res`; a view without one of the four
     required procedures;
   - `test-req-done!` keeping the server's rules;
   - the catch helper re-raising the two conditions, and answering
@@ -989,20 +1018,23 @@ it**, through `res-body-stream` in 64 KiB pieces.
   server would close the connection.
 - A wrap: through its `f`, handed the producer the adapter would hand it,
   so it stops at the length the body under it had.
+- A tap: each piece handed to `on-piece`, read to the length of the body
+  under it when it has one, never asking past it.
 - A bare port: measured as the adapter measures it, in plain R6RS. A
   port with a position it can set is read ahead to its eof and set back,
   and sent sized, from its position, read whole when it is 64 KiB or
   less; any other is read to its eof. A custom port with position
   procedures is sized here, though Chez gives it no length and the
-  adapter sends it chunked, so there the test is the stricter.
+  adapter sends it chunked: the two differ only for such a port, which
+  the test reads to the length it measured, and the adapter to its eof.
 - Bytes whole are answered as they are: a bytevector body is the app's
   own bytevector, not a copy.
 - Given the request, it refuses a body that holds that request's
-  `req-body`, bare, sized or wrapped, as the adapter does (§9), so the
+  `req-body`, bare, sized, wrapped or tapped, as the adapter does (§9), so the
   natural echo fails its test as it would fail in production.
 
-So a counter that reports only at eof fails its test, as it would fail
-in production (§6).
+So a tap sees the pieces it would see in production, and never the end
+(§6).
 
 **What the adapter and the tests need of the core.** They need more of
 the core than an app does, and R6RS has no friend libraries. So
@@ -1019,10 +1051,11 @@ server's too (ADR-0005). Slice 3 settled the names:
   `req-body` instead would spend 432 B on every request;
 - the body kinds' accessors: `res-sized-body?`, `res-sized-body-length`
   and `res-sized-body-inner`; `res-wrapped-body?`,
-  `res-wrapped-body-inner`, `res-wrapped-body-proc` and
-  `res-wrapped-body-same?`;
+  `res-wrapped-body-inner` and `res-wrapped-body-proc`;
+  `res-tapped-body?`, `res-tapped-body-inner` and `res-tapped-body-proc`
+  (slice 8);
 - `res-body-port`, `Body -> (U BinaryInputPort #f)`: the port a body
-  holds, bare, under a sized body or under wraps, or `#f`. A body holds
+  holds, bare, under a sized body or under wraps and taps, or `#f`. A body holds
   one at most. The adapter measures it and registers its close, and the
   `req-body` refusal compares it (§9);
 - `res-body-stream`, `Body (BinaryInputPort -> (U Nat #f))
@@ -1187,7 +1220,7 @@ and the resume its before thunk.
   core, which middleware wrapped and put back with `res-with-body`. That
   closed the port the new producer read, and left the adapter a producer
   where the port had been, so it could neither close the port nor size it.
-  `res-wrap-body`'s lazy wrap instead (§6, §16.4). Weighed too: middleware
+  `res-wrap-body`'s lazy wrap instead, and `res-tap-body` (§6, §15.26). Weighed too: middleware
   that leaves port bodies alone, which rules out compressing a file.
 - **A body source read by `(body-read source)`**, with helpers that do what
   the port procedures do: the fallback had a port's `read!` been unable to
@@ -1506,6 +1539,21 @@ The owner's answer to §16.1 (2026-10-28):
     only a helper that reads a body whole under a cap, which a parser
     reading the port would pass by.
 
+The owner's answer to §16.4 (2026-10-28):
+
+26. **`res-wrap-body` splits in two.** `(res-wrap-body res f)` keeps `f`,
+    `Producer -> Producer`, for middleware that changes the bytes, and its
+    body always drops the length. `(res-tap-body res on-piece)` hands each
+    piece to `on-piece` as it goes out, unchanged, so its body keeps the
+    length by construction, where `same?` had been a promise the adapter
+    couldn't check: a wrap that broke it cut its body short of the length
+    the head announced. Both stay lazy, run by the adapter (§6). A tap
+    never sees the end, and a total comes from `req-on-done!`. Built as
+    slice 8. Weighed: keeping `same?` as it was; and a length procedure,
+    `(U Nat #f) -> (U Nat #f)`, in its place, more general but still a
+    promise, with harder counting rules. The tap's name was weighed
+    against `res-observe-body`.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a
@@ -1515,12 +1563,8 @@ The owner's answer to §16.1 (2026-10-28):
    `awaiting` thunk may pull. An echo or a proxy that streams both ways at
    once would need the server to let a producer pull. That would be an
    ask, if a use comes.
-4. **`res-wrap-body`'s shape** (§6). It replaces `res-body->producer`
-   after the 2026-10-26 review found that a port wrapped in the core
-   leaked and lost its length (§14). The shape is this revision's answer
-   and awaits the owner: a lazy wrap the adapter runs, and a flag for a
-   wrap that keeps the bytes. Slice 3 builds it as provisional (§15.11),
-   and changes it if the owner's answer on the shape differs.
+4. **`res-wrap-body`'s shape**: decided in slice 8, a wrap that drops the
+   length and a tap that keeps it (§15.26).
 ## 17. Slices
 
 1. Scaffolding: Makefile with `help`, the server pinned under `vendor/`, CI
@@ -1529,7 +1573,7 @@ The owner's answer to §16.1 (2026-10-28):
 2. Spikes S1 and S2.
 3. The pure core: `req` with every accessor in §3 and its view, `res`
    with every body kind in §5 but the upgrade, `make-sized-body`,
-   `res-wrap-body` (provisional, §16.4) and `res-body-length` among them,
+   `res-wrap-body` (provisional, §16.4, until slice 8) and `res-body-length` among them,
    headers, keys, `make-test-req` and `test-req-done!`, the exports the
    adapter and the tests need (§11), `wrap`, and the suites that hold the
    names apart and `wrap`'s order. With it, `make oha`, and `make
@@ -1560,3 +1604,8 @@ The owner's answer to §16.1 (2026-10-28):
    cap, and the adapter handing it to `body-input-port`;
    `examples/echo.sps` capped at 1 MiB. Built and closed out in
    [PR #9](https://github.com/Kiyomi-Computation-Systems/circuit/pull/9).
+8. `res-wrap-body`'s shape (§16.4, §15.26): `res-wrap-body` with `f` alone,
+   its body never sized; `res-tap-body`, its body keeping the length; the
+   `res-tapped-body-` accessors for the adapter and the tests. Built and
+   closed out in
+   [PR #10](https://github.com/Kiyomi-Computation-Systems/circuit/pull/10).

@@ -43,10 +43,14 @@ close-out under **Close-outs**, newest first.
 - **Slice 7, a request's own cap on its body, is merged**, squashed from
   [PR #9](https://github.com/Kiyomi-Computation-Systems/circuit/pull/9) on 2026-10-28;
   its close-out is below. The owner's answer is design §15.25, which settles §16.1.
-- **Next:** the design plans no slice past 7 (§17). What follows is the owner's call:
-  the open items below and design §16.4. The server's fixes on its `main` (#242, #244,
-  #246) reach circuit only through a server release, then a chez-websocket release on
-  it.
+- **Slice 8, `res-wrap-body` split into a wrap and a tap, is merged**, squashed from
+  [PR #10](https://github.com/Kiyomi-Computation-Systems/circuit/pull/10) on
+  2026-10-29; its close-out is below. The owner's answer is design §15.26, which
+  settles §16.4. No API question in §16 awaits the owner now.
+- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
+  the open items below, and a first release. The server's fixes on its `main` (#242,
+  #244, #246) reach circuit only through a server release, then a chez-websocket
+  release on it.
 
 ## Open
 
@@ -123,8 +127,6 @@ close-out under **Close-outs**, newest first.
   into a capture as it is.** The server refuses one on the wire, so it reaches the router
   only through `req-with-path` or a test request (the slice 6 design §5 refuses raw
   characters past ASCII alone).
-- **`res-wrap-body`'s shape awaits the owner** (design §16.4). Slice 3 builds it as
-  provisional.
 - **The server's `docs/waiting.md` lists `&body-failed`'s statuses as 413, 400 and 408**,
   leaving out 431, a chunked body's trailers past the header limits (design §12). Filed
   as [chez-http-server #241](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/241)
@@ -136,6 +138,67 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-29: slice 8, `res-wrap-body` split into a wrap and a tap, in PR #10
+
+Commits on `slice/8-tap-body`: the slice (2f25f37), the records with this close-out,
+and its CI run named here. Built, reviewed and fixed on 2026-10-28 and 2026-10-29, by
+the session. `make test` passes 15 suites, 783 rows (check-imports 57, check-suites 14,
+circuit-testing 45, examples 94, headers 24, http-server 82, middleware 13,
+middleware-waits 68, names 20, request 52, response 106, router 101, router-properties
+29, test 43, websocket 35), and `make gate` passes, no gate moved: no gate measures a
+wrap or a tap. Its worst figures, on the first build, before the review's piece check:
+G1 1,438, G2 1,433, G3 306 a GET and 273 a POST, G4 81 and 404, G5 381 and 340 with a
+park, G7 306, G8 1,142, G8 own 287, G8 on-done 868, G9 607 and 595 with a park, and G10
+83, 167 and 5. CI passed on the PR (run 40849487510, 2m35s): 15 suites, 782 rows and the
+curl row skipped, as CI's curl has no WebSocket; the gate's worst figures G3 308 and 279,
+G4 80 and 401, G5 381 and 343, G7 310, G8 own 291, G9 602 and 593, G10 81, 161 and 0.
+
+- **The owner's decision** (design §15.26): `res-wrap-body` takes `f` alone and always
+  drops the length; `res-tap-body` hands each piece to `on-piece` and keeps it. The
+  name was weighed against `res-observe-body`. Weighed too: keeping `same?`, and a
+  length procedure in its place;
+- **the build**, the session's, with no build agent:
+  - a tapped body is a kind of its own, its accessors kept out of the facade;
+    `res-wrapped-body-same?` is gone;
+  - the rows that used `same? #t` are taps or plain wraps. `(circuit test)`'s
+    `counted`, which told a measured port by a counter that reported at eof, is
+    `measured`, which tells it by whether the port is closed when a tap sees the last
+    piece;
+  - each new row was watched failing under a stub `res-tap-body` first;
+  - 12 mutants, their predictions hashed before the run (`fca75ff7`), all killed. 10
+    went as predicted. Two predictions missed, neither a gap: `t-on-piece-eof` left
+    the adapter's sized tap row passing, since the server never asks a body with a
+    length for its end; `w-no-count` failed one row more than predicted;
+- **the first mutant run exhausted the machine's memory**, and Claude Code stopped it.
+  Under `t-drop-length`, `res-body->bytevector` read a tapped body to its eof, and
+  `(circuit test)`'s `pieces` answered "XYZ" forever past its pieces; the harness ran
+  suites with no timeout. `pieces` now answers "XYZ" once, then eof, and the harness
+  runs each suite under `timeout 120` and a 4 GiB `ulimit -v`. The owner had the run
+  restarted so;
+- **a read-only Opus review** (Opus 5.5; 189,020 tokens, 10.7 minutes) found no wrong
+  behaviour. It ran 6 mutants; 4 survived, and each is now killed by a row:
+  - a sized port under a tap was never held: a tap that measured it, or never
+    registered its close, passed. A row for it, and a parity case;
+  - a wrap's count over a tap was never held. A row for it, and parity's wrap over a
+    tap now runs past its length;
+  - "HEAD, 204 or 304 calls `on-piece` never" is false under a wrap whose `f` reads
+    eagerly, before the head. The claim is qualified, and a row holds a plain tap
+    there;
+  - `on-piece` was handed pieces that never go out, past a sized body's length, and a
+    string or an empty bytevector. The tap now checks each piece as the wrap's count
+    does: such a piece raises before `on-piece` sees it, logged `handler-failed`, where
+    without the tap the server logs the piece itself. Two mutants of the check, hashed
+    first (`b1338137`), went as predicted;
+  - a raise from `on-piece` after the head now has a row;
+  - the design's stale lines, among them "a wrap may ask past a length" and "the test
+    is the stricter", and lists that left taps out;
+- **traps:**
+  - a test producer that answers forever past its end turns a mutant that reads past it
+    into an unbounded read, which can take a machine's memory: bound such producers,
+    and run mutants under a timeout and a memory cap;
+  - a wrap's `f` runs before the head, so what it reads through a tap reaches
+    `on-piece` even for a HEAD.
 
 ### 2026-10-28: slice 7, a request's own cap on its body, in PR #9
 

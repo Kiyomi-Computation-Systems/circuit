@@ -147,8 +147,11 @@
 (define (double-bytes bv)
   (u8-list->bytevector (apply append (map (lambda (b) (list b b)) (bytevector->u8-list bv)))))
 
-(define (wrapped body f same?)
-  (res-body (res-wrap-body (make-res 200 '() body) f same?)))
+(define (wrapped body f)
+  (res-body (res-wrap-body (make-res 200 '() body) f)))
+
+(define (tapped body on-piece)
+  (res-body (res-tap-body (make-res 200 '() body) on-piece)))
 
 (define (sample-res)
   (make-res 202
@@ -166,11 +169,12 @@
     (list (res-status r) (res-headers r) (res-body r) (res? r))))
 
 (test-equal "make-res takes every body kind, and keeps it"
-  '(#t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t)
   (let ((producer (ending-with-eof "p")))
     (map (lambda (body) (eq? body (res-body (make-res 200 '() body))))
          (list #f (string->utf8 "bv") "text" producer (digits-port)
-               (make-sized-body 3 producer) (wrapped "w" (lambda (p) p) #f)))))
+               (make-sized-body 3 producer) (wrapped "w" (lambda (p) p))
+               (tapped "t" (lambda (piece) piece))))))
 
 (test-equal "make-res takes any exact integer status"
   '(101 999 204)
@@ -308,14 +312,14 @@
     (res-with-body (make-res 200 '() (old p)) (new p q))
     (list (port-closed? p) (port-closed? q))))
 
-(define (same-wrap body) (wrapped body (lambda (x) x) #t))
-(define (other-wrap body) (wrapped body (lambda (x) x) #f))
+(define (quiet-tap body) (tapped body (lambda (piece) 'ignored)))
+(define (other-wrap body) (wrapped body (lambda (x) x)))
 
 (test-equal "res-with-body closes the port the old body holds, at any depth"
   '((#t #f) (#t #f) (#t #f) (#t #f) (#t #f))
   (list (closing-case (lambda (p) p) (lambda (p q) (string->utf8 "bv")))
         (closing-case (lambda (p) (make-sized-body 4 p)) (lambda (p q) "s"))
-        (closing-case (lambda (p) (other-wrap (same-wrap (make-sized-body 4 p))))
+        (closing-case (lambda (p) (other-wrap (quiet-tap (make-sized-body 4 p))))
                       (lambda (p q) #f))
         (closing-case (lambda (p) (other-wrap p)) (lambda (p q) (ending-with-eof "x")))
         (closing-case (lambda (p) p) (lambda (p q) q))))
@@ -324,10 +328,10 @@
   '((#f #f) (#f #f) (#f #f) (#f #f) (#f #f))
   (list (closing-case (lambda (p) p) (lambda (p q) (make-sized-body 4 p)))
         (closing-case (lambda (p) p)
-                      (lambda (p q) (other-wrap (same-wrap (make-sized-body 4 p)))))
+                      (lambda (p q) (other-wrap (quiet-tap (make-sized-body 4 p)))))
         (closing-case (lambda (p) (make-sized-body 4 p)) (lambda (p q) p))
-        (closing-case (lambda (p) (same-wrap p)) (lambda (p q) (other-wrap (make-sized-body 2 p))))
-        (closing-case (lambda (p) (other-wrap (other-wrap p))) (lambda (p q) (same-wrap p)))))
+        (closing-case (lambda (p) (quiet-tap p)) (lambda (p q) (other-wrap (make-sized-body 2 p))))
+        (closing-case (lambda (p) (other-wrap (other-wrap p))) (lambda (p q) (quiet-tap p)))))
 
 (test-equal "res-with-body closes nothing when the old body holds no port"
   '((#f #f) (#f #f) (#f #f))
@@ -376,55 +380,70 @@
 
 ;; --- res-wrap-body ----------------------------------------------------------------------
 
-(test-equal "res-wrap-body: a new response whose body wraps the old one; same? is #f unless given"
-  '(202 #t #t #t #t #f #t "sample")
+(test-equal "res-wrap-body: a new response whose body wraps the old one"
+  '(202 #t #t #t #t "sample")
   (let* ((r (sample-res))
          (f (lambda (p) p))
          (r2 (res-wrap-body r f))
          (b (res-body r2)))
     (list (res-status r2) (eq? (res-headers r) (res-headers r2)) (res-wrapped-body? b)
           (eq? (res-body r) (res-wrapped-body-inner b)) (eq? f (res-wrapped-body-proc b))
-          (res-wrapped-body-same? b) (res-wrapped-body-same? (res-body (res-wrap-body r f #t)))
           (res-body r))))
 
-(test-equal "res-wrap-body nests: the outer wrap's inner body is the inner wrap"
-  '(#t #t #t)
-  (let* ((r1 (res-wrap-body (sample-res) (lambda (p) p) #t))
-         (r2 (res-wrap-body r1 (lambda (p) p))))
-    (list (eq? (res-body r1) (res-wrapped-body-inner (res-body r2)))
-          (res-wrapped-body-same? (res-body r1))
-          (equal? "sample" (res-wrapped-body-inner (res-body r1))))))
+(test-equal "res-tap-body: a new response whose body taps the old one"
+  '(202 #t #t #t #t "sample")
+  (let* ((r (sample-res))
+         (on-piece (lambda (piece) piece))
+         (r2 (res-tap-body r on-piece))
+         (b (res-body r2)))
+    (list (res-status r2) (eq? (res-headers r) (res-headers r2)) (res-tapped-body? b)
+          (eq? (res-body r) (res-tapped-body-inner b)) (eq? on-piece (res-tapped-body-proc b))
+          (res-body r))))
 
-(test-equal "res-wrap-body closes nothing, and calls nothing"
+(test-equal "wraps and taps nest: the outer one's inner body is the inner one"
+  '(#t #t #t)
+  (let* ((r1 (res-tap-body (sample-res) (lambda (piece) piece)))
+         (r2 (res-wrap-body r1 (lambda (p) p)))
+         (r3 (res-tap-body r2 (lambda (piece) piece))))
+    (list (eq? (res-body r1) (res-wrapped-body-inner (res-body r2)))
+          (eq? (res-body r2) (res-tapped-body-inner (res-body r3)))
+          (equal? "sample" (res-tapped-body-inner (res-body r1))))))
+
+(test-equal "res-wrap-body and res-tap-body close nothing, and call nothing"
   '(#f ())
   (let ((p (digits-port)))
     (take-log!)
-    (res-wrap-body (res-wrap-body (make-res 200 '() p) (lambda (x) (note! 'called) x))
-                   (lambda (x) (note! 'called) x) #t)
+    (res-tap-body (res-wrap-body (res-tap-body (make-res 200 '() p) (lambda (piece) (note! 'tapped)))
+                                 (lambda (x) (note! 'called) x))
+                  (lambda (piece) (note! 'tapped)))
     (list (port-closed? p) (take-log!))))
 
-(test-equal "res-wrap-body refuses a non-procedure, a same? that is not a boolean, and a non-response"
+(test-equal "res-wrap-body refuses a non-procedure and a non-response"
   '((assertion-violation res-wrap-body (not-a-proc))
-    (assertion-violation res-wrap-body (yes))
     (assertion-violation res-wrap-body (x)))
   (list (raised (lambda () (res-wrap-body (sample-res) 'not-a-proc)))
-        (raised (lambda () (res-wrap-body (sample-res) (lambda (p) p) 'yes)))
         (raised (lambda () (res-wrap-body 'x (lambda (p) p))))))
 
-(test-equal "res-sized-body? and res-wrapped-body? each answer for their own kind alone"
-  '((#f #f) (#f #f) (#f #f) (#f #f) (#f #f) (#t #f) (#f #t))
-  (map (lambda (b) (list (res-sized-body? b) (res-wrapped-body? b)))
+(test-equal "res-tap-body refuses a non-procedure and a non-response"
+  '((assertion-violation res-tap-body (not-a-proc))
+    (assertion-violation res-tap-body (x)))
+  (list (raised (lambda () (res-tap-body (sample-res) 'not-a-proc)))
+        (raised (lambda () (res-tap-body 'x (lambda (piece) piece))))))
+
+(test-equal "res-sized-body?, res-wrapped-body? and res-tapped-body? each answer for their own kind alone"
+  '((#f #f #f) (#f #f #f) (#f #f #f) (#f #f #f) (#f #f #f) (#t #f #f) (#f #t #f) (#f #f #t))
+  (map (lambda (b) (list (res-sized-body? b) (res-wrapped-body? b) (res-tapped-body? b)))
        (list #f (string->utf8 "bv") "s" (ending-with-eof "x") (digits-port)
-             (make-sized-body 1 (ending-with-eof "x")) (other-wrap "w"))))
+             (make-sized-body 1 (ending-with-eof "x")) (other-wrap "w") (quiet-tap "t"))))
 
 ;; --- res-body-length ----------------------------------------------------------------------
 
 (test-equal "res-body-length for every kind of body"
   ;;  #f  ""  bv  #vu8()  utf-8  sized  producer  port
   '(0 0 7 0 10 13 #f #f
-    ;; same? over: bv, utf-8, sized, port, producer, same? over string, other over bv
+    ;; a tap over: bv, utf-8, sized, port, producer, a tap over a string, a wrap over bv
     7 10 13 #f #f 5 #f
-    ;; other over: bv, sized, same? over bv
+    ;; a wrap over: bv, sized, a tap over bv
     #f #f #f)
   (let ((bv (string->utf8 "seven!!"))
         ;; a, e acute, the euro sign and a grinning face: 1, 2, 3 and 4 bytes
@@ -432,10 +451,10 @@
         (sized (lambda () (make-sized-body 13 (ending-with-eof "x")))))
     (map (lambda (body) (res-body-length (make-res 200 '() body)))
          (list #f "" bv #vu8() utf8 (sized) (ending-with-eof "x") (digits-port)
-               (same-wrap bv) (same-wrap utf8) (same-wrap (sized)) (same-wrap (digits-port))
-               (same-wrap (ending-with-eof "x")) (same-wrap (same-wrap "fives"))
-               (same-wrap (other-wrap bv))
-               (other-wrap bv) (other-wrap (sized)) (other-wrap (same-wrap bv))))))
+               (quiet-tap bv) (quiet-tap utf8) (quiet-tap (sized)) (quiet-tap (digits-port))
+               (quiet-tap (ending-with-eof "x")) (quiet-tap (quiet-tap "fives"))
+               (quiet-tap (other-wrap bv))
+               (other-wrap bv) (other-wrap (sized)) (other-wrap (quiet-tap bv))))))
 
 (test-equal "res-body-length refuses what is not a response"
   '(assertion-violation res-body-length (x))
@@ -448,14 +467,14 @@
   (let ((p (digits-port)))
     (list (eq? p (res-body-port p))
           (eq? p (res-body-port (make-sized-body 3 p)))
-          (eq? p (res-body-port (same-wrap p)))
-          (eq? p (res-body-port (other-wrap (same-wrap (make-sized-body 3 p)))))
+          (eq? p (res-body-port (quiet-tap p)))
+          (eq? p (res-body-port (other-wrap (quiet-tap (make-sized-body 3 p)))))
           (eq? p (res-body-port (other-wrap (other-wrap p))))
           (answer (lambda ()
                     (map res-body-port
                          (list #f (string->utf8 "bv") "s" (ending-with-eof "x")
                                (make-sized-body 1 (ending-with-eof "x"))
-                               (same-wrap (other-wrap "w")))))))))
+                               (quiet-tap (other-wrap "w")))))))))
 
 (test-equal "res-body-port refuses what is no body kind"
   '(assertion-violation res-body-port (5))
@@ -525,7 +544,7 @@
                                  (lambda (q) (note! 'on-port)) 4))
               (list #f (string->utf8 "bv") "s" (ending-with-eof "x")
                     (make-sized-body 1 (ending-with-eof "x"))
-                    (same-wrap (other-wrap (ending-with-eof "x")))))
+                    (quiet-tap (other-wrap (ending-with-eof "x")))))
     (take-log!)))
 
 (test-equal "a port the measure gives a length: read no further than it, and closed at it"
@@ -583,18 +602,32 @@
 
 ;; --- res-body-stream: wraps ---------------------------------------------------------------------
 
-(test-equal "a wrap that keeps the bytes: f's producer, and the inner body's length"
-  '(("SEVEN!!" eof) 7)
-  (streamed (wrapped (string->utf8 "seven!!") (per-piece upcase-bytes) #t) no-length 4 2))
+(test-equal "a wrap: f's producer, and no length, though the body under it has one"
+  '(("SEVEN!!" eof) #f)
+  (streamed (wrapped (string->utf8 "seven!!") (per-piece upcase-bytes)) no-length 4 2))
 
-(test-equal "a wrap that keeps the bytes over a sized port: its length, the port read to it"
+(test-equal "a tap: the inner body's pieces as they are, each handed to on-piece as it is asked for, the end to nothing, and the inner body's length"
+  '(() "seven!!" ((seen "seven!!")) eof () 7)
+  (begin
+    (take-log!)
+    (let-values (((p n) (body-stream (tapped (string->utf8 "seven!!")
+                                             (lambda (piece) (note! (list 'seen (utf8->string piece)))))
+                                     no-length 4)))
+      (let* ((before (take-log!))
+             (first (shown (p)))
+             (after-first (take-log!))
+             (second (shown (p)))
+             (after-second (take-log!)))
+        (list before first after-first second after-second n)))))
+
+(test-equal "a tap over a sized port: its length, the port read to it"
   '((("0123" #f) ("45" #t) (eof #t)) 6 ((4 2) 6))
   (let-values (((port reads) (recording-port digits)))
-    (let-values (((p n) (body-stream (same-wrap (make-sized-body 6 port)) no-length 4)))
+    (let-values (((p n) (body-stream (quiet-tap (make-sized-body 6 port)) no-length 4)))
       (let ((answers (drain-watching p port 3)))
         (list answers n (reads))))))
 
-(test-equal "a wrap that drops a length stops at it, never asking the inner producer again"
+(test-equal "a wrap over a body with a length stops at it, never asking the inner producer again"
   '((("abc" "de" eof eof) #f) ((asked inner) (asked inner)))
   (begin
     (take-log!)
@@ -602,7 +635,7 @@
                             no-length 4 4)))
       (list result (take-log!)))))
 
-(test-equal "a wrap that drops a length raises at a piece that would take it past the length"
+(test-equal "a wrap over a body with a length raises at a piece that would take it past the length"
   '("abc" (assertion-violation res-body-stream (4 5)))
   (let-values (((p n) (body-stream (other-wrap (make-sized-body 4 (ending-with-eof "abc" "de")))
                                        no-length 4)))
@@ -610,31 +643,69 @@
            (second (raised p)))
       (list first second))))
 
-(test-equal "a wrap that drops a length: a body that ends short just ends"
+(test-equal "a wrap over a tap over a body with a length stops at that length too, never asking past it"
+  '((("abc" "de" eof eof) #f) ((asked inner) (asked inner)))
+  (begin
+    (take-log!)
+    (let ((result (streamed (other-wrap (quiet-tap (make-sized-body 5 (pieces 'inner "abc" "de"))))
+                            no-length 4 4)))
+      (list result (take-log!)))))
+
+(test-equal "a tap refuses a piece that is no bytevector, an empty piece, and one past the length, before on-piece sees it"
+  '((assertion-violation res-body-stream ("abc"))
+    (assertion-violation res-body-stream (#vu8()))
+    ("abc" (assertion-violation res-body-stream (5 7)))
+    ((seen "abc")))
+  (begin
+    (take-log!)
+    (let* ((seen (lambda (piece) (note! (list 'seen (utf8->string piece)))))
+           (stream-of (lambda (body)
+                        (let-values (((p n) (body-stream (tapped body seen) no-length 4)))
+                          p)))
+           (text (raised (stream-of (lambda () "abc"))))
+           (empty (raised (stream-of (lambda () #vu8()))))
+           (past (let* ((p (stream-of (make-sized-body 5 (ending-with-eof "abc" "defg"))))
+                        (first (shown (p)))
+                        (second (raised p)))
+                   (list first second))))
+      (list text empty past (take-log!)))))
+
+(test-equal "a wrap over a body with a length: a body that ends short just ends"
   '(("abc" eof eof) #f)
   (streamed (other-wrap (make-sized-body 9 (ending-with-eof "abc"))) no-length 4 3))
 
-(test-equal "a wrap that drops a length over a port the measure sizes stops at that length"
+(test-equal "a wrap over a port the measure sizes stops at that length"
   '(("0123" "45" eof eof) #f ((4 2) 6))
   (let-values (((port reads) (recording-port digits)))
     (let-values (((p n) (body-stream (other-wrap port) (lambda (q) 6) 4)))
       (let ((answers (drain p 4)))
         (list answers n (reads))))))
 
-(test-equal "a wrap that keeps the bytes hands f the inner producer itself, a sized one's included"
-  '(#t 5)
-  (let* ((producer (ending-with-eof "abcde"))
-         (handed #f))
-    (let-values (((p n) (body-stream (wrapped (make-sized-body 5 producer)
-                                                  (lambda (q) (set! handed q) q) #t)
-                                         no-length 4)))
-      (list (eq? handed producer) n))))
+(test-equal "a tap hands on each piece itself, its producer's own under a sized body, and on-piece sees that piece"
+  '(#t #t #t #t 5)
+  (let* ((a (string->utf8 "abc"))
+         (d (string->utf8 "de"))
+         (producer (let ((left (list a d)))
+                     (lambda ()
+                       (if (null? left)
+                           (eof-object)
+                           (let ((piece (car left)))
+                             (set! left (cdr left))
+                             piece)))))
+         (seen '()))
+    (let-values (((p n) (body-stream (tapped (make-sized-body 5 producer)
+                                             (lambda (piece) (set! seen (cons piece seen))))
+                                     no-length 4)))
+      (let* ((one (p))
+             (two (p))
+             (in-order (reverse seen)))
+        (list (eq? one a) (eq? two d) (eq? (car in-order) a) (eq? (cadr in-order) d) n)))))
 
 (test-equal "a wrap over a body with no length hands f the inner producer itself"
   '(#t #f)
   (let* ((producer (ending-with-eof "x"))
          (handed #f))
-    (let-values (((p n) (body-stream (wrapped producer (lambda (q) (set! handed q) q) #f)
+    (let-values (((p n) (body-stream (wrapped producer (lambda (q) (set! handed q) q))
                                          no-length 4)))
       (list (eq? handed producer) n))))
 
@@ -644,22 +715,37 @@
     (let-values (((p n) (body-stream (other-wrap port) no-length 4)))
       (list (drain-watching p port 4) n))))
 
-(test-equal "an empty body reaches f as eof, with or without same?"
-  '(eof eof eof eof eof eof eof)
+(test-equal "an empty body reaches f as eof"
+  '(eof eof eof eof eof)
   (let ((first-answer
-         (lambda (body same?)
+         (lambda (body)
            (let ((seen 'never-asked))
              (body-stream (wrapped body
-                                       (lambda (q) (set! seen (shown (q))) (lambda () (eof-object)))
-                                       same?)
-                              no-length 4)
+                                   (lambda (q) (set! seen (shown (q))) (lambda () (eof-object))))
+                          no-length 4)
              seen))))
-    (list (first-answer #f #f) (first-answer #f #t) (first-answer #vu8() #f)
-          (first-answer "" #f) (first-answer "" #t)
-          (first-answer (make-sized-body 0 (pieces 'empty)) #f)
-          (first-answer (make-sized-body 0 (digits-port)) #t))))
+    (list (first-answer #f) (first-answer #vu8()) (first-answer "")
+          (first-answer (make-sized-body 0 (pieces 'empty)))
+          (first-answer (make-sized-body 0 (digits-port))))))
 
-(test-equal "a wrap that drops a length of 0 never asks the inner producer"
+(test-equal "a tap over an empty body answers eof at once, with a length of 0, and hands on-piece nothing; over a sized body of 0, a length of 0, which no reader asks past"
+  '((eof 0) (eof 0) (eof 0) 0 0 ())
+  (begin
+    (take-log!)
+    (let* ((stream-of (lambda (body)
+                        (body-stream (tapped body (lambda (piece) (note! 'on-piece))) no-length 4)))
+           (first-answer (lambda (body)
+                           (let-values (((p n) (stream-of body)))
+                             (list (shown (p)) n))))
+           (length-of (lambda (body)
+                        (let-values (((p n) (stream-of body)))
+                          n)))
+           (answers (list (first-answer #f) (first-answer #vu8()) (first-answer "")
+                          (length-of (make-sized-body 0 (pieces 'empty)))
+                          (length-of (make-sized-body 0 (digits-port))))))
+      (append answers (list (take-log!))))))
+
+(test-equal "a wrap over a body of length 0 never asks the inner producer"
   '((eof eof) ())
   (begin
     (take-log!)
@@ -667,27 +753,36 @@
                                   no-length 4 2))))
       (list answers (take-log!)))))
 
-(test-equal "nested wraps: the inner streamed first; a length kept only while every wrap keeps it"
+(test-equal "nested wraps: the inner streamed first, and no length"
   '((f2 f1) ("oolllleehh" eof) #f)
   (begin
     (take-log!)
     (let* ((f2 (lambda (q) (note! 'f2) ((per-piece double-bytes) q)))
            (f1 (lambda (q) (note! 'f1) ((per-piece reverse-bytes) q)))
-           (result (streamed (wrapped (wrapped "hello" f2 #f) f1 #t) no-length 4 2)))
+           (result (streamed (wrapped (wrapped "hello" f2) f1) no-length 4 2)))
       (cons (take-log!) result))))
 
-(test-equal "nested wraps that keep the bytes keep a sized port's length"
+(test-equal "nested taps keep a sized port's length"
   '(("0123" "45" eof) 6)
-  (streamed (same-wrap (same-wrap (make-sized-body 6 (digits-port)))) no-length 4 3))
+  (streamed (quiet-tap (quiet-tap (make-sized-body 6 (digits-port)))) no-length 4 3))
 
-(test-equal "nested wraps: each that drops a length hands on no length"
-  '((("HELLO" eof) #f) (("olleh" eof) #f) (("OLLEH" eof) #f))
-  (list (streamed (wrapped (wrapped "hello" (per-piece upcase-bytes) #f) (lambda (q) q) #f)
+(test-equal "nested: a wrap anywhere drops the length, and a tap over a body with none has none"
+  '((("HELLO" eof) #f) (("hello" eof) #f) (("olleh" eof) #f))
+  (list (streamed (wrapped (wrapped "hello" (per-piece upcase-bytes)) (lambda (q) q))
                   no-length 4 2)
-        (streamed (wrapped (other-wrap (string->utf8 "hello")) (per-piece reverse-bytes) #t)
-                  no-length 4 2)
-        (streamed (wrapped (wrapped "hello" (per-piece upcase-bytes) #t) (per-piece reverse-bytes) #f)
-                  no-length 4 2)))
+        (streamed (quiet-tap (other-wrap (string->utf8 "hello"))) no-length 4 2)
+        (streamed (wrapped (quiet-tap "hello") (per-piece reverse-bytes)) no-length 4 2)))
+
+(test-equal "a tap over a wrap sees the wrap's bytes; a wrap over a tap is handed the tapped pieces"
+  '((("HELLO" eof) #f) ((tap "HELLO")) (("HELLO" eof) #f) ((tap "hello")))
+  (begin
+    (take-log!)
+    (let* ((seen (lambda (piece) (note! (list 'tap (utf8->string piece)))))
+           (outer-tap (streamed (tapped (wrapped "hello" (per-piece upcase-bytes)) seen) no-length 4 2))
+           (outer-tap-log (take-log!))
+           (outer-wrap (streamed (wrapped (tapped "hello" seen) (per-piece upcase-bytes)) no-length 4 2))
+           (outer-wrap-log (take-log!)))
+      (list outer-tap outer-tap-log outer-wrap outer-wrap-log))))
 
 ;; --- res-body-stream: the port is the caller's before any f runs ---------------------------
 ;; The adapter registers a port's close in on-port: measure first, then
@@ -706,38 +801,48 @@
                                             4)))))
     (list (take-log!) outcome (port-closed? port))))
 
-(define (noting-wrap body name same?)
-  (wrapped body (lambda (q) (note! name) q) same?))
+(define (noting-wrap body name)
+  (wrapped body (lambda (q) (note! name) q)))
 
 (define (raising-wrap body name)
-  (wrapped body (lambda (q) (note! name) (raise name)) #f))
+  (wrapped body (lambda (q) (note! name) (raise name))))
 
 (test-equal "a wrapped port: measured, then handed to on-port, then f"
   '((measure on-port f) no-raise #f)
   (let ((port (digits-port)))
-    (ordered (noting-wrap port 'f #f) port (lambda () 10))))
+    (ordered (noting-wrap port 'f) port (lambda () 10))))
+
+(test-equal "a tapped port: measured, then handed to on-port; on-piece waits for the pieces to be asked for"
+  '((measure on-port) no-raise #f)
+  (let ((port (digits-port)))
+    (ordered (tapped port (lambda (piece) (note! 'on-piece))) port (lambda () 10))))
 
 (test-equal "a sized port under a wrap: on-port, then f, and no measure"
   '((on-port f) no-raise #f)
   (let ((port (digits-port)))
-    (ordered (noting-wrap (make-sized-body 10 port) 'f #t) port (lambda () 10))))
+    (ordered (noting-wrap (make-sized-body 10 port) 'f) port (lambda () 10))))
+
+(test-equal "a sized port under a tap: on-port, and no measure; on-piece waits for the pieces to be asked for"
+  '((on-port) no-raise #f)
+  (let ((port (digits-port)))
+    (ordered (tapped (make-sized-body 10 port) (lambda (piece) (note! 'on-piece))) port (lambda () 10))))
 
 (test-equal "nested wraps over a port: on-port before the inner f, the inner f before the outer"
   '((measure on-port inner-f outer-f) no-raise #f)
   (let ((port (digits-port)))
-    (ordered (noting-wrap (noting-wrap port 'inner-f #t) 'outer-f #f) port (lambda () 10))))
+    (ordered (noting-wrap (noting-wrap port 'inner-f) 'outer-f) port (lambda () 10))))
 
 (test-equal "a raise from measure closes the port, and neither on-port nor any f runs"
   '((measure) (other-raise measure-failed) #t)
   (let ((port (digits-port)))
-    (ordered (noting-wrap (same-wrap port) 'f #t) port (lambda () (raise 'measure-failed)))))
+    (ordered (noting-wrap (quiet-tap port) 'f) port (lambda () (raise 'measure-failed)))))
 
 (test-equal "a raise from on-port closes the port, and no f runs"
   '((measure on-port) (other-raise on-port-failed) #t)
   (let ((port (digits-port)))
     (take-log!)
     (let ((outcome (raised (lambda ()
-                             (res-body-stream (noting-wrap port 'f #f)
+                             (res-body-stream (noting-wrap port 'f)
                                               (lambda (q) (note! 'measure) 10)
                                               (lambda (q) (note! 'on-port) (raise 'on-port-failed))
                                               4)))))
@@ -757,12 +862,12 @@
 (test-equal "a raise from f, after on-port, closes nothing: the port is the caller's"
   '((measure on-port inner-f) (other-raise inner-f) #f)
   (let ((port (digits-port)))
-    (ordered (noting-wrap (raising-wrap port 'inner-f) 'outer-f #t) port (lambda () 10))))
+    (ordered (noting-wrap (raising-wrap port 'inner-f) 'outer-f) port (lambda () 10))))
 
 (test-equal "f answering no producer, after on-port, closes nothing"
   '((measure on-port) (assertion-violation res-body-stream (not-a-producer)) #f)
   (let ((port (digits-port)))
-    (ordered (wrapped port (lambda (q) 'not-a-producer) #f) port (lambda () 10))))
+    (ordered (wrapped port (lambda (q) 'not-a-producer)) port (lambda () 10))))
 
 ;; --- res-body-stream: a port of one piece or less is read whole -------------------------------
 ;; A bare port, not under a sized body, that the measure gives no more than
@@ -812,23 +917,26 @@
          (c (whole-or-not long (lambda (q) 4) 16 long)))
     (list a b c)))
 
-(test-equal "a whole port under wraps: read before f, closed when f is handed one piece; same? keeps its length"
+(test-equal "a whole port under wraps: read before f, closed when f is handed one piece; under a tap, closed before on-piece, its length kept"
   '((((inner #t) (outer #t)) ("0123456789" eof eof) #f)
-    (((only #t)) ("0123456789" eof) 10))
+    (() ("0123456789" eof) ((only #t)) 10))
   (let* ((port (digits-port))
          (other (digits-port))
          (noting (lambda (name watched) (lambda (q) (note! (list name (port-closed? watched))) q)))
          (nested (begin
                    (take-log!)
                    (let-values (((p n) (res-body-stream
-                                        (wrapped (wrapped port (noting 'inner port) #t) (noting 'outer port) #f)
+                                        (wrapped (wrapped port (noting 'inner port)) (noting 'outer port))
                                         (lambda (q) 10) (lambda (q) (note! 'on-port)) 16)))
                      (let ((log (take-log!)))
                        (list log (drain p 3) n)))))
-         (kept (let-values (((p n) (res-body-stream (wrapped other (noting 'only other) #t)
+         (kept (let-values (((p n) (res-body-stream (tapped other
+                                                            (lambda (piece) (note! (list 'only (port-closed? other)))))
                                                     (lambda (q) 10) (lambda (q) (note! 'on-port)) 16)))
-                 (let ((log (take-log!)))
-                   (list log (drain p 2) n)))))
+                 (let* ((before (take-log!))
+                        (pieces (drain p 2))
+                        (after (take-log!)))
+                   (list before pieces after n)))))
     (list nested kept)))
 
 (test-equal "a raise from the read closes the port and goes on: no on-port, no f"
@@ -837,7 +945,7 @@
                                              #f #f #f)))
     (take-log!)
     (let ((outcome (raised (lambda ()
-                             (res-body-stream (noting-wrap port 'f #f)
+                             (res-body-stream (noting-wrap port 'f)
                                               (lambda (q) (note! 'measure) 3)
                                               (lambda (q) (note! 'on-port))
                                               4)))))
@@ -859,7 +967,7 @@
 
 (test-equal "a wrap whose f answers no producer is refused"
   '(assertion-violation res-body-stream (not-a-producer))
-  (raised (lambda () (body-stream (wrapped "x" (lambda (q) 'not-a-producer) #f) no-length 4))))
+  (raised (lambda () (body-stream (wrapped "x" (lambda (q) 'not-a-producer)) no-length 4))))
 
 (test-equal "res-body-stream calls f, once a stream; nothing else does"
   '(() (called))
@@ -873,6 +981,20 @@
     (let ((before (take-log!)))
       (body-stream (res-body r) no-length 4)
       (list before (take-log!)))))
+
+(test-equal "a tap's on-piece runs only as the stream's producer is asked: nothing else calls it"
+  '(() () ((piece "body")))
+  (let ((r (res-tap-body (make-res 200 '() "body") (lambda (piece) (note! (list 'piece (utf8->string piece)))))))
+    (take-log!)
+    (res-body-length r)
+    (res-body-port (res-body r))
+    (res-with-body r (res-body r))
+    (make-res 200 '() (res-body r))
+    (let ((before (take-log!)))
+      (let-values (((p n) (body-stream (res-body r) no-length 4)))
+        (let ((streamed-log (take-log!)))
+          (p)
+          (list before streamed-log (take-log!)))))))
 
 (test-equal "res-body-stream refuses what is no body kind, a measure or on-port that is no procedure, and a piece size that is no positive count"
   '((assertion-violation res-body-stream (5)) (assertion-violation res-body-stream (6))
@@ -939,12 +1061,14 @@
   (map (lambda (t) (refusal (lambda () (make-upgrade-res '() t)))) (list 'x #f "taker")))
 
 (test-equal "res-upgrade-body? answers for an upgrade body alone, and the other kinds' predicates not for it"
-  '((#f #f #f #f #f #f #f #f) (#t #f #f))
+  '((#f #f #f #f #f #f #f #f #f) (#t #f #f #f))
   (let ((body (res-body (sample-upgrade))))
     (list (map res-upgrade-body?
                (list #f (string->utf8 "bv") "s" (ending-with-eof "x") (digits-port)
-                     (make-sized-body 1 (ending-with-eof "x")) (other-wrap "w") (sample-upgrade)))
-          (list (res-upgrade-body? body) (res-sized-body? body) (res-wrapped-body? body)))))
+                     (make-sized-body 1 (ending-with-eof "x")) (other-wrap "w") (quiet-tap "t")
+                     (sample-upgrade)))
+          (list (res-upgrade-body? body) (res-sized-body? body) (res-wrapped-body? body)
+                (res-tapped-body? body)))))
 
 (test-equal "make-res refuses an upgrade body, with 101 and with any other status"
   (map (lambda (s) (list 'assertion-violation 'make-res upgrade-body-refused '(the-upgrade-body)))
@@ -960,13 +1084,13 @@
          (refused (refusal (lambda () (res-with-body (make-res 200 '() p) body)))))
     (list (tagged refused body 'the-upgrade-body) (port-closed? p))))
 
-(test-equal "res-with-body, res-with-status and res-wrap-body refuse an upgrade response"
+(test-equal "res-with-body, res-with-status, res-wrap-body and res-tap-body refuse an upgrade response"
   (append (map (lambda (who) (list 'assertion-violation who upgrade-res-refused '(the-upgrade)))
                '(res-with-body res-with-body res-with-body))
           (map (lambda (who) (list 'assertion-violation who upgrade-res-refused '(the-upgrade)))
                '(res-with-status res-with-status res-with-status))
           (map (lambda (who) (list 'assertion-violation who upgrade-res-refused '(the-upgrade)))
-               '(res-wrap-body res-wrap-body)))
+               '(res-wrap-body res-tap-body)))
   (let ((r (sample-upgrade)))
     (tagged (list (refusal (lambda () (res-with-body r "text")))
                   (refusal (lambda () (res-with-body r #f)))
@@ -975,7 +1099,7 @@
                   (refusal (lambda () (res-with-status r 101)))
                   (refusal (lambda () (res-with-status r 404)))
                   (refusal (lambda () (res-wrap-body r (lambda (p) p))))
-                  (refusal (lambda () (res-wrap-body r (lambda (p) p) #t))))
+                  (refusal (lambda () (res-tap-body r (lambda (piece) piece)))))
             r 'the-upgrade)))
 
 (test-equal "res-set-header and res-add-header keep an upgrade one: 101, the headers changed, the very take-over"

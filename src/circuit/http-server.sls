@@ -12,8 +12,8 @@
 ;;; the server's response, or into a switch for an upgrade:
 ;;;
 ;;;   1. a value that is no res is an assertion violation;
-;;;   2. a body that holds the request's own req-body port, bare, sized or
-;;;      wrapped, is one too: a producer can't read it (design §9);
+;;;   2. a body that holds the request's own req-body port, bare, sized,
+;;;      wrapped or tapped, is one too: a producer can't read it (design §9);
 ;;;   3. the body: #f and a bytevector as they are, a string as its UTF-8,
 ;;;      a producer as itself; an upgrade's take-over as it is; any other
 ;;;      kind through res-body-stream. A port is measured first, from its

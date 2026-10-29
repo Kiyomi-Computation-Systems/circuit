@@ -123,11 +123,11 @@
   ;; where the server would close the connection. A piece that is no
   ;; bytevector, or an empty one, is an assertion violation, as the
   ;; server's rule is. Given REQ, a body that holds REQ's body port, bare,
-  ;; sized or wrapped, is an assertion violation, as the adapter refuses it
-  ;; (design §9), checked before anything is read; a request whose port
-  ;; was never made has none to hold. An upgrade response is an assertion
-  ;; violation: it has no body to read, and after the 101 the stream is the
-  ;; taker's.
+  ;; sized, wrapped or tapped, is an assertion violation, as the adapter
+  ;; refuses it (design §9), checked before anything is read; a request
+  ;; whose port was never made has none to hold. An upgrade response is an
+  ;; assertion violation: it has no body to read, and after the 101 the
+  ;; stream is the taker's.
   (define res-body->bytevector
     (case-lambda
       ((r) (read-body r #f))
@@ -184,8 +184,8 @@
   ;; Chez's port length instead, which plain R6RS can't ask. The two agree
   ;; on a bytevector port and a file, but a custom port with position
   ;; procedures is sized here and goes out chunked from the adapter, which
-  ;; reads it to its eof. So this is the stricter of the two: a wrap or a
-  ;; counter that needs eof fails here first.
+  ;; reads it to its eof. So the two differ only for such a port, which this
+  ;; reads to the length it measured, and the adapter to its eof.
   (define (port-read-ahead-length port)
     (and (port-has-port-position? port)
          (port-has-set-port-position!? port)
