@@ -40,9 +40,9 @@ GOAL = $(strip $(if $(MAKECMDGOALS),$(MAKECMDGOALS),$@))
 
 # --- the pins ----------------------------------------------------------------
 SERVER_DIR := vendor/chez-http-server
-SERVER_PIN := d928e41b7483e512dc10312d0834be8c8d860c44  # v0.9.0
+SERVER_PIN := b7381a0a5d46270f03a9c25e90d77a59224fd7f1  # v0.9.1
 WEBSOCKET_DIR := vendor/chez-websocket
-WEBSOCKET_PIN := 4456814cef6c32717ebc86ed0ebd3e1400e6dfef  # v0.4.0
+WEBSOCKET_PIN := 579c118c707507db7fbd513318cc81e0f2666396  # v0.4.1
 
 # --- the pins it carries ------------------------------------------------------
 LIBUV_DIR        := $(SERVER_DIR)/vendor/chez-libuv
