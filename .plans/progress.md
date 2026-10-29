@@ -150,7 +150,9 @@ middleware-waits 68, names 20, request 52, response 106, router 101, router-prop
 wrap or a tap. Its worst figures, on the first build, before the review's piece check:
 G1 1,438, G2 1,433, G3 306 a GET and 273 a POST, G4 81 and 404, G5 381 and 340 with a
 park, G7 306, G8 1,142, G8 own 287, G8 on-done 868, G9 607 and 595 with a park, and G10
-83, 167 and 5.
+83, 167 and 5. CI passed on the PR (run 40849487510, 2m35s): 15 suites, 782 rows and the
+curl row skipped, as CI's curl has no WebSocket; the gate's worst figures G3 308 and 279,
+G4 80 and 401, G5 381 and 343, G7 310, G8 own 291, G9 602 and 593, G10 81, 161 and 0.
 
 - **The owner's decision** (design §15.26): `res-wrap-body` takes `f` alone and always
   drops the length; `res-tap-body` hands each piece to `on-piece` and keeps it. The
