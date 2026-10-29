@@ -63,7 +63,8 @@
   '(make-res res? res-status res-headers res-body res-header res-set-header res-add-header
     res-remove-header res-with-status res-with-body make-sized-body res-sized-body? res-sized-body-length
     res-sized-body-inner res-wrap-body res-wrapped-body? res-wrapped-body-inner
-    res-wrapped-body-proc res-wrapped-body-same? make-upgrade-res res-upgrade-body?
+    res-wrapped-body-proc res-tap-body res-tapped-body? res-tapped-body-inner
+    res-tapped-body-proc make-upgrade-res res-upgrade-body?
     res-upgrade-body-take-over res-body-length res-body-port res-body-stream))
 
 (define header-names
@@ -87,7 +88,8 @@
     req-with-method req-with-scheme req-with-host req-with-path req-with-query
     req-with-remote-address req-with-remote-port req-body-cap req-with-body-cap
     make-res res? res-status res-headers res-body res-header res-set-header res-add-header
-    res-remove-header res-with-status res-with-body make-sized-body res-wrap-body res-body-length
+    res-remove-header res-with-status res-with-body make-sized-body res-wrap-body res-tap-body
+    res-body-length
     make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
     header-value header-values header-set header-add header-remove header-names-downcase
     wrap wrap-body-cap))
@@ -107,7 +109,8 @@
 (define kept-out-of-the-facade
   '(make-req-view make-req req-body-made test-req-done!
     res-sized-body? res-sized-body-length res-sized-body-inner
-    res-wrapped-body? res-wrapped-body-inner res-wrapped-body-proc res-wrapped-body-same?
+    res-wrapped-body? res-wrapped-body-inner res-wrapped-body-proc
+    res-tapped-body? res-tapped-body-inner res-tapped-body-proc
     res-body-port res-body-stream))
 
 (test-begin "names")

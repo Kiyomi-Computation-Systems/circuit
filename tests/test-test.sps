@@ -49,17 +49,22 @@
         (req-local-address r) (req-local-port r)))
 
 ;; pieces : Symbol String ... -> Producer
-;; Each string's bytes in turn, each call noted as (asked NAME); a call past
-;; them is noted (asked-past NAME) and answers more bytes.
+;; Each string's bytes in turn, each call noted as (asked NAME); the first
+;; call past them is noted (asked-past NAME) and answers more bytes, and
+;; every later one answers eof, so a reader that asks past them ends.
 (define (pieces name . texts)
-  (let ((left (map string->utf8 texts)))
+  (let ((left (map string->utf8 texts)) (past? #f))
     (lambda ()
-      (if (null? left)
-          (begin (note! (list 'asked-past name)) (string->utf8 "XYZ"))
-          (let ((piece (car left)))
-            (set! left (cdr left))
-            (note! (list 'asked name))
-            piece)))))
+      (cond ((pair? left)
+             (let ((piece (car left)))
+               (set! left (cdr left))
+               (note! (list 'asked name))
+               piece))
+            (past? (eof-object))
+            (else
+             (set! past? #t)
+             (note! (list 'asked-past name))
+             (string->utf8 "XYZ"))))))
 
 ;; ending-with-eof : Any ... -> Producer
 ;; Each piece as given, a string as its bytes, then eof forever.
@@ -89,17 +94,10 @@
       #f #f #f)
      (lambda () (list (reverse asked) pos)))))
 
-(define (per-piece g)
-  (lambda (producer)
-    (lambda ()
-      (let ((x (producer)))
-        (if (eof-object? x) x (g x))))))
-
-(define (upcase-bytes bv) (string->utf8 (string-upcase (utf8->string bv))))
-
 (define (res-of body) (make-res 200 '() body))
-(define (wrapped body f same?) (res-body (res-wrap-body (res-of body) f same?)))
-(define (other-wrap body) (wrapped body (lambda (p) p) #f))
+(define (wrapped body f) (res-body (res-wrap-body (res-of body) f)))
+(define (tapped body on-piece) (res-body (res-tap-body (res-of body) on-piece)))
+(define (other-wrap body) (wrapped body (lambda (p) p)))
 
 ;; tagged : Any Any Symbol -> Any
 ;; X with each part eq? to OBJ, at any depth of its pairs, as TAG.
@@ -257,14 +255,9 @@
   '(70000 (65536 4464))
   (begin
     (take-log!)
-    (let* ((sizes (lambda (producer)
-                    (lambda ()
-                      (let ((x (producer)))
-                        (unless (eof-object? x) (note! (bytevector-length x)))
-                        x))))
-           (bytes (res-body->bytevector
-                   (res-of (wrapped (open-bytevector-input-port (make-bytevector 70000 7))
-                                    sizes #f)))))
+    (let ((bytes (res-body->bytevector
+                  (res-of (tapped (open-bytevector-input-port (make-bytevector 70000 7))
+                                  (lambda (piece) (note! (bytevector-length piece))))))))
       (list (bytevector-length bytes) (take-log!)))))
 
 (test-equal "res-body->bytevector reads a port of one piece, 65,536 bytes, whole before f, as the adapter does; one byte more streams"
@@ -274,7 +267,7 @@
            (let* ((port (open-bytevector-input-port (make-bytevector n 7)))
                   (seen 'f-not-called)
                   (bytes (res-body->bytevector
-                          (res-of (wrapped port (lambda (q) (set! seen (port-closed? port)) q) #t)))))
+                          (res-of (wrapped port (lambda (q) (set! seen (port-closed? port)) q))))))
              (list (bytevector-length bytes) seen (port-closed? port))))))
     (let* ((one (closed-when-f-runs 65536))
            (more (closed-when-f-runs 65537)))
@@ -321,7 +314,7 @@
         (raised (lambda () (res-body->bytevector (res-of (ending-with-eof "ab" #vu8())))))
         (raised (lambda () (res-body->bytevector (res-of (make-sized-body 3 (ending-with-eof #vu8()))))))))
 
-(test-equal "res-body->bytevector: a wrap that drops a length stops at it, never asking the inner producer again"
+(test-equal "res-body->bytevector: a wrap over a body with a length stops at it, never asking the inner producer again"
   (list (string->utf8 "abcde") '((asked inner) (asked inner)))
   (begin
     (take-log!)
@@ -329,51 +322,36 @@
                   (res-of (other-wrap (make-sized-body 5 (pieces 'inner "abc" "de")))))))
       (list bytes (take-log!)))))
 
-(test-equal "res-body->bytevector: a wrap that drops a length raises at a piece past it"
+(test-equal "res-body->bytevector: a wrap over a body with a length raises at a piece past it"
   '(assertion-violation res-body-stream (4 5))
   (raised (lambda () (res-body->bytevector
                       (res-of (other-wrap (make-sized-body 4 (ending-with-eof "abc" "de"))))))))
 
-(test-equal "res-body->bytevector: a wrap that keeps the bytes is read to the length, f's producer never asked past it"
-  (list (string->utf8 "ABCDE") '((asked inner) (asked inner)))
+(test-equal "res-body->bytevector: a tap is read to its length, each piece handed to on-piece, the producer under it never asked past it"
+  (list (string->utf8 "abcde") '((asked inner) (piece "abc") (asked inner) (piece "de")))
   (begin
     (take-log!)
     (let ((bytes (res-body->bytevector
-                  (res-of (wrapped (make-sized-body 5 (pieces 'inner "abc" "de"))
-                                   (per-piece upcase-bytes) #t)))))
+                  (res-of (tapped (make-sized-body 5 (pieces 'inner "abc" "de"))
+                                  (lambda (piece) (note! (list 'piece (utf8->string piece)))))))))
       (list bytes (take-log!)))))
-
-(test-equal "a counter that reports only at eof never reports under a sized body, as in production"
-  (list (string->utf8 "abcde") 'unreported)
-  (let* ((total 'unreported)
-         (counter (lambda (producer)
-                    (let ((count 0))
-                      (lambda ()
-                        (let ((x (producer)))
-                          (if (eof-object? x)
-                              (begin (set! total count) x)
-                              (begin (set! count (+ count (bytevector-length x))) x)))))))
-         (bytes (res-body->bytevector
-                 (res-of (wrapped (make-sized-body 5 (ending-with-eof "abc" "de")) counter #t)))))
-    (list bytes total)))
 
 
 ;; --- res-body->bytevector measures a port as the adapter will -------------------------------
 
-;; counted : Body -> (List String Any)
-;; BODY read under a counter that keeps the bytes and reports its total only
-;; at eof: the bytes as text, and the total, or unreported.
-(define (counted body)
-  (let* ((total 'unreported)
-         (counter (lambda (producer)
-                    (let ((count 0))
-                      (lambda ()
-                        (let ((x (producer)))
-                          (if (eof-object? x)
-                              (begin (set! total count) x)
-                              (begin (set! count (+ count (bytevector-length x))) x)))))))
-         (bytes (res-body->bytevector (res-of (wrapped body counter #t)))))
-    (list (utf8->string bytes) total)))
+;; measured : BinaryInputPort -> (List String Symbol)
+;; PORT read as a body under a tap: the bytes as text, and measured when PORT
+;; was closed by the time on-piece saw the last piece, as a port the reader
+;; measured is, closed with its last byte or read whole; read-to-eof when it
+;; was still open, as a port read to its eof is; no-piece when none came.
+(define (measured port)
+  (let* ((closed-at-last 'no-piece)
+         (bytes (res-body->bytevector
+                 (res-of (tapped port (lambda (piece) (set! closed-at-last (port-closed? port))))))))
+    (list (utf8->string bytes)
+          (cond ((eq? closed-at-last 'no-piece) 'no-piece)
+                (closed-at-last 'measured)
+                (else 'read-to-eof)))))
 
 ;; positioned-port : Bytevector Boolean Boolean [Bytevector] -> BinaryInputPort
 ;; A custom port over BYTES, with a get-position procedure when GET?, and a
@@ -394,17 +372,17 @@
                  (unless (null? grown) (set! data (car grown)))))
      #f)))
 
-(test-equal "a counter that keeps the bytes over a bytevector port never sees eof, as in production"
-  '("0123456789" unreported)
-  (counted (open-bytevector-input-port digits)))
+(test-equal "a bytevector port is measured: closed by its last piece"
+  '("0123456789" measured)
+  (measured (open-bytevector-input-port digits)))
 
-(test-equal "a port is measured from its position: after a get-u8, the rest, and no eof asked for"
-  '("123456789" unreported)
+(test-equal "a port is measured from its position: after a get-u8, the rest, closed by its last piece"
+  '("123456789" measured)
   (let ((port (open-bytevector-input-port digits)))
     (get-u8 port)
-    (counted port)))
+    (measured port)))
 
-(test-equal "a wrap without same? over a bytevector port stops at its length: the port closed with its last byte"
+(test-equal "a wrap over a bytevector port stops at its length: the port closed with its last byte"
   '(("0123456789" #t) (eof #t))
   (begin
     (take-log!)
@@ -415,15 +393,16 @@
                         (note! (list (if (eof-object? x) 'eof (utf8->string x))
                                      (port-closed? port)))
                         x)))))
-      (res-body->bytevector (res-of (wrapped port watch #f)))
+      (res-body->bytevector (res-of (wrapped port watch)))
       (take-log!))))
 
 (test-equal "a custom port is measured only when it has both position procedures; the rest are read to their eof"
-  '(("0123456789" 10) ("0123456789" 10) ("0123456789" 10) ("0123456789" unreported))
-  (list (counted (positioned-port digits #f #f))
-        (counted (positioned-port digits #t #f))
-        (counted (positioned-port digits #f #t))
-        (counted (positioned-port digits #t #t))))
+  '(("0123456789" read-to-eof) ("0123456789" read-to-eof) ("0123456789" read-to-eof)
+    ("0123456789" measured))
+  (list (measured (positioned-port digits #f #f))
+        (measured (positioned-port digits #t #f))
+        (measured (positioned-port digits #f #t))
+        (measured (positioned-port digits #t #t))))
 
 (test-equal "a port that grows once measured goes out as long as it was"
   (string->utf8 "0123456789")
@@ -432,8 +411,8 @@
 
 ;; --- res-body->bytevector refuses its request's own body ---------------------------------------
 
-(test-equal "given its request, res-body->bytevector refuses a body that holds the request's body port, bare, sized or wrapped"
-  '(#t #t #t #f "hello")
+(test-equal "given its request, res-body->bytevector refuses a body that holds the request's body port, bare, sized, wrapped or tapped"
+  '(#t #t #t #t #f "hello")
   (let* ((req (make-test-req 'POST "/echo" '() "hello"))
          (port (req-body req))
          (refused? (lambda (body)
@@ -441,8 +420,9 @@
                              (list 'assertion-violation 'res-body->bytevector (list port))))))
     (let* ((sized (refused? (make-sized-body 5 port)))
            (bare (refused? port))
-           (wrap (refused? (wrapped (make-sized-body 5 port) (lambda (q) q) #t))))
-      (list sized bare wrap (port-closed? port) (utf8->string (get-bytevector-all port))))))
+           (wrap (refused? (wrapped (make-sized-body 5 port) (lambda (q) q))))
+           (tap (refused? (tapped port (lambda (piece) piece)))))
+      (list sized bare wrap tap (port-closed? port) (utf8->string (get-bytevector-all port))))))
 
 (test-equal "another request's body port is read as any port is"
   (string->utf8 "theirs")

@@ -12,30 +12,34 @@
 ;;;                       streamed otherwise, and closed once read
 ;;;   SizedBody           (make-sized-body n body): a producer or a port of
 ;;;                       n bytes, sent with that length
-;;;   WrappedBody         (res-wrap-body res f [same?]): another body, its
-;;;                       producer passed through f when it is sent
+;;;   WrappedBody         (res-wrap-body res f): another body, its producer
+;;;                       passed through f when it is sent, with no length
+;;;   TappedBody          (res-tap-body res on-piece): another body, each
+;;;                       piece handed to on-piece as it is sent, its
+;;;                       length kept
 ;;;
-;;; A body holds at most one port: bare, under a sized body, or under wraps.
-;;; res-with-body closes it when it replaces the body; res-wrap-body closes
-;;; nothing, since the wrap is lazy: res-body-stream, which the adapter and
-;;; the tests send a body through, is the one place f is called.
+;;; A body holds at most one port: bare, under a sized body, or under wraps
+;;; and taps. res-with-body closes it when it replaces the body;
+;;; res-wrap-body and res-tap-body close nothing, since both are lazy:
+;;; res-body-stream, which the adapter and the tests send a body through, is
+;;; the one place f is called, and on-piece is called only from the
+;;; producer it makes for a tap, as the server or a wrap's f asks it.
 ;;;
 ;;; (make-upgrade-res headers take-over) is a 101 whose body is an upgrade:
 ;;; no bytes, but the take-over, which the adapter hands the server, and the
 ;;; server calls with its transport once the 101 is written (design §8). An
 ;;; upgrade body sits only in a 101 that make-upgrade-res made: make-res and
-;;; res-with-body refuse one; res-with-body, res-with-status and
-;;; res-wrap-body refuse an upgrade response; res-set-header,
-;;; res-add-header and res-remove-header keep it one. res-body-length and res-body-port answer #f
-;;; for it, and res-body-stream refuses it: after the 101 the stream is the
-;;; taker's. make-res with 101 and any other body is still a response, which
+;;; res-with-body refuse one; res-with-body, res-with-status, res-wrap-body
+;;; and res-tap-body refuse an upgrade response; res-set-header,
+;;; res-add-header and res-remove-header keep it one. res-body-length and
+;;; res-body-port answer #f for it, and res-body-stream refuses it: after
+;;; the 101 the stream is the taker's. make-res with 101 and any other body is still a response, which
 ;;; the server answers 500. What a take-over answers goes to the server, so
 ;;; a middleware that wraps one answers what it answers (TakeOver, below).
 ;;;
-;;; res-wrap-body's shape is provisional (design §15.11, §16.4).
-;;;
 ;;; Also exported for the adapter and the tests, and left out of the
-;;; (circuit) facade: the res-sized-body- and res-wrapped-body- accessors,
+;;; (circuit) facade: the res-sized-body-, res-wrapped-body- and
+;;; res-tapped-body- accessors,
 ;;; res-body-port and res-body-stream. res-upgrade-body-take-over is in the
 ;;; facade, so middleware can make an upgrade around a wrapped take-over.
 (library (circuit response)
@@ -43,13 +47,14 @@
           res-header res-set-header res-add-header res-remove-header res-with-status res-with-body
           make-sized-body res-sized-body? res-sized-body-length res-sized-body-inner
           res-wrap-body res-wrapped-body? res-wrapped-body-inner res-wrapped-body-proc
-          res-wrapped-body-same?
+          res-tap-body res-tapped-body? res-tapped-body-inner res-tapped-body-proc
           make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
           res-body-length res-body-port res-body-stream)
   (import (rnrs) (only (circuit headers) header-value header-set header-add header-remove))
 
   ;; Producer = (-> (U Bytevector Eof))
-  ;; Body = (U #f Bytevector String Producer BinaryInputPort SizedBody WrappedBody)
+  ;; Body = (U #f Bytevector String Producer BinaryInputPort SizedBody WrappedBody
+  ;;          TappedBody)
   ;; TakeOver = (Transport Bytevector -> Answer), Transport the server's, and
   ;;   Answer what goes back to the server, which may be awaiting. A
   ;;   middleware that wraps a take-over answers what the wrapped one
@@ -79,11 +84,17 @@
   ;; res-wrapped-body? : Any -> Boolean
   ;; res-wrapped-body-inner : WrappedBody -> Body
   ;; res-wrapped-body-proc : WrappedBody -> (Producer -> Producer)
-  ;; res-wrapped-body-same? : WrappedBody -> Boolean
   (define-record-type (wrapping %make-wrap res-wrapped-body?)
     (fields (immutable inner res-wrapped-body-inner)
-            (immutable proc res-wrapped-body-proc)
-            (immutable same? res-wrapped-body-same?))
+            (immutable proc res-wrapped-body-proc))
+    (sealed #t))
+
+  ;; res-tapped-body? : Any -> Boolean
+  ;; res-tapped-body-inner : TappedBody -> Body
+  ;; res-tapped-body-proc : TappedBody -> (Bytevector -> Any)
+  (define-record-type (tapping %make-tap res-tapped-body?)
+    (fields (immutable inner res-tapped-body-inner)
+            (immutable proc res-tapped-body-proc))
     (sealed #t))
 
   ;; res-upgrade-body? : Any -> Boolean
@@ -139,13 +150,13 @@
 
   (define (body? x)
     (or (not x) (bytevector? x) (string? x) (procedure? x) (binary-input-port? x)
-        (res-sized-body? x) (res-wrapped-body? x)))
+        (res-sized-body? x) (res-wrapped-body? x) (res-tapped-body? x)))
 
   (define (check-body who body)
     (unless (body? body)
       (if (res-upgrade-body? body)
           (assertion-violation who "an upgrade body sits only in the 101 make-upgrade-res makes" body)
-          (assertion-violation who "not a body: #f, a bytevector, a string, a producer, a binary input port, a sized body or a wrapped body"
+          (assertion-violation who "not a body: #f, a bytevector, a string, a producer, a binary input port, a sized body, a wrapped body or a tapped body"
                                body))))
 
   (define (count? n) (and (integer? n) (exact? n) (>= n 0)))
@@ -218,34 +229,49 @@
                            body))
     (%make-sized n body))
 
-  ;; res-wrap-body : Res (Producer -> Producer) [Boolean] -> Res
+  ;; res-wrap-body : Res (Producer -> Producer) -> Res
   ;; R with its body wrapped: when the body is sent, F is handed the old
-  ;; body as a producer, and the producer F gives back is sent. SAME?, #f
-  ;; unless given, says F gives back as many bytes as it is handed, so the
-  ;; body keeps the old one's length. Wraps nest. It closes nothing and
-  ;; calls nothing. An upgrade response, which has no body to send, is an
-  ;; assertion violation. Provisional (design §16.4).
-  (define res-wrap-body
-    (case-lambda
-      ((r f) (wrap-body r f #f))
-      ((r f same?) (wrap-body r f same?))))
-
-  (define (wrap-body r f same?)
+  ;; body as a producer, and the producer F gives back is sent. F may change
+  ;; the bytes, so the body has no length, and goes out chunked. Wraps and
+  ;; taps nest. It closes nothing and calls nothing. An upgrade response,
+  ;; which has no body to send, is an assertion violation, and so is an F
+  ;; that is no procedure.
+  (define (res-wrap-body r f)
     (check-res 'res-wrap-body r)
     (check-not-upgrade 'res-wrap-body r)
     (unless (procedure? f)
       (assertion-violation 'res-wrap-body "a wrap's f is a procedure from producer to producer" f))
-    (unless (boolean? same?)
-      (assertion-violation 'res-wrap-body "same? is #t or #f" same?))
-    (%make-res (res-status r) (res-headers r) (%make-wrap (res-body r) f same?)))
+    (%make-res (res-status r) (res-headers r) (%make-wrap (res-body r) f)))
+
+  ;; res-tap-body : Res (Bytevector -> Any) -> Res
+  ;; R with its body tapped: when the body is sent, ON-PIECE is handed each
+  ;; piece before it goes out, and the piece goes out as it is, so the body
+  ;; keeps the old one's length. ON-PIECE must not change the piece, and
+  ;; what it answers is dropped. It runs where the body's producer runs, so
+  ;; it may wait. It is handed pieces alone, never the end: under a body
+  ;; with a length, the server stops asking at it, so a total is reported
+  ;; from req-on-done!. A piece that is no bytevector, an empty one, or one
+  ;; past the length is an assertion violation, raised before ON-PIECE sees
+  ;; it. A body that sends no bytes, an empty one, or one to a HEAD, a 204
+  ;; or a 304, calls it never, unless a wrap over the tap reads the body:
+  ;; a wrap's f runs before the head, and what it reads, it reads through
+  ;; the tap. Wraps and taps nest. It closes nothing and calls nothing. An
+  ;; upgrade response is an assertion violation, and so is an ON-PIECE that
+  ;; is no procedure.
+  (define (res-tap-body r on-piece)
+    (check-res 'res-tap-body r)
+    (check-not-upgrade 'res-tap-body r)
+    (unless (procedure? on-piece)
+      (assertion-violation 'res-tap-body "a tap's on-piece is a procedure of a piece" on-piece))
+    (%make-res (res-status r) (res-headers r) (%make-tap (res-body r) on-piece)))
 
   ;; --- what a body holds ---------------------------------------------------------
 
   ;; res-body-length : Res -> (U Nat #f)
   ;; The length of R's body where the core can tell it: #f 0, a bytevector
-  ;; its length, a string its UTF-8 length, a sized body its n, and a wrap
-  ;; that keeps the bytes the length of the body under it. Otherwise #f: a
-  ;; producer, a wrap that drops the length, a port, whose length is
+  ;; its length, a string its UTF-8 length, a sized body its n, and a tap
+  ;; the length of the body under it. Otherwise #f: a producer, a wrap, a
+  ;; port, whose length is
   ;; Chez's for the adapter to read, and an upgrade, since a 101 carries no
   ;; Content-Length.
   (define (res-body-length r)
@@ -257,8 +283,7 @@
           ((bytevector? body) (bytevector-length body))
           ((string? body) (utf8-length body))
           ((res-sized-body? body) (res-sized-body-length body))
-          ((res-wrapped-body? body)
-           (and (res-wrapped-body-same? body) (body-length (res-wrapped-body-inner body))))
+          ((res-tapped-body? body) (body-length (res-tapped-body-inner body)))
           (else #f)))
 
   ;; utf8-length : String -> Nat
@@ -273,7 +298,8 @@
                     (+ total (cond ((< c #x80) 1) ((< c #x800) 2) ((< c #x10000) 3) (else 4)))))))))
 
   ;; res-body-port : (U Body UpgradeBody) -> (U BinaryInputPort #f)
-  ;; The port BODY holds, bare, under a sized body or under wraps, or #f; #f
+  ;; The port BODY holds, bare, under a sized body or under wraps and taps,
+  ;; or #f; #f
   ;; for an upgrade, which holds none. What is neither a body kind nor an
   ;; upgrade is an assertion violation.
   (define (res-body-port body)
@@ -285,6 +311,7 @@
     (cond ((binary-input-port? body) body)
           ((res-sized-body? body) (body-port (res-sized-body-inner body)))
           ((res-wrapped-body? body) (body-port (res-wrapped-body-inner body)))
+          ((res-tapped-body? body) (body-port (res-tapped-body-inner body)))
           (else #f)))
 
   ;; --- sending a body ---------------------------------------------------------------
@@ -302,7 +329,7 @@
   ;;
   ;; A body that holds a port is first made the caller's, before any wrap's
   ;; f runs. A bare port, not under a sized body though it may be under
-  ;; wraps, is measured: MEASURE is called once with it, and answers its
+  ;; wraps and taps, is measured: MEASURE is called once with it, and answers its
   ;; length or #f. When that length is no more than SIZE, the port is read
   ;; whole, by one get-bytevector-n of it (none for 0), and closed: its bytes,
   ;; as many as the read gave, fewer when the port held fewer and never more,
@@ -319,12 +346,13 @@
   ;; port calls neither.
   ;;
   ;; A sized body answers its inner body's producer, with length n. A wrap
-  ;; answers f's producer: f is handed the body under it as a producer,
-  ;; whole bytes as one piece, or eof at once when empty. With same?, f is
-  ;; handed that producer and the wrap keeps its length; without, f is
-  ;; handed a producer that stops at the length the body under it had, if
-  ;; any, raising at a piece that would pass it, and the wrap has no
-  ;; length. F's answer must be a procedure.
+  ;; answers f's producer, with no length: f is handed the body under it as
+  ;; a producer, whole bytes as one piece, or eof at once when empty, that
+  ;; stops at the length the body under it had, if any, raising at a piece
+  ;; that would pass it. F's answer must be a procedure. A tap answers the
+  ;; body under it as a producer, each piece handed to on-piece as it is
+  ;; asked for, with that body's length; a piece that is no bytevector, an
+  ;; empty one, or one past that length raises before on-piece sees it.
   (define (res-body-stream body measure on-port size)
     (when (res-upgrade-body? body)
       (assertion-violation 'res-body-stream "an upgrade has no body to send: after the 101, the stream is the taker's"
@@ -350,6 +378,7 @@
            (let ((inner (res-sized-body-inner body)))
              (if (procedure? inner) (values #f #f) (values inner #t))))
           ((res-wrapped-body? body) (port-place (res-wrapped-body-inner body)))
+          ((res-tapped-body? body) (port-place (res-tapped-body-inner body)))
           (else (values #f #f))))
 
   ;; taken : BinaryInputPort (BinaryInputPort -> (U Nat #f)) (BinaryInputPort -> Any) Nat
@@ -397,15 +426,20 @@
        (let ((length (res-sized-body-length body))
              (inner (res-sized-body-inner body)))
          (values (if (procedure? inner) inner (port-producer inner length size)) length)))
-      (else
+      ((res-wrapped-body? body)
        (let-values (((inner length) (stream (res-wrapped-body-inner body) got size)))
-         (let* ((same? (res-wrapped-body-same? body))
-                (producer (if (bytevector? inner) (bytes-producer inner) inner))
-                (handed (if (or same? (not length)) producer (counting-producer producer length)))
+         (let* ((producer (if (bytevector? inner) (bytes-producer inner) inner))
+                (handed (if length (counting-producer producer length) producer))
                 (out ((res-wrapped-body-proc body) handed)))
            (unless (procedure? out)
              (assertion-violation 'res-body-stream "a wrap's f answered no producer" out))
-           (values out (and same? length)))))))
+           (values out #f))))
+      (else
+       (let-values (((inner length) (stream (res-tapped-body-inner body) got size)))
+         (values (tap-producer (if (bytevector? inner) (bytes-producer inner) inner)
+                               (res-tapped-body-proc body)
+                               length)
+                 length)))))
 
   ;; bytes-producer : Bytevector -> Producer
   ;; BYTES as one piece, then eof; eof at once when BYTES is empty.
@@ -417,6 +451,28 @@
             (if sent?
                 (eof-object)
                 (begin (set! sent? #t) bytes))))))
+
+  ;; tap-producer : Producer (Bytevector -> Any) (U Nat #f) -> Producer
+  ;; INNER, each piece handed to ON-PIECE before it is answered. A piece
+  ;; that is no bytevector, an empty one, or one that would take the count
+  ;; past N, when there is an N, is an assertion violation, raised before
+  ;; ON-PIECE sees it, since none of them would go out; the last names N
+  ;; and that count. The eof object is answered as it comes, and handed to
+  ;; nothing.
+  (define (tap-producer inner on-piece n)
+    (let ((count 0))
+      (lambda ()
+        (let ((piece (inner)))
+          (unless (eof-object? piece)
+            (unless (and (bytevector? piece) (> (bytevector-length piece) 0))
+              (assertion-violation 'res-body-stream "a piece is a bytevector of one byte or more" piece))
+            (let ((next (+ count (bytevector-length piece))))
+              (when (and n (> next n))
+                (assertion-violation 'res-body-stream
+                                     "a piece takes the body past the length it had" n next))
+              (set! count next))
+            (on-piece piece))
+          piece))))
 
   ;; port-producer : BinaryInputPort (U Nat #f) Nat -> Producer
   ;; PORT in pieces of at most SIZE, and at most what is left of N. It

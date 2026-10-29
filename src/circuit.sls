@@ -30,7 +30,7 @@
     ;; the response
     make-res res? res-status res-headers res-body res-header res-set-header res-add-header
     res-remove-header
-    res-with-status res-with-body make-sized-body res-wrap-body res-body-length
+    res-with-status res-with-body make-sized-body res-wrap-body res-tap-body res-body-length
     make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
     ;; header lists
     header-value header-values header-set header-add header-remove header-names-downcase

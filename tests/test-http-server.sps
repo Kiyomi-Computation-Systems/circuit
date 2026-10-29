@@ -20,7 +20,7 @@
 ;;;     less is read whole and closed as the app answers, which another
 ;;;     request woken at the same instant sees; a row that holds the
 ;;;     streamed path gives a piece size smaller than its port;
-;;;   - sized bodies and the server's mismatch handling; wraps;
+;;;   - sized bodies and the server's mismatch handling; wraps and taps;
 ;;;   - a client that leaves while the app waits;
 ;;;   - upgrades: the 101, then the taker's bytes and the client's, a taker
 ;;;     that waits, middleware that adds a field, removes one or wraps the
@@ -667,32 +667,33 @@
     (list result (port-closed? port))))
 
 (define (bare port) port)
-(define (kept port) (res-body (res-wrap-body (make-res 200 '() port) as-is #t)))
-(define (dropped port) (res-body (res-wrap-body (make-res 200 '() port) as-is)))
+(define (quiet piece) 'ignored)
+(define (tapped port) (res-body (res-tap-body (make-res 200 '() port) quiet)))
+(define (wrapped port) (res-body (res-wrap-body (make-res 200 '() port) as-is)))
 
-(test-equal "a port of more than one piece answered to a HEAD is never read, and is closed: bare, and wrapped keeping its length"
+(test-equal "a port of more than one piece answered to a HEAD is never read, and is closed: bare, and tapped"
   (let ((sent (list (list (list (response "200 OK" (list (length-field 5)) "")) #f '()) #t)))
     (list sent sent))
-  (list (closes bare 200 (head "/")) (closes kept 200 (head "/"))))
+  (list (closes bare 200 (head "/")) (closes tapped 200 (head "/"))))
 
-(test-equal "a port of more than one piece answered 204 is never read, and is closed: bare, and under each wrap"
+(test-equal "a port of more than one piece answered 204 is never read, and is closed: bare, tapped and wrapped"
   (let ((sent (list (list (list (response "204 No Content" '() "")) #f '()) #t)))
     (list sent sent sent))
-  (list (closes bare 204 (get "/")) (closes kept 204 (get "/")) (closes dropped 204 (get "/"))))
+  (list (closes bare 204 (get "/")) (closes tapped 204 (get "/")) (closes wrapped 204 (get "/"))))
 
-(test-equal "a port of more than one piece answered 304 is never read, and is closed: bare, and under each wrap"
+(test-equal "a port of more than one piece answered 304 is never read, and is closed: bare, tapped and wrapped"
   (let ((sent (list (list (list (response "304 Not Modified" '() "")) #f '()) #t)))
     (list sent sent sent))
-  (list (closes bare 304 (get "/")) (closes kept 304 (get "/")) (closes dropped 304 (get "/"))))
+  (list (closes bare 304 (get "/")) (closes tapped 304 (get "/")) (closes wrapped 304 (get "/"))))
 
 ;; The adapter's request-on-done! close covers a port sent whole too, so this
 ;; row holds that it is closed once sent; the core's suites hold the close
 ;; at its last byte.
-(test-equal "a port of more than one piece is closed once it is sent: bare, and under each wrap"
+(test-equal "a port of more than one piece is closed once it is sent: bare, tapped and wrapped"
   (list (list (list (list (response "200 OK" (list (length-field 5)) "hello")) #f '()) #t)
         (list (list (list (response "200 OK" (list (length-field 5)) "hello")) #f '()) #t)
         (list (list (list (response "200 OK" (list chunked) (chunks "hell" "o"))) #f '()) #t))
-  (list (closes bare 200 (get "/")) (closes kept 200 (get "/")) (closes dropped 200 (get "/"))))
+  (list (closes bare 200 (get "/")) (closes tapped 200 (get "/")) (closes wrapped 200 (get "/"))))
 
 ;; seen-by-another : (BinaryInputPort -> Body) String Nat (U String #f)
 ;;                   -> (List (Listof String) Boolean Boolean)
@@ -735,10 +736,10 @@
   (list (list (response "200 OK" (list (length-field 5)) "hello")) #f #t)
   (seen-by-another (lambda (port) (make-sized-body 5 port)) "GET" 200 #f))
 
-(test-equal "a port of one piece under each wrap is read whole and closed as the app answers"
+(test-equal "a port of one piece, tapped or wrapped, is read whole and closed as the app answers"
   (list (list (list (response "200 OK" (list (length-field 5)) "hello")) #t #t)
         (list (list (response "200 OK" (list chunked) (chunks "hello"))) #t #t))
-  (list (seen-by-another kept "GET" 200 #f) (seen-by-another dropped "GET" 200 #f)))
+  (list (seen-by-another tapped "GET" 200 #f) (seen-by-another wrapped "GET" 200 #f)))
 
 ;; left-mid-stream : (BinaryInputPort -> Body) -> (List String Boolean (Listof Symbol) (Listof Any))
 ;; A port that waits 10 ms before each read, in pieces of 4, answered as
@@ -758,11 +759,11 @@
       (test-client-reset! c)
       (list read (port-closed? port) endings (logged host)))))
 
-(test-equal "a port is closed when the client leaves mid-stream: bare, and under each wrap"
+(test-equal "a port is closed when the client leaves mid-stream: bare, tapped and wrapped"
   (let ((left (list (string-append (response "200 OK" (list chunked) "") "4\r\nabcd\r\n")
                     #t '(client-closed) '((read-error ECONNRESET)))))
     (list left left left))
-  (list (left-mid-stream bare) (left-mid-stream kept) (left-mid-stream dropped)))
+  (list (left-mid-stream bare) (left-mid-stream tapped) (left-mid-stream wrapped)))
 
 ;; rewritten : String (U String #f) -> (List (Listof String) Boolean (Listof String) (Listof Any) Boolean)
 ;; A file of 10 bytes answered to one client in pieces of PIECE (the
@@ -854,13 +855,64 @@
 
 ;;; --- wraps --------------------------------------------------------------------
 
-(test-equal "a wrap that keeps the bytes over a port goes out sized, and the port is closed"
-  (list (list (list (response "200 OK" (list (length-field 11)) "HELLO WORLD")) #f '()) #t)
+(test-equal "a tap over a port goes out sized, each piece handed to on-piece as it is, and the port is closed"
+  (list (list (list (response "200 OK" (list (length-field 11)) "hello world")) #f '())
+        '("hell" "o wo" "rld")
+        #t)
   (let* ((port (open-bytevector-input-port (b "hello world")))
-         (result (exchange (lambda (r) (res-wrap-body (make-res 200 '() port) upcased #t)) (get "/"))))
+         (seen '())
+         (result (exchange (lambda (r) (res-tap-body (make-res 200 '() port)
+                                                     (lambda (piece) (set! seen (cons (text piece) seen)))))
+                           (get "/")
+                           (settings piece-variable "4"))))
+    (list result (reverse seen) (port-closed? port))))
+
+(test-equal "a tap over a port of more than one piece, answered to a HEAD, a 204 or a 304, hands on-piece nothing"
+  '(() () ())
+  (map (lambda (status request)
+         (let ((seen '()))
+           (closes (lambda (port)
+                     (res-body (res-tap-body (make-res 200 '() port)
+                                             (lambda (piece) (set! seen (cons (text piece) seen))))))
+                   status request)
+           seen))
+       (list 200 204 304)
+       (list (head "/") (get "/") (get "/"))))
+
+(test-equal "a raise from on-piece after the head closes the connection, logged handler-failed, and the port is closed"
+  (list (list (list (response "200 OK" (list (length-field 11)) "hell")) #t
+              '((handler-failed (assertion my-tap "refused" (2)))))
+        #t)
+  (let* ((port (open-bytevector-input-port (b "hello world")))
+         (count 0)
+         (result (exchange (lambda (r)
+                             (res-tap-body (make-res 200 '() port)
+                                           (lambda (piece)
+                                             (set! count (+ count 1))
+                                             (when (= count 2) (assertion-violation 'my-tap "refused" count)))))
+                           (get "/")
+                           (settings piece-variable "4"))))
     (list result (port-closed? port))))
 
-(test-equal "a wrap that drops a length goes out chunked, and stops at the length, never asking past it"
+(test-equal "a tap over a sized producer that runs past its length: on-piece sees only what goes out, and the raise closes the connection"
+  (list (list (list (response "200 OK" (list (length-field 5)) "abc")) #t
+              '((handler-failed (assertion res-body-stream "a piece takes the body past the length it had" (5 7)))))
+        '("abc"))
+  (let* ((seen '())
+         (result (exchange (lambda (r)
+                             (res-tap-body (make-res 200 '() (make-sized-body 5 (producer "abc" "defg")))
+                                           (lambda (piece) (set! seen (cons (text piece) seen)))))
+                           (get "/"))))
+    (list result (reverse seen))))
+
+(test-equal "a wrap over a port goes out chunked, and the port is closed"
+  (list (list (list (response "200 OK" (list chunked) (chunks "HELL" "O WO" "RLD"))) #f '()) #t)
+  (let* ((port (open-bytevector-input-port (b "hello world")))
+         (result (exchange (lambda (r) (res-wrap-body (make-res 200 '() port) upcased)) (get "/")
+                           (settings piece-variable "4"))))
+    (list result (port-closed? port))))
+
+(test-equal "a wrap goes out chunked, and stops at the length of the body under it, never asking past it"
   (list (list (list (response "200 OK" (list chunked) (chunks "abc" "de"))) #f '()) 2)
   (let* ((asked 0)
          (inner (producer "abc" "de" "XYZ"))
@@ -880,17 +932,32 @@
             (list result (port-closed? port))))))
 
 (test-equal "a wrap's f may wait: it runs on the request's coroutine"
-  (list '() (list (response "200 OK" (list (length-field 5)) "HELLO")) '())
+  (list '() (list (response "200 OK" (list chunked) (chunks "HELLO"))) '())
   (let* ((host (host-of (lambda (r)
                           (res-wrap-body (make-res 200 '() "hello")
-                                         (lambda (inner) (sleep-ms 20) (upcased inner))
-                                         #t))
+                                         (lambda (inner) (sleep-ms 20) (upcased inner))))
                         unset))
          (c (test-host-connect! host)))
     (test-client-send! c (b (get "/")))
     (let ((first (wire c)))
       (test-host-advance! host 20)
       (list first (wire c) (logged host)))))
+
+(test-equal "a tap's on-piece may wait: each piece goes out once it returns, the end at once"
+  (let ((top (response "200 OK" (list chunked) "")))
+    (list top
+          (string-append top "2\r\nab\r\n")
+          (string-append top "2\r\nab\r\n3\r\ncde\r\n0\r\n\r\n")))
+  (let* ((host (host-of (lambda (r)
+                          (res-tap-body (make-res 200 '() (producer "ab" "cde"))
+                                        (lambda (piece) (sleep-ms 10))))
+                        unset))
+         (c (test-host-connect! host)))
+    (test-client-send! c (b (get "/")))
+    (let* ((at-0 (received c))
+           (at-10 (begin (test-host-advance! host 10) (received c)))
+           (at-20 (begin (test-host-advance! host 10) (received c))))
+      (list at-0 at-10 at-20))))
 
 (test-equal "a wrap's f that raises gives a 500, and the port under it is still closed: of more than one piece, and of one"
   (let ((failed (list (list (list server-error) #t '((handler-failed (assertion my-wrap "refused" (7))))) #t)))
@@ -1110,14 +1177,15 @@
                            (post "/" "hello"))))
     (equal? result (refused echo (list own)))))
 
-(test-equal "the request's own req-body as the body is refused: under wraps over a sized body, no f called"
+(test-equal "the request's own req-body as the body is refused: under a wrap and a tap over a sized body, no f or on-piece called"
   (list #t 0)
   (let* ((own #f)
          (calls 0)
          (f (lambda (inner) (set! calls (+ calls 1)) inner))
+         (on-piece (lambda (piece) (set! calls (+ calls 1))))
          (result (exchange (lambda (r)
                              (set! own (req-body r))
-                             (res-wrap-body (res-wrap-body (make-res 200 '() (make-sized-body 5 own)) f #t) f))
+                             (res-wrap-body (res-tap-body (make-res 200 '() (make-sized-body 5 own)) on-piece) f))
                            (post "/" "hello"))))
     (list (equal? result (refused echo (list own))) calls)))
 
@@ -1265,15 +1333,28 @@
         (list 'positioned-custom-port (lambda () (make-res 200 '() (positioned-custom-port "abcdefg"))) "abcdefg")
         (list 'sized-producer (lambda () (make-res 200 '() (make-sized-body 5 (producer "ab" "cde")))) "abcde")
         (list 'sized-port (lambda () (make-res 200 '() (make-sized-body 4 (custom-port "abcdefghij")))) "abcd")
-        (list 'wrap-keeping (lambda () (res-wrap-body (make-res 200 '() (positioned "hello world" 6)) upcased #t))
+        (list 'tapped (lambda () (res-tap-body (make-res 200 '() (positioned "hello world" 6)) quiet))
+              "world")
+        (list 'wrapped (lambda () (res-wrap-body (make-res 200 '() (positioned "hello world" 6)) upcased))
               "WORLD")
         (list 'wrap-dropping
               (lambda () (res-wrap-body (make-res 200 '() (make-sized-body 5 (producer "abc" "de" "XYZ"))) as-is))
               "abcde")
         (list 'wraps-nested
-              (lambda () (res-wrap-body (res-wrap-body (make-res 200 '() (custom-port "abc")) upcased #t)
+              (lambda () (res-wrap-body (res-wrap-body (make-res 200 '() (custom-port "abc")) upcased)
                                         (trailer "!")))
               "ABC!")
+        (list 'tap-over-wrap
+              (lambda () (res-tap-body (res-wrap-body (make-res 200 '() (custom-port "abc")) upcased) quiet))
+              "ABC")
+        (list 'wrap-over-tap
+              (lambda () (res-wrap-body (res-tap-body (make-res 200 '() (make-sized-body 5 (producer "ab" "cde" "XYZ")))
+                                                      quiet)
+                                        (trailer "!")))
+              "abcde!")
+        (list 'tapped-sized-port
+              (lambda () (res-tap-body (make-res 200 '() (make-sized-body 4 (positioned "0123456789" 0))) quiet))
+              "0123")
         (list 'empty-wrapped (lambda () (res-wrap-body (make-res 200 '() "") (trailer "END"))) "END")))
 
 ;; In pieces of 3 every port here streams from the adapter; in the default
