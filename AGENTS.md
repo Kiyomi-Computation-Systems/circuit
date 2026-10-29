@@ -102,6 +102,12 @@
   orphans holding ports. On macOS, run
   `brew install coreutils`, and make finds its `gtimeout`. Homebrew installs
   Chez as `chez`, which make also finds.
+* Run a mutant's suites under a timeout and a memory cap, as in
+  `(ulimit -v 4194304; timeout 120 "$CHEZ" --libdirs ... --program ...)`.
+  A mutant can make a bounded read unbounded: in slice 8, one read a test
+  producer that answered forever past its last piece, and took the host's
+  memory. A test producer ends: one that notes a call past its last piece
+  answers it once, then eof every call after.
 
 **Tests**
 
@@ -136,6 +142,11 @@
   Assert whole outputs, not substrings, and build a test's base from
   non-default values. Test a scan at every position, an encoding on bytes
   where encodings differ, and an allowlist against its whole complement.
+* Hold a limit from both sides: a row at the limit, which passes, and one a
+  step past it, which is refused. In slice 7, rows at 300,000 bytes and at
+  1 MiB and a byte held the echo example's 1 MiB cap only to somewhere
+  between them. Give a number check a bignum as well as a fixnum: a check
+  that took fixnums alone passed every row until a cap of 2^100 joined them.
 * A property suite's generators draw every kind of value the interface
   takes, not only the kinds the design's examples show: a middleware that
   makes a fresh request, as well as one that passes the request on.
