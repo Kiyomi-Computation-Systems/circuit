@@ -146,7 +146,7 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "add the AGENTS.md rules", offered in slice 7's and slice 8's reflections.
 One commit (3a3a90b), the records with this close-out, and its CI run named here. No code
-changed; `make check-help` passes.
+changed; `make check-help` passes. CI passed on the PR (run 40853412223, 2m49s).
 
 - **under Testing & mutation discipline:** a mutant's suites run under a timeout and a
   memory cap, and a test producer ends, answering a call past its last piece once, then
