@@ -47,6 +47,9 @@ close-out under **Close-outs**, newest first.
   [PR #10](https://github.com/Kiyomi-Computation-Systems/circuit/pull/10) on
   2026-10-29; its close-out is below. The owner's answer is design §15.26, which
   settles §16.4. No API question in §16 awaits the owner now.
+- **Two testing rules are in AGENTS.md**, from slices 7 and 8, squashed from
+  [PR #11](https://github.com/Kiyomi-Computation-Systems/circuit/pull/11) on 2026-10-29;
+  its close-out is below.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
   the open items below, and a first release. The server's fixes on its `main` (#242,
   #244, #246) reach circuit only through a server release, then a chez-websocket
@@ -138,6 +141,20 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-29: two testing rules in AGENTS.md, in PR #11
+
+On the owner's "add the AGENTS.md rules", offered in slice 7's and slice 8's reflections.
+One commit (3a3a90b), the records with this close-out, and its CI run named here. No code
+changed; `make check-help` passes.
+
+- **under Testing & mutation discipline:** a mutant's suites run under a timeout and a
+  memory cap, and a test producer ends, answering a call past its last piece once, then
+  eof. Slice 8's close-out has the run it comes from;
+- **under Tests:** a limit is held from both sides, at the limit and a step past it, and
+  a number check is given a bignum. Slice 7's close-out has the review findings they
+  come from;
+- neither is a rule about how Chez behaves, so neither needed a probe.
 
 ### 2026-10-29: slice 8, `res-wrap-body` split into a wrap and a tap, in PR #10
 
