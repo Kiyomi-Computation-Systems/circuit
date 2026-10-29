@@ -133,7 +133,10 @@ own ledger. Commits on `chore/pins-server-v0.9.1-websocket-v0.4.1`: the pins and
 15 suites, 783 rows, as on `main`. `make gate` passes in two runs; no held gate moved.
 Their worst figures: G1 1,446, G2 1,438, G3 312 a GET and 276 a POST, G4 81 and 403, G5
 382 and 347 with a park, G7 310, G8 532, G8 own 296, G8 on-done 246, G9 611 and 597 with
-a park, and G10 83, 168 and 1.
+a park, and G10 83, 168 and 1. CI passed on the PR (run 40878917032, 2m45s): 15 suites,
+782 rows and the curl row skipped; the gate's worst figures G3 308 and 272, G4 81 and
+405, G5 382 and 351, G7 304, G8 535, G8 own 292, G8 on-done 243, G9 609 and 610, G10 81,
+168 and 3.
 
 - **the pins**, on one commit: both gitlinks with `SERVER_PIN` and `WEBSOCKET_PIN`.
   `make check-pins` was watched failing first, with the gitlinks moved and the pins not
