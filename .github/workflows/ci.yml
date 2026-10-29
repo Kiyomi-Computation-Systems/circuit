@@ -1,7 +1,8 @@
 name: CI
 
 # Linux only, deliberately (AGENTS.md: do NOT set up macOS runners). One job,
-# on one amd64 image: it gets the pinned server, the pins it carries, and
+# run on two images, amd64 and arm64 (AGENTS.md: portable across both): it
+# gets the pinned server, the pins it carries, and
 # chez-websocket with `make submodules`, holds them at their pins with `make
 # check-pins`, builds Chez at its floor (once, then cached), and runs `make
 # test`, which builds chez-libuv's shim against the system libuv and runs
@@ -43,14 +44,36 @@ env:
 
 jobs:
   linux:
-    name: linux
-    # An explicit image, not ubuntu-latest: that label moves from one Ubuntu
+    name: linux ${{ matrix.arch }}
+    # Explicit images, not ubuntu-latest: that label moves from one Ubuntu
     # release to the next, and an image change should be a reviewed commit.
     # The libuv step below fails the job if the image's libuv is below the
-    # floor. Changing the image re-keys the Chez cache (step `os`).
-    runs-on: ubuntu-24.04
+    # floor. Changing an image re-keys the Chez cache (step `os`), and so
+    # does the arch. One arch failing does not cancel the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            machine: x86_64
+            chez-machine: ta6le
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            machine: aarch64
+            chez-machine: tarm64le
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
+      # The machine is the arch its label names, checked before anything is
+      # built: a label that lands on another arch fails here, by name, not
+      # as a second amd64 run that looks like an arm64 one.
+      - name: Assert the machine is ${{ matrix.machine }}
+        run: |
+          got="$(uname -m)"
+          [ "$got" = "${{ matrix.machine }}" ] || { echo "::error::runner ${{ matrix.runner }} is $got, not ${{ matrix.machine }}"; exit 1; }
+          echo "machine $got"
+
       # This repository alone, with the job's own token, which is not kept in
       # .git/config once the checkout is done; `make submodules` below clones
       # the submodules.
@@ -133,6 +156,14 @@ jobs:
           lowest="$(printf '%s\n%s\n' "$ver" "$CHEZ_FLOOR_VERSION" | sort -V | head -1)"
           [ "$lowest" = "$CHEZ_FLOOR_VERSION" ] || { echo "::error::Chez $ver is below the floor $CHEZ_FLOOR_VERSION"; exit 1; }
           echo "Chez $ver satisfies the $CHEZ_FLOOR_VERSION floor"
+
+      # Chez's own machine type, the one its configure chose for this arch,
+      # threaded: a Chez restored or built for another arch fails here.
+      - name: Assert Chez is a ${{ matrix.chez-machine }} build
+        run: |
+          got="$(echo '(display (machine-type))' | $CHEZ -q --script /dev/stdin)"
+          [ "$got" = "${{ matrix.chez-machine }}" ] || { echo "::error::Chez's machine type is $got, not ${{ matrix.chez-machine }}"; exit 1; }
+          echo "Chez machine type $got"
 
       # circuit has no --nothreads lane (AGENTS.md): a Chez without threads
       # fails here, by name, not inside the server's first import.
