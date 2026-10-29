@@ -31,9 +31,11 @@ through ports and producers.
 
 Since v0.8.0 the server has taken up all eight of circuit's asks and the
 docs fix (§12), and tagged them as v0.9.0 on 2026-10-26, at d928e41.
-Circuit's pin is at v0.9.0 (§15.7). This design was revised against the
+Circuit's pin moved to v0.9.0 (§15.7). This design was revised against the
 server's main at 9195305, whose `src/` and `docs/` the tag carries
-unchanged.
+unchanged. On 2026-10-29 the pin moved to v0.9.1, at b7381a0, which fixes
+three issues circuit filed after the revision: #241, #243 and #245 (§7,
+§12).
 
 ## 2. The contract
 
@@ -729,15 +731,16 @@ ms) wrap-log)`.
   coroutine, where the waits' clock can't be read. A test passes its own
   clock, such as one reading `test-host-now`.
 - **It pays for a `req-on-done!` procedure on every request.** A no-op one
-  costs 859–870 B a request through the adapter at 1 connection, and
-  529–548 B at 50 (slice 5's probe, the gate's G8 on-done and the
-  review's reruns), of which circuit's registration is one pair, 16 B. On
-  the server alone, one costs 706–843 B and a second about 330 B more.
-  The shape of the server's `tell-done!` costs 240 B a call in plain Chez,
-  so about 500 B is spent elsewhere, once for any procedure. Filed as
+  costs 236–246 B a request through the adapter on the server's v0.9.1,
+  at 1 connection and at 50 (the gate's G8 on-done), of which circuit's
+  registration is one pair, 16 B. On v0.9.0 it cost 859–870 B at 1
+  connection and 529–548 B at 50 (slice 5's probe, the gate and the
+  review's reruns), filed as
   [chez-http-server #245](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/245)
-  on 2026-10-26. The gate prints logging's cost, G8, and holds
-  `wrap-log`'s own share, G8 own, without the server's (§15.6).
+  on 2026-10-26. The server's v0.9.1 tells the procedures from its
+  scheduler's drain rather than in place, which fixed it. The gate prints
+  logging's cost, G8, and holds `wrap-log`'s own share, G8 own, without
+  the server's (§15.6).
 
 ## 8. Upgrades
 
@@ -1092,9 +1095,9 @@ clock, and ADR-0006 allows two impure libraries, not a third. Slice 6c's
 `(circuit websocket)` is a library of a third kind: it imports chez-websocket's
 facade, `(websocket)`, which imports the server, and nothing of the server's
 itself, and no library imports it (ADR-0006, amended). chez-http-server is a pinned submodule under
-`vendor/`, as it is in chez-websocket, at v0.9.0 (§15.7). It isn't on the
+`vendor/`, as it is in chez-websocket, at v0.9.1 (§15.7). It isn't on the
 Akku index, so it can't be an Akku dependency yet (ADR-0003). chez-websocket
-is one too, at v0.4.0, its own server pin circuit's (ADR-0003, amended).
+is one too, at v0.4.1, its own server pin circuit's (ADR-0003, amended).
 
 ## 12. Upstream asks: all landed
 
@@ -1104,7 +1107,10 @@ each closing its issue. The server tagged them as v0.9.0 on 2026-10-26,
 at d928e41, and circuit's pin moved to it that day (§15.7). v0.9.0 also
 drops `(http-server request)`'s `request-body`, which circuit never used.
 No workaround was built, so there is no probe to remove. The names in
-this table are the server's.
+this table are the server's. Three issues filed later are fixed in the
+server's v0.9.1, circuit's pin since 2026-10-29: #241, below; #243, the
+test host logging `handler-failed` for a `&body-failed` let out, which
+`serve` doesn't; and #245, a `req-on-done!` procedure's cost (§7).
 
 | # | Issue | Landed as | Circuit uses it for |
 |:--|:--|:--|:--|
@@ -1126,9 +1132,10 @@ Where the server went past the ask, or set rules of its own:
   the last for a chunked body's trailers past the header limits (its
   decision 0036 item 7, its `decisions.sls`, and `connection.sls`'s
   trailers). The server's `docs/waiting.md`
-  lists only the first three: a docs note upstream, filed after the
+  listed only the first three: a docs note upstream, filed after the
   revision as
-  [#241](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/241).
+  [#241](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/241),
+  and fixed in v0.9.1.
 - **A5 refuses a piece past the length**, none of it written. That and a
   body that ends short both end the response short, close the connection
   after it, staged, and log `body-length-mismatch n given`. A length of 0

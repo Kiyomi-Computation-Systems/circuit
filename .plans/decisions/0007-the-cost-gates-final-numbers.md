@@ -7,7 +7,9 @@
   share, G8 own, held; G9, `wrap-timeout`, is held with and without a park (the owner's
   decisions, design §15 items 13–15). The owner accepted G8 own's 384 B and G9's 768 B
   bounds at slice 5's review, 2026-10-27; 2026-10-27, in slice 6b: G10, the router's own
-  work, is held (the owner's decision, design §15 item 24)
+  work, is held (the owner's decision, design §15 item 24); 2026-10-29: on the server's
+  v0.9.1, which fixes #245, G8 and G8 on-done read about 620 B less at 1 connection and
+  300 B less at 50, and no held gate moves
 - **Scope:** the bounds `make gate` holds and prints, and what they are measured on
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §4, §13, §15 item 6
 
@@ -46,9 +48,9 @@ record size step, where a six-field request record failed it by 1 B.
    | G5 | 512 | held | 374; 385 on the real helper (in 7 runs) | a `call/1cc` catch helper: 849; the real one so: 875–927 |
    | G5 park | 512 | held | 343; 351 on the real helper | a `call/1cc` catch helper: 3,657; the real one so: 3,674–3,725 |
    | G7, a port body | 384 | held | 310 (in 2 runs) | the port streamed: 5,098; closed on a raise by two `guard`s: 658 |
-   | G8, `wrap-log` | none | printed | 1,145 (in 7 runs) | its line built in a string port: 1,520–1,521 |
+   | G8, `wrap-log` | none | printed | 1,145 (in 7 runs); 532 on the server's v0.9.1 (in 2 runs) | its line built in a string port: 1,520–1,521 |
    | G8 own, `wrap-log` over a no-op `req-on-done!` | 384 | held | 302 (in 3 runs) | its line built in a string port: 653–688 |
-   | G8 on-done, a no-op `req-on-done!` | none | printed | 870 | |
+   | G8 on-done, a no-op `req-on-done!` | none | printed | 870; 246 on the server's v0.9.1 (in 2 runs) | |
    | G9, `wrap-timeout` | 768 | held | 609 (in 7 runs) | a `call/1cc` escape: 1,131–1,137 |
    | G9 park | 768 | held | 614 | a `call/1cc` escape: 3,895–3,904 |
    | G10 word, the router's own work | 128 | held | 90 (in 7 runs) | each word compared by a substring: 341 |
@@ -99,11 +101,13 @@ G3 and G4 mutants.
     §6), and a suite row holds that order, since G5 wouldn't catch the costlier shape.
   - **G8, `wrap-log`**, reads 1,129–1,145 B at 1 connection and 817–834 B at 50, printed
     (the owner's decision). Of that, G8 on-done, the server's running of one no-op
-    procedure, reads 858–870 B and 528–557 B, filed as chez-http-server #245.
+    procedure, reads 858–870 B and 528–557 B, filed as chez-http-server #245. On the
+    server's v0.9.1, which fixes it, G8 reads 524–531 B and 518–532 B, and G8 on-done
+    236–243 B and 231–246 B (two runs, 2026-10-29).
   - **G8 own, `wrap-log`'s own share**, reads 264–302 B. Building the line in a string port
     first, as the first build did, costs about 380 B more and passes every suite, so the
     owner chose to hold it, at 384 B, after slice 5's review. The server's share is in its
-    baseline too, so a fix to #245 doesn't move it.
+    baseline too, so a fix to #245 doesn't move it, and v0.9.1's didn't: 284–296 B.
   - **G9, `wrap-timeout`**, reads 596–609 B, and 574–614 B with a park. No suite row can
     tell a `call/1cc` escape from `call/cc`, so the owner chose to hold it, with a park
     variant, where `call/1cc` jumps to about 3.9 KB. The 768 B bounds leave about 160 B
