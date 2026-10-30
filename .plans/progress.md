@@ -146,6 +146,11 @@ close-out, and its CI run named here. No code or suite changed.
   amd64's in the same run (G9 park; most within 5 B), so the same bounds hold. arm64's worst figures: G1 1,445, G2 1,440, G3 307
   and 275, G4 80 and 400, G5 385 and 340, G7 308, G8 529, G8 own 289, G8 on-done 243,
   G9 602 and 597, G10 80, 166 and 0;
+- **CI on the PR** (run 40977747024) passed both jobs, the gate held on each, and arm64
+  built Chez cold again, in 7m21s: GitHub scopes a cache to the ref that saved it, so the
+  hand run's, under `refs/heads/ci/arm64`, can't be read from `refs/pull/13/merge`. The
+  PR saved its own, and `main`'s first run after the merge builds it once more, under
+  `main`, where every later run reads it;
 - **the records:** the global constraints and ADR-0007 say CI holds the gate on both;
   Open loses its amd64 item;
 - **no agents ran.**
