@@ -7,7 +7,7 @@
 ;; circuit is not installed through Akku (ADR-0003). Akku.lock is `akku
 ;; lock`'s output for this file. .akkuignore keeps `akku install` to
 ;; chez-cmark-gfm alone.
-(akku-package ("circuit" "0.1.0")
+(akku-package ("circuit" "0.1.1")
   (synopsis "An HTTP layer in the manner of Ring, for R6RS Scheme")
   (authors "Kiyomi Computation Systems LLC")
   (homepage "https://github.com/Kiyomi-Computation-Systems/circuit")

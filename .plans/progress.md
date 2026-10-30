@@ -72,10 +72,14 @@ close-out under **Close-outs**, newest first.
 - **The docs' pages and an API reference held to the code are merged**, squashed from
   [PR #18](https://github.com/Kiyomi-Computation-Systems/circuit/pull/18) on 2026-10-30;
   its close-out is below. README.org points to `docs/`.
-- **Next**, the owner's plan of 2026-10-30: v0.1.1, a release with only the docs, whose
-  tag publishes the site. GitHub Pages isn't enabled on the repository yet: its source
-  must be set to GitHub Actions before that tag. Past that, the design plans no slice
-  past 8 (§17): the open items below are the owner's call.
+- **v0.1.1, the docs, is merged**, squashed from
+  [PR #19](https://github.com/Kiyomi-Computation-Systems/circuit/pull/19) on 2026-10-30;
+  its close-out is below. GitHub Pages is on, its source GitHub Actions, and its
+  `github-pages` environment takes `main` and `v*` tags, as the server's does.
+- **Next**, on the owner's "Run the whole chain": once main's CI passes on #19's squash,
+  the signed tag `v0.1.1`, whose push deploys the site, then the GitHub Release from
+  `[0.1.1]`, recorded in a ledger PR. Past that, the design plans no slice past 8 (§17):
+  the open items below are the owner's call.
 
 ## Open
 
@@ -166,6 +170,28 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: v0.1.1, the docs, in PR #19
+
+On the owner's "Run the whole chain" for v0.1.1, a release with only the docs. Commits on
+`release/v0.1.1`: the release (83f954c), this close-out, and its CI run named here.
+
+- **GitHub Pages, before the PR:** turned on with `gh api`, its source GitHub Actions
+  (`build_type: workflow`), at kiyomi-computation-systems.github.io/circuit. Its
+  `github-pages` environment allowed `main` alone, so a tag's deploy would have been
+  refused: a `v*` tag policy was added, as the server's environment has;
+- **`[0.1.1]`:** Unreleased's docs site, pages and reference check, under an intro: "The
+  second release, a patch: documentation", with the site's address. The reference
+  check's bullet now says what #18's review added: arity, guide links that name the
+  entry, and the pin's tag read from the vendored `Akku.manifest`. The links gain
+  `[0.1.1]`, and Unreleased compares from v0.1.1;
+- **the version:** 0.1.1 in `Akku.manifest`; README.org's status, the home page's and
+  Installing's clone of the tag name v0.1.1;
+- **no library or example changed** since v0.1.0: `git diff v0.1.0` over `src/` and
+  `examples/` is empty, so a patch;
+- `make test` passes 16 suites, and `make check-site` twelve pages. CI passed on the PR
+  (run 41055346017): amd64 in 3m43s, arm64 in 4m00s, and the site job in 29s;
+- **no agents ran.**
 
 ### 2026-10-30: the docs' pages and an API reference held to the code, in PR #18
 
