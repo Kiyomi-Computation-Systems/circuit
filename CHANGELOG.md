@@ -7,11 +7,18 @@ release before 1.0.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-30
+
+The third release, a patch: the pins move to chez-http-server v0.10.0 and chez-websocket
+v0.5.1. The server now logs a request it refuses before any handler runs, and every log
+line, `wrap-catch`'s default line among them, stays one line with a record inside it
+short. No name an app imports changes, so the release is 0.1.2.
+
 ### Changed
 
 - **Pinned at chez-http-server v0.10.0 and chez-websocket v0.5.1**, from v0.9.1 and
-  v0.4.1, on one commit. The server's pins under it are v0.9.1's. No name an app imports
-  changes.
+  v0.4.1, on one commit. The server carries the same chez-libuv, chez-httparse and
+  uriparse that v0.9.1 did. No name an app imports changes.
   - **A request the server refuses before any handler runs is logged.** A malformed
     head, a missing `Host`, a timeout or a limit gets one line from the server, such as
     `request-refused 400 invalid-host 127.0.0.1`: its status, why it refused, and the
@@ -134,6 +141,7 @@ both pinned submodules under `vendor/`. The API may change in any release before
   `make gate` holds what circuit adds to a request, in bytes. A pinned Guix container
   runs both. CI runs on Linux, on amd64 and arm64.
 
-[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.0
