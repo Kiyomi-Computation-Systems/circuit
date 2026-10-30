@@ -2,30 +2,66 @@
 
 [[https://github.com/Kiyomi-Computation-Systems/circuit/actions/workflows/ci.yml][https://github.com/Kiyomi-Computation-Systems/circuit/actions/workflows/ci.yml/badge.svg]]
 
-An HTTP abstraction layer in the manner of [[https://github.com/ring-clojure/ring][Ring]] for R6RS Scheme.
+An HTTP layer in the manner of [[https://github.com/ring-clojure/ring][Ring]] for R6RS Scheme, on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]].
 
 #+begin_quote
 ✨ *AI Disclosure:* LLMs are used extensively in the planning and development of this project.
 #+end_quote
 
-** Requirements
+** Features
 
-- Linux or macOS, on x86-64 or arm64
+- *Handlers are procedures.* A handler takes a request and returns a
+  response, and a middleware takes a handler and returns a new one. ~wrap~
+  stacks them (see [[file:docs/middleware.md][docs/middleware.md]]).
+- *Bodies as ports, both ways.* A request's body is a port, read as it
+  arrives and capped where you say. A response streams from a port or a
+  producer, server-sent events included (see [[file:docs/bodies.md][docs/bodies.md]]).
+- *Handlers that wait.* Each request runs on a coroutine of its own, so a
+  handler can sleep, wait for another request, or give up at a deadline (see
+  [[file:docs/waiting.md][docs/waiting.md]]).
+- *A router.* By the path, then the method. A word beats a parameter whatever
+  the table's order, and groups and mounts take middleware of their own (see
+  [[file:docs/routing.md][docs/routing.md]]).
+- *Middleware for the waits.* A catch for errors, a timeout and a request
+  log (see [[file:docs/middleware.md][docs/middleware.md]]).
+- *Upgrades and WebSockets.* A handler can take the connection over, or
+  answer a WebSocket handshake through [[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]] (see
+  [[file:docs/upgrades.md][docs/upgrades.md]]).
+- *Handlers tested without a server.* ~make-test-req~ makes a request to
+  call a handler with (see [[file:docs/testing.md][docs/testing.md]]).
+- *A plain R6RS core.* Requests, responses, headers, middleware and the
+  router are portable R6RS. Only the adapter and the waits' middleware use
+  Chez's own procedures.
+
+v0.1.0 is the first release. The API may change in any release before 1.0;
+[[file:CHANGELOG.md][CHANGELOG.md]] says what each release has.
+
+** Quick start
+
+#+begin_src scheme
+(import (rnrs) (circuit) (circuit http-server))
+
+(run-server
+ (lambda (req)
+   (make-res 200 '(("content-type" . "text/plain")) "Hello\n")))
+#+end_src
+
+Save it as ~hello.sps~ in the checkout, start it with
+~make run PROGRAM=hello.sps~, and ~curl http://127.0.0.1:8080/~. The
+[[file:docs/quickstart.md][quickstart]] goes on from there. The documentation starts at
+[[file:docs/README.md][docs/README.md]], also published at
+[[https://kiyomi-computation-systems.github.io/circuit/][kiyomi-computation-systems.github.io/circuit]].
+
+** Build and test
+
+You need Linux or macOS, on x86-64 or arm64, with:
+
 - Chez Scheme 10.4.1 or later, built with threads
 - libuv 1.48 or later that ~pkg-config~ can see, and a C compiler: the
   server's libuv binding builds a small C shim
 
 Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], and takes WebSockets from
 [[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]], both pinned under ~vendor/~.
-
-** Status
-
-v0.1.0, the first release. Requests, responses, middleware, the adapter onto the
-server, the middleware that knows the server's waits (a catch for errors, a timeout,
-request logging), upgrades, a router and WebSockets work. The API may change in any
-release before 1.0; [[file:CHANGELOG.md][CHANGELOG.md]] says what each release has.
-
-** Build and test
 
 #+begin_src sh
 git clone https://github.com/Kiyomi-Computation-Systems/circuit.git
@@ -34,161 +70,14 @@ make submodules   # clones the pinned server, what it needs, and chez-websocket
 make test         # builds the libuv shim, then runs every tests/test-*.sps
 #+end_src
 
-On a Guix host, run builds and tests in the pinned container:
-~scripts/guix-env make test~. ~make help~ lists every target.
+~make help~ lists every target, and [[file:docs/installing.md][docs/installing.md]] has the rest: a Guix
+host, building a release, running a program of your own.
 
-To build a release, clone its tag: ~git clone --branch v0.1.0~ and the URL above. A
-release's source archive leaves ~vendor/~ empty, as every git archive leaves out
-submodules.
-
-** Quick start
-
-A handler takes a request and gives back a response:
-
-#+begin_src scheme
-(import (rnrs) (circuit) (circuit http-server))
-
-(run-server
- (lambda (req)
-   (make-res 200 '(("content-type" . "text/plain")) "hello\n")))
-#+end_src
-
-~make run PROGRAM=examples/hello.sps~ runs it on ~127.0.0.1:8080~. [[file:examples/README.md][examples/]] has more:
-reading a body, streaming, a handler that waits, and a WebSocket.
-
-Middleware takes a handler and gives back one. ~wrap~ puts the last outermost.
-~(circuit middleware waits)~ has three:
-
-#+begin_src scheme
-(import (rnrs) (circuit) (circuit http-server) (circuit middleware waits))
-
-(run-server (wrap app wrap-catch (wrap-timeout 5000) wrap-log))
-#+end_src
-
-- ~wrap-catch~ turns a raise into an empty ~500~, and logs a ~handler-failed~ line, as
-  the server does. ~(wrap-catch handler on-raise)~ answers with your own response
-  instead.
-- ~wrap-timeout~ answers an empty ~504~ when its milliseconds pass while the handler
-  waits, reading the body included. Put it outside ~wrap-catch~, so an ~on-raise~ that
-  waits still gets a ~504~.
-- ~wrap-log~ logs a line on standard output once each response is done:
-  ~request GET /users/7 200 written 3~, the last number in milliseconds. The status is
-  the handler's: ~failed~ means the server ended it, perhaps with its own. A request the
-  server refuses before any handler runs, such as a ~413~ for a body past its cap, isn't
-  logged.
-
-A handler can take the connection over for another protocol. ~(make-upgrade-res headers
-take-over)~ answers ~101~, then the server calls ~(take-over transport retained)~:
-~retained~ holds the bytes the server had already read past the request, and the
-transport is how you read and write from then on (~transport-write!~,
-~transport-read-start!~ and the rest, from ~(circuit http-server)~). To wait, the
-take-over answers ~(awaiting thunk)~. [[file:examples/upgrade.sps][examples/upgrade.sps]] echoes every byte back.
-Middleware can change an upgrade's headers, but not its status or body:
-~res-upgrade-body?~ tells one apart, and ~make-upgrade-res~ around
-~res-upgrade-body-take-over~ wraps its take-over. What a take-over answers goes to the
-server, so a wrapper answers what the take-over it wraps answers: drop it, and the
-~101~ goes out but a WebSocket's procedure never runs.
-
-~(circuit websocket)~ answers a WebSocket handshake, and chez-websocket's ~(websocket)~
-does the rest:
-
-#+begin_src scheme
-(import (rnrs) (circuit) (circuit http-server) (circuit websocket) (websocket))
-
-(define (echo ws)
-  (let loop ()
-    (websocket-send! ws (websocket-receive ws))
-    (loop)))
-
-(run-server (lambda (req) (websocket-res req echo)))
-#+end_src
-
-- ~(websocket-res req proc)~ answers ~101~, then runs ~(proc ws)~. A request that is no
-  handshake gets an empty ~400~, and a browser's page from another site an empty ~403~.
-- ~websocket-receive~ waits for the next message; ~websocket-send!~ sends a string as
-  text, a bytevector as binary.
-- Subprotocols and origins come third, as ~(make-handshake-settings '("chat"))~, and
-  limits fourth: see chez-websocket's [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.1/docs/handlers.md][handlers]].
-- [[file:examples/websocket.sps][examples/websocket.sps]] is an echo. Try it with curl 8.11 or later, which sends
-  its input as one binary message, prints what comes back, and waits for ~--max-time~;
-  or, to type messages yourself, with [[https://github.com/vi/websocat][websocat]]:
-
-  #+begin_src sh
-  printf hi | curl -s --max-time 1 -T - ws://127.0.0.1:8080/echo
-  websocat ws://127.0.0.1:8080/echo
-  #+end_src
-
-A router picks the handler by the path, then the method:
-
-#+begin_src scheme
-(import (rnrs) (circuit) (circuit http-server) (circuit router))
-
-(run-server
- (make-router
-  (list (route "/users"     (GET list-users) (POST create-user))
-        (route "/users/new" (GET new-user-form))
-        (route "/users/:id" (GET show-user))
-        (group "/admin" (list wrap-admin)
-          (route "/stats" (GET stats)))
-        (mount "/files" files))))
-#+end_src
-
-- ~:id~ takes one segment, which ~(req-path-param req "id")~ reads percent-decoded.
-- A last ~*rest~ takes the rest of the path.
-- A word beats a parameter, whatever the order: ~/users/new~ never reaches ~show-user~.
-- A path no route takes gets an empty ~404~, or what ~(make-router routes not-found)~'s
-  handler answers.
-- A method the route doesn't take gets an empty ~405~ with ~allow~, unless the route has
-  ~ANY~. HEAD goes to the route's own ~(METHOD 'HEAD h)~, else its GET, else its ANY.
-- A group's middleware runs only for the group's routes.
-- A mount's handler sees the rest of the path: ~/files/a/b~ reaches ~files~ as ~/a/b~,
-  and ~req-mount-path~ is ~/files~.
-- ~req-route~ is the template that matched, such as ~/users/:id~, for logs.
-- Decoded values come from the client and can hold ~/~, ~..~ or NUL: check one before
-  using it as a file name.
-
-** Configuration
-
-Settings come from the environment. The server's are its own ~CHEZ_HTTP_~ variables
-(where it listens, its limits; see its [[https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/configuration.md][configuration]]). Circuit adds one:
-
-| Variable                   | Default | What it sets                                                               |
-|----------------------------+---------+----------------------------------------------------------------------------|
-| ~CIRCUIT_PORT_PIECE_BYTES~ |   65536 | the most a piece of a port body holds; a port this size or less goes whole |
-
-The server caps no request body by default. ~CHEZ_HTTP_MAX_BODY_BYTES~ caps every body,
-and ~wrap-body-cap~ caps the bodies of the requests that pass it, under that:
-
-#+begin_src scheme
-(run-server
- (wrap (make-router
-        (list (route "/notes" (POST add-note))
-              (group "/uploads" (list (wrap-body-cap (* 100 1024 1024)))
-                (route "" (POST upload)))))
-       (wrap-body-cap 65536)))
-#+end_src
-
-- The innermost cap wins: ~/uploads~ takes 100 MiB, the rest 64 KiB. ~(wrap-body-cap
-  #f)~ leaves the server's cap alone.
-- A body past the cap raises ~&body-failed~ at the read that passes it: let out, or
-  caught by ~wrap-catch~, it answers ~413~. A declared ~Content-Length~ past it fails
-  the first read, so a client waiting for ~100 Continue~ gets the ~413~ instead.
-- Cap a body before anything reads it: once ~req-body~ has made the port, a new cap is
-  refused. ~(req-with-body-cap req n)~ caps one request, and ~req-body-cap~ reads it.
-- ~make-test-req~ reads its body whatever the cap. Test a cap in the server's test host.
-
-A WebSocket's limits are chez-websocket's ~CHEZ_WS_~ variables (see its [[https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.1/docs/configuration.md][configuration]]).
-They are read from the process's environment once, as the program starts: an ~env~
-given to ~run-server~ doesn't set them. Limits given to ~websocket-res~, its fourth
-argument, set them for that handshake alone. To take them from your ~env~, build them
-from it:
-
-#+begin_src scheme
-(define settings (make-handshake-settings '()))
-(define limits (websocket-limits-from-environment env))
-
-(run-server (lambda (req) (websocket-res req echo settings limits)) env)
-#+end_src
+~make site~ renders ~docs/~ into ~build/site/~, the pages GitHub Pages
+publishes for each release. It needs the system *cmark-gfm* library (~brew
+install cmark-gfm~ or ~apt install cmark-gfm~), and ~make site-deps~, run
+once where there is a network. ~make check-site~ fails on a broken link or
+anchor.
 
 ** License
 

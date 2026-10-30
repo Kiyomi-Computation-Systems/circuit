@@ -6,7 +6,8 @@
 ;;; From the repository root:
 ;;;   CHEZSCHEMELIBDIRS=.:tests:build/scheme-libs:vendor/chez-cmark-gfm/src \
 ;;;     chez --program tests/site-render-unit.sps
-(import (rnrs) (srfi :64) (circuit-testing) (site render) (site serializer))
+(import (rnrs) (srfi :64) (circuit-testing) (site render) (site serializer)
+        (only (site pages) pages page-file-name))
 
 ;; string-contains-sub? : String String -> Boolean
 (define (string-contains-sub? hay needle)
@@ -76,22 +77,53 @@
   (test-eq "the home page has no footer nav" 'absent
     (if (string-contains-sub? html "class=\"pagenav\"") 'present 'absent)))
 
-;; The nav's two pages link each other as footer neighbours, and each end
-;; links nothing on its open side: an empty span, no link.
-(let* ((two (render-site '(("installing.md" . "# Installing\n")
-                           ("quickstart.md" . "# Quickstart\n"))
-                         "main"))
-       (first (page-html two "installing.md"))
-       (last (page-html two "quickstart.md")))
-  (test-equal "the first page links the next one, and no previous"
-    '(#t #f)
-    (list (string-contains-sub? first "<a href=\"quickstart.html\" class=\"next\">")
-          (string-contains-sub? first "Previous")))
-  (test-equal "the last page links the one before it, and no next"
-    '(#t #f)
-    (list (string-contains-sub?
-           last "<a href=\"installing.html\"><span class=\"lbl\">Previous")
-          (string-contains-sub? last "class=\"next\""))))
+;; Footer neighbours follow the nav's order: (site pages)'s pages, the home
+;; page left out. pagenav-of cuts a page's footer out whole, and
+;; expected-pagenav writes the one the page's place in that order calls for:
+;; a link to each neighbour, labelled, or an empty span on a side with none.
+
+;; pagenav-of : String -> (U String #f) — the footer div of HTML, whole.
+(define (pagenav-of html)
+  (let ((open "<div class=\"pagenav\">"))
+    (let loop ((i 0))
+      (cond ((> (+ i (string-length open)) (string-length html)) #f)
+            ((string=? open (substring html i (+ i (string-length open))))
+             (let find ((j i))
+               (cond ((> (+ j 6) (string-length html)) #f)
+                     ((string=? "</div>" (substring html j (+ j 6)))
+                      (substring html i (+ j 6)))
+                     (else (find (+ j 1))))))
+            (else (loop (+ i 1)))))))
+
+;; expected-pagenav : String -> String — the footer for NAME's place in the nav.
+(define (expected-pagenav name)
+  (let* ((nav (filter (lambda (p) (not (string=? (car p) "README.md"))) pages))
+         (before (let loop ((ps nav) (prev #f))
+                   (if (string=? (caar ps) name) prev (loop (cdr ps) (car ps)))))
+         (after (let ((tail (member name (map car nav))))
+                  (and (pair? (cdr tail)) (assoc (cadr tail) nav)))))
+    (string-append
+     "<div class=\"pagenav\">"
+     (if before
+         (string-append "<a href=\"" (page-file-name (car before))
+                        "\"><span class=\"lbl\">Previous</span>\x2190; " (cdr before) "</a>")
+         "<span></span>")
+     (if after
+         (string-append "<a href=\"" (page-file-name (car after))
+                        "\" class=\"next\"><span class=\"lbl\">Next</span>" (cdr after) " \x2192;</a>")
+         "<span></span>")
+     "</div>")))
+
+(let ((site (render-site '(("installing.md" . "# Installing\n")
+                           ("quickstart.md" . "# Quickstart\n")
+                           ("reference.md" . "# API reference\n"))
+                         "main")))
+  (test-equal "the first page's footer links the next page, and no previous"
+    (expected-pagenav "installing.md") (pagenav-of (page-html site "installing.md")))
+  (test-equal "a middle page's footer links the pages either side of it"
+    (expected-pagenav "quickstart.md") (pagenav-of (page-html site "quickstart.md")))
+  (test-equal "the last page's footer links the page before it, and no next"
+    (expected-pagenav "reference.md") (pagenav-of (page-html site "reference.md"))))
 
 ;; A warning-led blockquote passes through the whole pipeline as a callout.
 (let ((html (page-html (render-site '(("quickstart.md" . "> ⚠️ Answer quickly.\n")) "main")

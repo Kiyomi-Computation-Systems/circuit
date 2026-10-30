@@ -69,12 +69,13 @@ close-out under **Close-outs**, newest first.
 - **A docs site renders `docs/`**, squashed from
   [PR #17](https://github.com/Kiyomi-Computation-Systems/circuit/pull/17) on 2026-10-30;
   its close-out is below. Its first pages are Home, Installing and Quickstart.
-- **Next**, the owner's plan of 2026-10-30: the rest of the pages, an API reference that
-  a check holds to every export and its signature, and README.org cut down to a pointer,
-  in one PR; then v0.1.1, a release with only the docs, whose tag publishes the site.
-  GitHub Pages isn't enabled on the repository yet: its source must be set to GitHub
-  Actions before that tag. Past that, the design plans no slice past 8 (§17): the open
-  items below are the owner's call.
+- **The docs' pages and an API reference held to the code are merged**, squashed from
+  [PR #18](https://github.com/Kiyomi-Computation-Systems/circuit/pull/18) on 2026-10-30;
+  its close-out is below. README.org points to `docs/`.
+- **Next**, the owner's plan of 2026-10-30: v0.1.1, a release with only the docs, whose
+  tag publishes the site. GitHub Pages isn't enabled on the repository yet: its source
+  must be set to GitHub Actions before that tag. Past that, the design plans no slice
+  past 8 (§17): the open items below are the owner's call.
 
 ## Open
 
@@ -126,9 +127,31 @@ close-out under **Close-outs**, newest first.
 - **The examples suite's "no sooner than 1000 ms" row holds the timeout only loosely**:
   its clock starts before curl is spawned, so with the example's timeout at 990 ms it
   still passed (PR #15's mutant). The log row holds the floor, at 998 ms.
-- **No test runs README.org's code.** The websocket suite's env row copies its recipe for
-  limits from an app's env, and the names suite loads its imports; the snippets
-  themselves aren't run.
+- **No test runs the docs' code.** Every program on the pages was run by hand for PR #18,
+  and shows what it printed; the owner chose a reference check over running the blocks
+  (2026-10-30). A change to the code can leave a page's program, or its output, wrong
+  until someone reruns it, and `tests/test-reference.sps` checks names, signatures and
+  links, not an entry's prose.
+- **A producer that reads `req-body` gets a 784-character log line:** the server answers
+  `handler-failed Exception in next-body-piece: only a handler's awaiting thunk may pull
+  its body`, with its internal coroutine and scheduler record as the irritant (PR #18,
+  reproduced). An ask for the server to name the coroutine, not print it, would cover it.
+  Not filed.
+- **`wrap-catch` with an `on-raise` isn't a middleware maker:** `wrap-timeout` and
+  `wrap-body-cap` take their settings and return a middleware, while `wrap-catch` takes the
+  handler first, so `wrap` needs `(lambda (h) (wrap-catch h on-raise))`. Middleware's
+  page shows it. Whether to change the API is the owner's call.
+- **`(site slug)` isn't quite GitHub's:** `slugify` drops `_` and merges runs of spaces and
+  hyphens (`a_b` is `ab`, `a - b` is `a-b`; reproduced), where github-slugger keeps `_` and
+  writes `a---b` (not checked against GitHub itself). `check-site`'s GitHub-anchor
+  invariant uses the same `slugify`, so it can't catch it. No heading hits it today. The
+  generator is the server's and chez-websocket's too.
+- **A re-export's own comment is unchecked:** `(circuit http-server)` says
+  `awaiting : (-> Any) -> Awaiting`, the server's reference `(-> Answer) -> Awaiting`.
+  The reference gives re-exports no signature, so `tests/test-reference.sps` holds neither.
+- **Nothing prints the library path but `make run`,** which echoes its command line: the
+  docs say to run that, from the checkout, to start a program without make. A target
+  that prints it, or a deploying page, would serve a service or a container better.
 - **The router's 400 and 405 can't be customised:** only its not-found handler is the
   app's (the slice 6 design §5). A middleware around the router can rewrite them.
 - **Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
@@ -143,6 +166,67 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: the docs' pages and an API reference held to the code, in PR #18
+
+The second of the owner's two PRs for the docs, built on `docs/pages`, which sat on
+`docs/site` until #17 merged, then moved onto its squash before its first push. Commits:
+the pages and the suite (489f92c), this close-out, and its CI run named here.
+
+- **the pages:** Requests and responses, Bodies and streaming, Middleware, Routing,
+  Waiting, Upgrades and WebSockets, Testing handlers, Configuration and an API reference,
+  in `site/pages.sls` and the home page's Read next; Quickstart's steps link the pages
+  that go further. README.org went from 197 lines to 88: its guide sections moved to the
+  pages, as the two writers' reports listed, fact by fact;
+- **the reference:** an entry for each of the six libraries' 105 exports, with its
+  signature from the source and a guide link; the 25 names `(circuit http-server)`
+  re-exports link the server's reference at v0.9.1 instead. Every export had a signature
+  comment, so none was added;
+- **`tests/test-reference.sps`**, in `make test`, 170 rows: the sections are the six
+  libraries, in order; every other library under `src/` exports only names the six
+  export or the suite's `internal-exports` list; the entries are each library's exports,
+  sorted lists compared whole; each signature is its source comment, whitespace collapsed,
+  and agrees with `procedure-arity-mask`; the type aliases are the source's alias
+  comments, which agree with each other; each re-export, found by `eq?` binding, has no
+  signature and one link to its upstream's reference at the pinned tag, under a heading
+  whose section names it; each other entry links a guide page that names it in code; and
+  every link into chez-http-server's or chez-websocket's repository, in `docs/` and
+  README.org, names the pin's tag, `v` and the vendored `Akku.manifest`'s version, which
+  the Makefile's pin comments must also give. The brief's "names it in a code span"
+  became "in code, inline or fenced": eight entries are named only in Requests' examples;
+- **the footer rows:** `site-render-unit` holds each footer whole, labels included,
+  against the neighbours `(site pages)`'s order calls for, at the nav's first page, a
+  middle one and its last;
+- **the review**, read-only, on Opus, found and I reproduced: three untrue statements (a
+  wrap's `f` runs before the head, a `HEAD`'s included; `(wrap-body-cap #f)` lifts the
+  caps outside it; a port goes whole only when Chez knows its length), snippets on
+  Routing whose handlers no block defined, a subprotocol example that missed `/echo`,
+  two `text` helpers of different arity, and gaps: a catch of one's own, the query and
+  form parsing circuit doesn't do, the server's other refusals (`connection`, a status
+  outside 200 to 599, an `upgrade` naming no protocol the client offered), and running
+  without make. Fixed, with the cuts it named. In the suite it found six holes, each
+  passing a mutant: a pin tag the Makefile alone vouched for (its comment and every link
+  at v0.9.2 over v0.9.1's commit), a re-export anchor that only had to exist, unchecked
+  aliases, signatures held to comments and not to arity (`run-server` with a third
+  argument), any page counting as a guide link, and re-exports found by a missing
+  definition. Each is closed, and its mutant fails;
+- **verified:** every whole program on every page, 39, loads; the hand-backs' programs,
+  rerun on my own port, printed what the pages show; Routing assembled into one program
+  from its own blocks reproduces every output on it; each changed block was rerun; every
+  mutant the reference writer made, 39, exits 1, and two of mine did (an entry moved to
+  another library, a signature fenced as `scheme`); the footer rows fail on a `neighbors`
+  with no previous page and on a label written as the file's name;
+- `make test` passes 16 suites, and `make check-site` all twelve pages. CI passed on the
+  PR (run 41050770299): amd64 and arm64 in 3m47s each, each running the 16 suites and
+  checking the site, and the site job, which built all 12 pages on apt's Chez, in 24s;
+- **agents**, all on Opus, none committing:
+  - the guide writer for Requests, Bodies, Middleware and Testing: 284,277 tokens, 78 tool
+    calls, 21m51s;
+  - the guide writer for Routing, Waiting, Upgrades and Configuration: 246,392 tokens, 64
+    tool calls, 18m48s;
+  - the reference writer, page and suite: 299,722 tokens, 70 tool calls, 23m44s; then the
+    suite's holes: 409,411 tokens, 27 tool calls, 13m36s;
+  - the read-only review: 337,316 tokens, 78 tool calls, 22m13s.
 
 ### 2026-10-30: the docs site, in PR #17
 

@@ -59,6 +59,7 @@ hello, stranger
 
 `req-path` is the path, and `req-query` what follows the `?`, or `#f` when
 there is none. `req-method` is the method, as a symbol such as `GET`.
+[Requests and responses](requests.md) has the rest.
 
 ## 3. Route with the router
 
@@ -96,6 +97,8 @@ Content-Length: 0
 - A route with a GET answers HEAD too.
 - A path no route takes gets an empty `404`, and a method the route doesn't
   take an empty `405`.
+
+[Routing](routing.md) has templates, groups and mounts.
 
 ## 4. Add middleware
 
@@ -154,7 +157,7 @@ request GET /boom 500 written 0
 
 The `500` has no `server` field: `wrap-server-header` is inside
 `wrap-catch`, so the raise went past it. Put it after `wrap-catch` to add the
-field to every response.
+field to every response. [Middleware](middleware.md) has the rest.
 
 ## 5. Read a body
 
@@ -184,6 +187,9 @@ got 11 bytes
 - The server caps no body by default. `(wrap-body-cap 1024)` caps this
   app's at 1 KiB, and a longer one gets an empty `413`.
 
+[Bodies and streaming](bodies.md) has caps, streaming and server-sent
+events.
+
 ## 6. Change where it listens
 
 Settings come from the environment:
@@ -194,8 +200,7 @@ CHEZ_HTTP_PORT=3000 make run PROGRAM=app.sps
 
 It prints `listening 127.0.0.1 3000`. `CHEZ_HTTP_HOST=0.0.0.0` listens on
 every interface. The server's timeouts and limits are `CHEZ_HTTP_` variables
-too: see its
-[configuration](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/configuration.md).
+too: see [Configuration](configuration.md).
 
 ## More
 
