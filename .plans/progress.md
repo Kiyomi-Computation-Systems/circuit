@@ -66,8 +66,15 @@ close-out under **Close-outs**, newest first.
 - **v0.1.0 is tagged and released** on bf38a4b, #15's squash, recorded in
   [PR #16](https://github.com/Kiyomi-Computation-Systems/circuit/pull/16) on 2026-10-29;
   its close-out is below.
-- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
-  the open items below.
+- **A docs site renders `docs/`**, squashed from
+  [PR #17](https://github.com/Kiyomi-Computation-Systems/circuit/pull/17) on 2026-10-30;
+  its close-out is below. Its first pages are Home, Installing and Quickstart.
+- **Next**, the owner's plan of 2026-10-30: the rest of the pages, an API reference that
+  a check holds to every export and its signature, and README.org cut down to a pointer,
+  in one PR; then v0.1.1, a release with only the docs, whose tag publishes the site.
+  GitHub Pages isn't enabled on the repository yet: its source must be set to GitHub
+  Actions before that tag. Past that, the design plans no slice past 8 (§17): the open
+  items below are the owner's call.
 
 ## Open
 
@@ -136,6 +143,56 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: the docs site, in PR #17
+
+On the owner's decisions of 2026-10-30: hold the docs to the code by the site's gates and a
+reference check, cut README.org down, release v0.1.1 with the docs alone, and two PRs, this
+one the machinery and the first pages. Commits on `docs/site`: the site (928e073), this
+close-out, and its CI run named here.
+
+- **the generator:** chez-websocket's `site/` and `build-site.sps`, which are the server's
+  but for names, copied, with links to repository files pinned to circuit's blob, the
+  template's names and the nav changed. Its three programs come with it: `site-unit`, 59
+  rows, and `site-render-unit`, 18, rewritten into circuit's suite form, and
+  `site-check`, the seven invariants;
+- **three pages, not one:** the render suite renders pages under the nav's own names, as
+  a page's title is its label and a page links its neighbours, and with Home alone the nav
+  is empty. So Installing and Quickstart came with Home, and the footer row holds both
+  ends of a two-page nav, where chez-websocket's held the middle page of three;
+- **chez-cmark-gfm:** `Akku.lock` is chez-websocket's, copied whole: it locks the same one
+  dependency, and `akku` isn't installed here to regenerate it. `Akku.manifest` names it as
+  a development dependency and no `depends`; `.akkuignore`, `scripts/fetch-akku-lock` and
+  its offline test come with it, the last two unchanged. ADR-0003 gains item 7;
+- **the container:** chez-cmark-gfm finds cmark-gfm by searching `/usr/lib` and the like,
+  which the server's container has through `--emulate-fhs` and circuit's doesn't. So
+  `guix-env-enter` exports `CHEZ_CMARK_GFM_LIBS`, chez-cmark-gfm's own override, naming the
+  profile's two libraries by absolute path, and nothing loads by bare name. `manifest.scm`
+  gains cmark-gfm, tar and xz. The launcher test's T7a, T7e and T7f hold the export, and
+  the self-test's assertion 7 holds both loads;
+- **the Makefile:** `site-deps`, `site`, `check-site` and `check-site-deps`, as
+  chez-websocket's, and `srfi`, which links SRFI-64 alone, for a machine with no libuv or
+  compiler; it shares its link loop with `deps` as a canned recipe. A first split made
+  `srfi` a prerequisite of `deps`, which broke launcher row M2: in a tree with no
+  `vendor/`, the missing submodule was named before the missing Chez;
+- **CI:** the linux job runs `check-site-deps` and `check-site` on both architectures, and
+  a site job builds the site on apt's Chez, as `pages.yml` does. `pages.yml` deploys on a
+  `v*` tag or by hand, its actions pinned by SHA: upload-pages-artifact v5.0.0 and
+  deploy-pages v5.0.1;
+- **the pages:** each Quickstart program ran in the container, and the output on the page
+  is what curl and the server printed. One finding is on the page: `/boom`'s 500 has no
+  `server` field, its middleware being inside `wrap-catch`. The claims were probed: the
+  libraries' exports the Home page names, and `req-set` and `res-add-header` leaving the
+  old value as it was;
+- **watched to fail:** `check-site` against a page missing from the nav, an anchor that
+  doesn't exist, a repository link to no file, a `neighbors` that never gives a next page
+  (the first-page row failed), and no `CHEZ_CMARK_GFM_LIBS` (chez-cmark-gfm: not-found);
+  T7a and T7f against an entry that drops the export or the check; the self-test's two
+  cmark-gfm assertions against fake libraries. Swapping the two paths fails only the
+  variable's assertion: Guix's RUNPATH lets the extensions library load first;
+- `make check-guix` passes: the launcher test's 73 rows, and in the container every
+  assertion, `make test` with 15 suites among them;
+- **no agents ran.**
 
 ### 2026-10-29: v0.1.0 tagged and released, recorded in PR #16
 
