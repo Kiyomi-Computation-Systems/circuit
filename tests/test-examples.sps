@@ -898,11 +898,17 @@
                               "request GET /slow 504 written N"
                               "request GET /nope 404 written N")
                         (map car lines))
-            (test-equal "middleware: each 504's ms, by the real clock, is at least the timeout's 1000, and under 1500, the timeout and 500 ms for the loop's lateness"
-                        '(from-1000-to-under-1500 from-1000-to-under-1500)
+            ;; The deadline counts 1000 ms of the loop's clock, and the log
+            ;; counts its ms on Chez's real-time, each in whole milliseconds.
+            ;; The loop's clock, read as the deadline is armed, can trail by up
+            ;; to a millisecond, and the log's two readings each truncate, so
+            ;; the log can count 998 or 999 for the deadline's 1000: CI read
+            ;; 999 on main at 0ae889b.
+            (test-equal "middleware: each 504's ms, by the real clock, is at least 998, the timeout's 1000 less 2 ms for two millisecond clocks, and under 1500, the timeout and 500 ms for the loop's lateness"
+                        '(from-998-to-under-1500 from-998-to-under-1500)
                         (map (lambda (line)
                                (let ((ms (cdr line)))
-                                 (if (and ms (<= 1000 ms) (< ms 1500)) 'from-1000-to-under-1500 (list 'ms ms))))
+                                 (if (and ms (<= 998 ms) (< ms 1500)) 'from-998-to-under-1500 (list 'ms ms))))
                              (filter (lambda (line) (string=? (car line) "request GET /slow 504 written N"))
                                      lines))))))
 
