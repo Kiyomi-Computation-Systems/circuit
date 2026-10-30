@@ -20,9 +20,10 @@ Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server
 
 ** Status
 
-Early. Requests, responses, middleware, the adapter onto the server, the middleware
-that knows the server's waits (a catch for errors, a timeout, request logging),
-upgrades, a router and WebSockets work.
+v0.1.0, the first release. Requests, responses, middleware, the adapter onto the
+server, the middleware that knows the server's waits (a catch for errors, a timeout,
+request logging), upgrades, a router and WebSockets work. The API may change in any
+release before 1.0; [[file:CHANGELOG.md][CHANGELOG.md]] says what each release has.
 
 ** Build and test
 
@@ -35,6 +36,10 @@ make test         # builds the libuv shim, then runs every tests/test-*.sps
 
 On a Guix host, run builds and tests in the pinned container:
 ~scripts/guix-env make test~. ~make help~ lists every target.
+
+To build a release, clone its tag: ~git clone --branch v0.1.0~ and the URL above. A
+release's source archive leaves ~vendor/~ empty, as every git archive leaves out
+submodules.
 
 ** Quick start
 
