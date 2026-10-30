@@ -7,6 +7,13 @@ release before 1.0.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-30
+
+The second release, a patch: documentation. `docs/` is a guide for developers, published
+at [kiyomi-computation-systems.github.io/circuit](https://kiyomi-computation-systems.github.io/circuit/)
+with each release, and its API reference is held to the code. No library or example
+changed.
+
 ### Added
 
 - **A docs site.** `docs/` is Markdown for developers, and `make site` renders it into
@@ -17,9 +24,11 @@ release before 1.0.
   Configuration, and an API reference.
 - **The API reference is held to the code.** `tests/test-reference.sps`, in `make test`,
   fails unless `docs/reference.md` has an entry for each export of the six public
-  libraries and no other, each with its signature as the source comments give it. It
-  also fails on a link to chez-http-server's or chez-websocket's repository at any ref but
-  the pinned tag.
+  libraries and no other, each with its signature as the source comments give it, which
+  must agree with the procedure's arity, and a link to a guide page that names it. A name
+  re-exported from chez-http-server links the server's reference instead. It also fails
+  on a link to chez-http-server's or chez-websocket's repository at any ref but the pinned
+  tag, which it reads from the vendored package's `Akku.manifest`.
 
 ### Changed
 
@@ -100,5 +109,6 @@ both pinned submodules under `vendor/`. The API may change in any release before
   `make gate` holds what circuit adds to a request, in bytes. A pinned Guix container
   runs both. CI runs on Linux, on amd64 and arm64.
 
-[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.0
