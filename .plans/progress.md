@@ -216,7 +216,9 @@ the pages and the suite (489f92c), this close-out, and its CI run named here.
   mutant the reference writer made, 39, exits 1, and two of mine did (an entry moved to
   another library, a signature fenced as `scheme`); the footer rows fail on a `neighbors`
   with no previous page and on a label written as the file's name;
-- `make test` passes 16 suites, and `make check-site` all twelve pages;
+- `make test` passes 16 suites, and `make check-site` all twelve pages. CI passed on the
+  PR (run 41050770299): amd64 and arm64 in 3m47s each, each running the 16 suites and
+  checking the site, and the site job, which built all 12 pages on apt's Chez, in 24s;
 - **agents**, all on Opus, none committing:
   - the guide writer for Requests, Bodies, Middleware and Testing: 284,277 tokens, 78 tool
     calls, 21m51s;
