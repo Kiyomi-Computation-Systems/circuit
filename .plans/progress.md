@@ -88,8 +88,12 @@ close-out under **Close-outs**, newest first.
 - **The property suite's case starts are mixed and its `g-int` uniform**, squashed from
   [PR #23](https://github.com/Kiyomi-Computation-Systems/circuit/pull/23) on 2026-10-30,
   which closes the owner's #21; its close-out is below.
-- **Next:** v0.1.2, when the owner asks. The design plans no slice past 8 (§17); what
-  follows is the owner's call: the open items below.
+- **v0.1.2, the pins at the server's v0.10.0 and chez-websocket's v0.5.1, is merged**,
+  squashed from [PR #24](https://github.com/Kiyomi-Computation-Systems/circuit/pull/24)
+  on 2026-10-30; its close-out is below.
+- **Next:** v0.1.2's tag on #24's squash once `main`'s CI passes there, its GitHub
+  Release, the site's deploy, and a ledger PR recording them. The design plans no slice
+  past 8 (§17); what follows is the owner's call: the open items below.
 
 ## Open
 
@@ -171,6 +175,26 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: v0.1.2, the pins at the server's v0.10.0 and chez-websocket's v0.5.1, in PR #24
+
+On the owner's "lets do v0.1.2". Commits on `release/v0.1.2`: the release (30f938e), this
+close-out, and its CI run named here.
+
+- **`[0.1.2]`:** Unreleased's pin move and `wrap-catch`'s fix, under an intro: "The third
+  release, a patch". The pin entry names what the server carries plainly: the same
+  chez-libuv, chez-httparse and uriparse as v0.9.1. The links gain `[0.1.2]`, and
+  Unreleased compares from v0.1.2;
+- **the version:** 0.1.2 in `Akku.manifest`; README.org's status, the home page's and
+  Installing's clone of the tag name v0.1.2;
+- **a patch:** since v0.1.0, `src/` changed only in `(circuit middleware waits)`'s
+  imports and its default line's code, and no export line (`git diff v0.1.1 -- src`);
+  `examples/` is unchanged. The siblings went minor for the same server change because
+  their test hosts' logs are their API; circuit's testing page uses the server's test host
+  but never its log;
+- `make test` passes 16 suites, `make check-site` twelve pages, and `make check-pins` on
+  the host;
+- **no agents ran.**
 
 ### 2026-10-30: the property suite's case starts mixed and `g-int` uniform, in PR #23
 
