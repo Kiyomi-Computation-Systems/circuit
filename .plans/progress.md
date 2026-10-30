@@ -177,9 +177,10 @@ close-out under **Close-outs**, newest first.
 On the owner's "tackle issue 21": their
 [#21](https://github.com/Kiyomi-Computation-Systems/circuit/issues/21), found porting
 `tests/test-router-properties.sps`'s generators to jsonparse, with jsonparse's fix.
-Commits on `fix/property-generators-21`: the generators and two rows (c3749ff), then this
-close-out and its CI run. `make test` passes 16 suites; the property suite's 31 rows run
-in 5 s, as before.
+Commits on `fix/property-generators-21`: the generators and two rows (c3749ff), this
+close-out (f83960e), and its CI run named here. `make test` passes 16 suites; the
+property suite's 31 rows run in 5 s, as before. CI passed on the PR (run 41120484328,
+4m17s), on amd64, arm64 and the site job.
 
 - **the rows first**, each held from both sides, and watched failing on the old code:
   - neighbouring cases start apart: of each property's first 4,000 cases, 10 to 90 of the
@@ -189,7 +190,7 @@ in 5 s, as before.
     21,627 (62–66%) fall below 12,768. The 15 bits taken modulo n gave 25,565 (78.0%);
 - **the fix**, #21's: `case-state` mixes the seed, the property and the index by
   murmur3's 32-bit finalizer, `mix`, giving 25–54 neighbours alike; `g-int` draws again
-  while the bits are at or above the largest multiple of n under 32,768, giving 20,972
+  while the bits are at or above the largest multiple of n not above 32,768, giving 20,972
   (64.0%). Each row is driven by its own half alone: the new `case-state` with the old
   `g-int` gives 25–53, the old with the new 1,291–1,297. Two mutants of the new code, the
   outer `mix` dropped and the redraw dropped, each fail their row alone;
