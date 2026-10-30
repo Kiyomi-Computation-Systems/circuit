@@ -7,6 +7,13 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **A docs site.** `docs/` is Markdown for developers, and `make site` renders it into
+  `build/site/` through chez-cmark-gfm, as chez-http-server and chez-websocket render
+  theirs. `make check-site` gates it in CI, and the Pages workflow publishes it on each
+  release tag. The first pages are Home, Installing and Quickstart.
+
 ## [0.1.0] - 2026-10-29
 
 The first release: an HTTP layer in the manner of Ring for R6RS Scheme. A handler is a

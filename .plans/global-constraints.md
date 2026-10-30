@@ -26,6 +26,9 @@ provisional. They bind until that record is accepted or amended.
   gitlink and `WEBSOCKET_PIN` on one commit; `make check-pins` holds them (ADR-0003).
 - **No Akku dependency on the server**, nor on chez-websocket, while they aren't on the
   Akku index (ADR-0003).
+- **chez-cmark-gfm, the docs site's renderer, is pinned by `Akku.lock`**, a development
+  dependency alone: nothing under `src/` and no `tests/test-*.sps` imports it.
+  `make site-deps` fetches it on the host (ADR-0003).
 
 ## Tooling
 
@@ -34,6 +37,8 @@ provisional. They bind until that record is accepted or amended.
   in CI, and `make deps` never fetches (ADR-0002).
 - **`make check-guix` must pass after any change to `channels.scm`, `manifest.scm` or the
   `guix-env` scripts** (ADR-0002's consequences, AGENTS.md).
+- **`make check-site` gates `docs/`**: CI runs it on every pull request, on both
+  architectures, and the Pages workflow before each deploy (AGENTS.md).
 
 ## The contract
 

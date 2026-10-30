@@ -133,20 +133,24 @@ enter_cwd=$tmp/enter-cwd
 
 reset_profile() {
   rm -rf "$profile" "$store" "$enter_cwd"
-  mkdir -p "$profile/bin" "$store" "$enter_cwd"
+  mkdir -p "$profile/bin" "$profile/lib" "$store" "$enter_cwd"
   : >"$store/scheme"
   : >"$store/gcc"
+  : >"$store/libcmark-gfm.so"
+  : >"$store/libcmark-gfm-extensions.so"
   ln -s "$store/scheme" "$profile/bin/scheme"
   ln -s "$store/gcc" "$profile/bin/gcc"
+  ln -s "$store/libcmark-gfm.so" "$profile/lib/libcmark-gfm.so"
+  ln -s "$store/libcmark-gfm-extensions.so" "$profile/lib/libcmark-gfm-extensions.so"
 }
 
-# run_enter: prints CHEZ, CC and LD_LIBRARY_PATH (or "unset") as the
-# command sees them, separated by |.
+# run_enter: prints CHEZ, CC, LD_LIBRARY_PATH (or "unset") and
+# CHEZ_CMARK_GFM_LIBS as the command sees them, separated by |.
 run_enter() {
   status=999
   ( cd "$enter_cwd" && env -i PATH="$PATH" GUIX_ENVIRONMENT="$profile" \
       sh "$enter" sh -c \
-      'printf "%s|%s|%s\n" "${CHEZ-}" "${CC-}" "${LD_LIBRARY_PATH-unset}"' ) \
+      'printf "%s|%s|%s|%s\n" "${CHEZ-}" "${CC-}" "${LD_LIBRARY_PATH-unset}" "${CHEZ_CMARK_GFM_LIBS-}"' ) \
     >"$tmp/out" 2>"$tmp/err"
   status=$?
 }
@@ -160,9 +164,11 @@ check "T7a complete profile: exit 0" [ "$status" -eq 0 ]
 check "T7a CHEZ is the profile's scheme" [ "$(field 1)" = "$profile/bin/scheme" ]
 check "T7a CC is the profile's gcc" [ "$(field 2)" = "$profile/bin/gcc" ]
 check "T7a no LD_LIBRARY_PATH" [ "$(field 3)" = "unset" ]
+check "T7a CHEZ_CMARK_GFM_LIBS is the profile's two cmark-gfm libraries" \
+  [ "$(field 4)" = "$profile/lib/libcmark-gfm.so:$profile/lib/libcmark-gfm-extensions.so" ]
 check "T7a no state directory" [ ! -e "$enter_cwd/.guix-env" ]
 
-# T7b-d: a profile missing one entry is refused, naming the entry, and the
+# T7b-f: a profile missing one entry is refused, naming the entry, and the
 # command never runs.
 refused() {  # LABEL PATH
   check "$1: exit 2" [ "$status" -eq 2 ]
@@ -183,6 +189,16 @@ reset_profile
 rm "$profile/bin/gcc"
 run_enter
 refused "T7d no gcc" "$profile/bin/gcc"
+
+reset_profile
+rm "$profile/lib/libcmark-gfm.so"
+run_enter
+refused "T7e no cmark-gfm" "$profile/lib/libcmark-gfm.so"
+
+reset_profile
+rm "$profile/lib/libcmark-gfm-extensions.so"
+run_enter
+refused "T7f no cmark-gfm extensions" "$profile/lib/libcmark-gfm-extensions.so"
 
 # T8: the command's arguments pass through verbatim.
 reset_profile

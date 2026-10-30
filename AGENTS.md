@@ -45,6 +45,9 @@
   (`SERVER_PIN` or `WEBSOCKET_PIN`) on one commit.
 * chez-http-server isn't on the Akku index, so Akku can't install it for
   circuit: the submodule is the only way in.
+* chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
+  development dependency of `Akku.manifest`, which names no `depends`.
+  `make site-deps`, on the host, fetches it into `build/akku/`.
 * Circuit's tests run handlers through the server's test host,
   `(http-server testing)`, which its package installs. Its fake shell is
   `(http-server private fake-shell)`, which no circuit library imports
@@ -59,7 +62,10 @@
   before starting slice work. `/.superpowers/` is git-ignored plugin scratch,
   not the ledger.
 * Add entries to `CHANGELOG.md` for each release
-* `/docs` is for user facing documentation only.
+* `/docs` is for user facing documentation only. `make site` renders it to
+  `build/site/`, and the Pages workflow publishes it on a release tag.
+  `make check-site` gates it: every page is in `site/pages.sls`, in the
+  home page's Read next order.
 * Documentation should be very concise, focused, to the point, ELI5 style.
 * `Makefile` should have a `help` command which lists all of its commands
 * Libraries are R6RS `.sls`; libraries and programs contain their own code —
@@ -83,7 +89,8 @@
   the toolchain has no `cc`), which builds chez-libuv's shim.
 * Anything that needs the network or git runs on the host: fetches, pushes,
   downloads, `make check-pins`, and `make submodules`, which a fresh clone
-  needs once before `make deps`. The container has no git.
+  needs once before `make deps`, and `make site-deps` once before
+  `make site`. The container has no git.
 
 ### Testing & mutation discipline
 
