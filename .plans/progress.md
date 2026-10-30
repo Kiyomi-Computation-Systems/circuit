@@ -187,13 +187,14 @@ close-out, and its CI run named here.
   Unreleased compares from v0.1.2;
 - **the version:** 0.1.2 in `Akku.manifest`; README.org's status, the home page's and
   Installing's clone of the tag name v0.1.2;
-- **a patch:** since v0.1.0, `src/` changed only in `(circuit middleware waits)`'s
+- **a patch:** since v0.1.1, `src/` changed only in `(circuit middleware waits)`'s
   imports and its default line's code, and no export line (`git diff v0.1.1 -- src`);
   `examples/` is unchanged. The siblings went minor for the same server change because
   their test hosts' logs are their API; circuit's testing page uses the server's test host
   but never its log;
 - `make test` passes 16 suites, `make check-site` twelve pages, and `make check-pins` on
-  the host;
+  the host. CI passed on the PR (run 41123854479): amd64 in 2m03s, arm64 in 3m54s, and
+  the site job in 23s;
 - **no agents ran.**
 
 ### 2026-10-30: the property suite's case starts mixed and `g-int` uniform, in PR #23
