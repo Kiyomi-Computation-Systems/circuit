@@ -140,7 +140,7 @@ close-out under **Close-outs**, newest first.
 ### 2026-10-29: v0.1.0 tagged and released, recorded in PR #16
 
 On the owner's "Run the whole chain" for v0.1.0, and their "Yes, like the server" for a
-release page. This PR holds this close-out alone.
+release page. This PR holds this close-out alone; CI passed on it (run 40985448682).
 
 - **CI on the tagged commit:** main's run on bf38a4b, 40984525973, passed on amd64 and
   arm64. main's run on #14's squash, 0ae889b, had failed a timing row, so the tag waited
