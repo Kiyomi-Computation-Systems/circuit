@@ -532,8 +532,11 @@ Rules for middleware authors, each a fact about the server:
   answers an empty 500. The line is the one
   `serve` writes for a raise that reaches it: `handler-failed`, then the
   raise as the server writes a detail. A condition is shown as Chez's
-  `display-condition` shows it, its line breaks made spaces, so the
-  helper takes `display-condition` from `(chezscheme)` (ADR-0006).
+  `display-condition` shows it, a record inside it by its type alone
+  under `print-record` set to `#f`, and every control character in the
+  line is made a space, as the server's v0.10.0 does, so the helper takes
+  `display-condition`, `print-record` and `parameterize` from
+  `(chezscheme)` (ADR-0006).
 - **Don't free a resource in a `dynamic-wind` after thunk.** A park leaves
   every `dynamic-wind` around it and re-enters it at the resume (S1). The
   server's own `with-deadline` relies on it: its after thunk asks

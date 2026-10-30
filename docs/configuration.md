@@ -44,7 +44,7 @@ It prints `listening 0.0.0.0 3000`. The ones you'll reach for first:
 - Timeouts are whole seconds.
 - On a platform that sets `PORT`, pass it on: `CHEZ_HTTP_PORT=$PORT`.
 - The rest, with what each does, are on the server's
-  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/configuration.md)
+  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.10.0/docs/configuration.md)
   page.
 
 ## Size a port body's pieces
@@ -83,7 +83,7 @@ CHEZ_WS_MAX_MESSAGE_BYTES=16777216 CHEZ_WS_PING_INTERVAL=30 make run PROGRAM=app
 - An `env` you give `run-server` doesn't reach them: see
   [Upgrades and WebSockets](upgrades.md) to build limits from one.
 - What each limit does is on chez-websocket's
-  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.1/docs/configuration.md)
+  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.5.1/docs/configuration.md)
   page.
 
 ## Give run-server an env of your own

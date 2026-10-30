@@ -100,8 +100,11 @@
 ;; is request logging's default clock: R6RS has none, and it counts
 ;; milliseconds from the process's start in a fixnum. display-condition
 ;; shows a condition in the catch helper's default line as the server's log
-;; shows it, which R6RS can't (design §6).
-(define chez-names '(getenv port-has-port-length? port-length real-time display-condition))
+;; shows it, which R6RS can't (design §6); print-record, under
+;; parameterize, shows a record inside it by its type alone, as the
+;; server's log does: R6RS has neither.
+(define chez-names '(getenv port-has-port-length? port-length real-time display-condition
+                     print-record parameterize))
 
 ;; wrappers : (Listof Symbol)
 ;; The import-set forms that wrap one import set, in their second element.

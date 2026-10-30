@@ -27,7 +27,7 @@
 ;;; the handler answered, how the response ended and how long it took, by a
 ;;; clock of milliseconds. A request the server refuses before any handler
 ;;; runs (a 400, a 408, a 413 for a declared length past the cap, a 431, a
-;;; 505) registers nothing, so nothing logs it, circuit or the server. The
+;;; 505) registers nothing: the server logs it, request-refused. The
 ;;; status is the handler's, so where the server answers in its place, the
 ;;; line still shows it: 200 failed, say, for a res whose body is the
 ;;; request's own req-body, which the client gets as the server's 500.
@@ -45,13 +45,13 @@
 ;;; weren't there.
 ;;;
 ;;; This library imports the server, as (circuit http-server) does, and
-;;; takes two names from (chezscheme) (ADR-0006): real-time, wrap-log's
-;;; default clock, and display-condition, which shows a condition in the
-;;; default line as the server's log does.
+;;; takes four names from (chezscheme) (ADR-0006): real-time, wrap-log's
+;;; default clock, and display-condition, print-record and parameterize,
+;;; which show a detail in the default line as the server's log does.
 (library (circuit middleware waits)
   (export wrap-catch wrap-timeout wrap-log)
   (import (rnrs)
-          (only (chezscheme) real-time display-condition)
+          (only (chezscheme) real-time display-condition print-record parameterize)
           (only (circuit request) req-method req-path req-on-done!)
           (only (circuit response) make-res res? res-status)
           (only (http-server)
@@ -106,28 +106,35 @@
     (make-res 500 '() #f))
 
   ;; put-detail : OutputPort Any -> Void
-  ;; D as the server's log writes a detail (its private/serve.sls): a
-  ;; condition as Chez's display-condition shows it, its line breaks made
-  ;; spaces; a string, a symbol, a number, a boolean or a character
-  ;; displayed; a record as #< its record type's name >; anything else
-  ;; written. An opaque record is no record to R6RS's record?, so it is
-  ;; written.
+  ;; D as the server's log writes a detail (its private/serve.sls), its
+  ;; control characters made spaces, wherever they come from: a raised
+  ;; string may quote a client's bytes.
   (define (put-detail out d)
-    (cond ((condition? d) (put-string out (one-line (condition-text d))))
-          ((or (string? d) (symbol? d) (number? d) (boolean? d) (char? d)) (display d out))
-          ((record? d)
-           (put-string out "#<")
-           (display (record-type-name (record-rtd d)) out)
-           (put-string out ">"))
-          (else (write d out))))
+    (put-string out (one-line (call-with-string-output-port (lambda (p) (show-detail p d))))))
 
-  ;; condition-text : Condition -> String — as display-condition shows it.
-  (define (condition-text c)
-    (call-with-string-output-port (lambda (p) (display-condition c p))))
+  ;; show-detail : OutputPort Any -> Void
+  ;; A condition as Chez's display-condition shows it; a string, a symbol, a
+  ;; number, a boolean or a character displayed; a record as #< its record
+  ;; type's name >; anything else written. A record inside a condition or a
+  ;; written value shows as #<record of type name>, not its fields, as
+  ;; print-record #f has it. An opaque record is no record to R6RS's
+  ;; record?, so it is written.
+  (define (show-detail out d)
+    (parameterize ((print-record #f))
+      (cond ((condition? d) (display-condition d out))
+            ((or (string? d) (symbol? d) (number? d) (boolean? d) (char? d)) (display d out))
+            ((record? d)
+             (put-string out "#<")
+             (display (record-type-name (record-rtd d)) out)
+             (put-string out ">"))
+            (else (write d out)))))
 
-  ;; one-line : String -> String — S, each line feed a space.
+  ;; one-line : String -> String — S, its control characters made spaces:
+  ;; each below U+0020, line feed and carriage return among them, and
+  ;; delete.
   (define (one-line s)
-    (list->string (map (lambda (c) (if (char=? c #\newline) #\space c)) (string->list s))))
+    (list->string (map (lambda (c) (if (or (char<? c #\space) (char=? c #\delete)) #\space c))
+                       (string->list s))))
 
   ;; write-line : String -> Void
   ;; LINE on the current output port as it is now, flushed at once.

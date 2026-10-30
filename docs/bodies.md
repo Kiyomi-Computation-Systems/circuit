@@ -403,7 +403,7 @@ curl reset the connection as it gave up, and the server logs that as
 - Keep it quick: it can't wait. A raise from one is logged
   `on-done-failed`, and the others still run.
 - A request the server refuses before any handler runs, such as a
-  malformed one, reports nothing.
+  malformed one, calls nothing: the server logs it as `request-refused`.
 
 See [`make-sized-body`](reference.md#make-sized-body),
 [`res-wrap-body`](reference.md#res-wrap-body) and

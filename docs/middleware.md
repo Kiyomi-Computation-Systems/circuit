@@ -296,8 +296,11 @@ request GET /boom raised failed 0
   it, perhaps with a status of its own: here, its `500`.
 - Put it last, outside `wrap-catch` and `wrap-timeout`, so it logs the
   `500`, `504` and `413` they answer.
-- A request the server answers before any handler runs isn't logged: a
-  malformed one, or a declared body past `CHEZ_HTTP_MAX_BODY_BYTES`.
+- A request the server refuses before any handler runs never reaches
+  `wrap-log`: a malformed one, or a declared body past
+  `CHEZ_HTTP_MAX_BODY_BYTES`. The server logs it itself, with its status,
+  why it refused, and the client's address:
+  `request-refused 400 invalid-host 127.0.0.1`.
 - A line has no timestamp: what collects standard output adds one.
   `(wrap-log handler clock)` reads a clock of your own, in milliseconds.
 
