@@ -153,7 +153,8 @@ least 1000. The owner chose to fix the row before the tag. Commits on
 - **watched to fail:** with the example's timeout at 990 the row failed, reading 994 ms
   twice, and no other row did. That run showed the client's "no sooner than 1000 ms" row
   passing at 990, now in Open;
-- `make test` passes 15 suites, 783 rows;
+- `make test` passes 15 suites, 783 rows. CI passed on the PR (run 40983685657): amd64 in
+  1m55s and arm64 in 3m37s;
 - **no agents ran.**
 
 ### 2026-10-29: v0.1.0, the first release, in PR #14
