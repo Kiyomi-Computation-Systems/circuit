@@ -85,6 +85,9 @@ close-out under **Close-outs**, newest first.
   its close-out is below. The server logs a request it refuses itself, and every log line,
   `wrap-catch`'s default line among them, stays one line with a record inside it short:
   the server's #249, #250 and #251, and chez-websocket's #105 and #106, filed from here.
+- **The property suite's case starts are mixed and its `g-int` uniform**, squashed from
+  [PR #23](https://github.com/Kiyomi-Computation-Systems/circuit/pull/23) on 2026-10-30,
+  which closes the owner's #21; its close-out is below.
 - **Next:** v0.1.2, when the owner asks. The design plans no slice past 8 (§17); what
   follows is the owner's call: the open items below.
 
@@ -139,11 +142,6 @@ close-out under **Close-outs**, newest first.
 - **`wrap-log`'s line has no client address**, where the server's `request-refused` line,
   from v0.10.0, ends with one, as access logs' lines do. `req-remote-address` would give
   it; a change to the line is the owner's call.
-- **The router's property generators** (`tests/test-router-properties.sps`): `g-int` is
-  biased where n doesn't divide 32768, and neighbouring cases start correlated, so P1–P7
-  explore fewer distinct cases than their counts suggest. The owner's
-  [#21](https://github.com/Kiyomi-Computation-Systems/circuit/issues/21), found porting it
-  to jsonparse, has the fix.
 - **`wrap-catch` with an `on-raise` isn't a middleware maker:** `wrap-timeout` and
   `wrap-body-cap` take their settings and return a middleware, while `wrap-catch` takes the
   handler first, so `wrap` needs `(lambda (h) (wrap-catch h on-raise))`. Middleware's
@@ -173,6 +171,35 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: the property suite's case starts mixed and `g-int` uniform, in PR #23
+
+On the owner's "tackle issue 21": their
+[#21](https://github.com/Kiyomi-Computation-Systems/circuit/issues/21), found porting
+`tests/test-router-properties.sps`'s generators to jsonparse, with jsonparse's fix.
+Commits on `fix/property-generators-21`: the generators and two rows (c3749ff), then this
+close-out and its CI run. `make test` passes 16 suites; the property suite's 31 rows run
+in 5 s, as before.
+
+- **the rows first**, each held from both sides, and watched failing on the old code:
+  - neighbouring cases start apart: of each property's first 4,000 cases, 10 to 90 of the
+    3,999 neighbouring pairs draw the same first `(g-int 100)`. The affine `case-state`
+    gave 1,294–1,300 for P1–P7 at the default seed, as #21 measured; chance is about 40;
+  - `g-int` is uniform: of 32,768 draws of `(g-int 20000)` from one fixed state, 20,316 to
+    21,627 (62–66%) fall below 12,768. The 15 bits taken modulo n gave 25,565 (78.0%);
+- **the fix**, #21's: `case-state` mixes the seed, the property and the index by
+  murmur3's 32-bit finalizer, `mix`, giving 25–54 neighbours alike; `g-int` draws again
+  while the bits are at or above the largest multiple of n under 32,768, giving 20,972
+  (64.0%). Each row is driven by its own half alone: the new `case-state` with the old
+  `g-int` gives 25–53, the old with the new 1,291–1,297. Two mutants of the new code, the
+  outer `mix` dropped and the redraw dropped, each fail their row alone;
+- **the new cases:** every fixed seed's cases changed. No row holds a recorded case or a
+  tally, so none needed regenerating. P1–P7 find nothing at the default seed, at seeds
+  1, 7, 42, 99999, 20261030, 123456789, 2^31 − 1 and 2^40, and at 1 and 31337 with ten
+  times the cases. `mix` keeps a seed's low 32 bits, so seeds 2^32 apart give the same
+  cases, as the old start did 2^31 apart;
+- **no agents ran.** No review: the change is #21's own code, measured, and its rows
+  were watched failing both ways.
 
 ### 2026-10-30: the pins at the server's v0.10.0 and chez-websocket's v0.5.1, in PR #22
 
@@ -226,7 +253,7 @@ and 403, 80 and 400, G5 382 and 338, 380 and 340, G7 308 and 304, G8 532 on both
 - **the docs:** Middleware and Bodies say the server logs a refusal itself, with the line;
   Installing names the new tags. The CHANGELOG's `[Unreleased]` has the pins and the fix.
   Open loses the three log items and gains `wrap-log`'s missing address and the owner's
-  #21;
+  #21, which PR #23 then closed;
 - **no agents ran.** No review: the change copies the server's reviewed code, and each
   row it moved was watched failing.
 
