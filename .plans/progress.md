@@ -53,13 +53,14 @@ close-out under **Close-outs**, newest first.
 - **The pins are at the server's v0.9.1 and chez-websocket's v0.4.1**, squashed from
   [PR #12](https://github.com/Kiyomi-Computation-Systems/circuit/pull/12) on 2026-10-29;
   its close-out is below. The server's fixes for #241, #243 and #245 reach circuit.
+- **CI runs on arm64 as well as amd64**, squashed from
+  [PR #13](https://github.com/Kiyomi-Computation-Systems/circuit/pull/13) on 2026-10-29;
+  its close-out is below. It holds the cost gate on both.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
-  the open items below, among them an arm64 CI runner, and a first release.
+  the open items below, and a first release.
 
 ## Open
 
-- **CI runs on amd64 alone**, as the siblings' do. AGENTS.md asks for arm64 portability,
-  and an `ubuntu-24.04-arm` runner would cover it.
 - **Left from the review, not fixed:**
   - outside the container and CI, nothing refuses a Chez below 10.4.1 or without threads:
     this host's own Chez is 10.4.0;
@@ -122,6 +123,37 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-29: CI on arm64, in PR #13
+
+On the owner's "do it", after they asked whether a public repository can use an arm64
+runner: GitHub's standard runners, `ubuntu-24.04-arm` among them, are free and
+unlimited on one. Commits on `ci/arm64`: the workflow (f1a7b46), the records with this
+close-out, and its CI run named here. No code or suite changed.
+
+- **the workflow:** a matrix runs the one job on `ubuntu-24.04` (amd64) and
+  `ubuntu-24.04-arm` (arm64), with `fail-fast: false`. Two new steps check the arch before
+  anything is trusted: the machine is the one the label names, and Chez's machine type
+  is the one its configure chose, `ta6le` or `tarm64le`. Each step's script was run here
+  first: it passed on this machine and failed by name with the other arch's value. The
+  Chez cache key already held the arch, and the server's oha fetch pins a linux-arm64
+  binary;
+- **the first run**, by hand on the branch (40976751724): both jobs passed. arm64 took
+  7m23s, its Chez built cold (the cache missed on its ARM64 key), and amd64 3m42s. arm64
+  read `machine aarch64` and `Chez machine type tarm64le`, and fetched `oha-linux-arm64`
+  v1.16.0. `make test` passed 15 suites, 782 rows and the curl row skipped on each;
+- **the gate on arm64**, held as on amd64: every gate's worst figure read within 12 B of
+  amd64's in the same run (G9 park; most within 5 B), so the same bounds hold. arm64's worst figures: G1 1,445, G2 1,440, G3 307
+  and 275, G4 80 and 400, G5 385 and 340, G7 308, G8 529, G8 own 289, G8 on-done 243,
+  G9 602 and 597, G10 80, 166 and 0;
+- **CI on the PR** (run 40977747024) passed both jobs, the gate held on each, and arm64
+  built Chez cold again, in 7m21s: GitHub scopes a cache to the ref that saved it, so the
+  hand run's, under `refs/heads/ci/arm64`, can't be read from `refs/pull/13/merge`. The
+  PR saved its own, and `main`'s first run after the merge builds it once more, under
+  `main`, where every later run reads it;
+- **the records:** the global constraints and ADR-0007 say CI holds the gate on both;
+  Open loses its amd64 item;
+- **no agents ran.**
 
 ### 2026-10-29: the pins at the server's v0.9.1 and chez-websocket's v0.4.1, in PR #12
 
