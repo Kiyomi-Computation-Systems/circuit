@@ -189,7 +189,8 @@ On the owner's "Run the whole chain" for v0.1.1, a release with only the docs. C
   Installing's clone of the tag name v0.1.1;
 - **no library or example changed** since v0.1.0: `git diff v0.1.0` over `src/` and
   `examples/` is empty, so a patch;
-- `make test` passes 16 suites, and `make check-site` twelve pages;
+- `make test` passes 16 suites, and `make check-site` twelve pages. CI passed on the PR
+  (run 41055346017): amd64 in 3m43s, arm64 in 4m00s, and the site job in 29s;
 - **no agents ran.**
 
 ### 2026-10-30: the docs' pages and an API reference held to the code, in PR #18
