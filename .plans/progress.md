@@ -58,7 +58,12 @@ close-out under **Close-outs**, newest first.
   its close-out is below. It holds the cost gate on both.
 - **v0.1.0, the first release, is merged**, squashed from
   [PR #14](https://github.com/Kiyomi-Computation-Systems/circuit/pull/14) on 2026-10-29;
-  its close-out is below. The signed tag and the GitHub Release follow the merge.
+  its close-out is below. main's CI on its squash, 0ae889b, failed a timing row, so the
+  tag waits for that row's fix.
+- **The timing row's fix is merged**, squashed from
+  [PR #15](https://github.com/Kiyomi-Computation-Systems/circuit/pull/15) on 2026-10-29;
+  its close-out is below. The signed tag `v0.1.0` and its GitHub Release go on its squash
+  once main's CI passes there.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
   the open items below.
 
@@ -109,6 +114,9 @@ close-out under **Close-outs**, newest first.
   (curl has it by default from 8.11), so the examples suite's curl echo row is skipped in
   CI and runs only in the container, on curl 8.20. The `/dev/tcp` rows prove the echo in
   both (slice 6c).
+- **The examples suite's "no sooner than 1000 ms" row holds the timeout only loosely**:
+  its clock starts before curl is spawned, so with the example's timeout at 990 ms it
+  still passed (PR #15's mutant). The log row holds the floor, at 998 ms.
 - **No test runs README.org's code.** The websocket suite's env row copies its recipe for
   limits from an app's env, and the names suite loads its imports; the snippets
   themselves aren't run.
@@ -126,6 +134,27 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-29: a 504's logged ms, at least 998, in PR #15
+
+main's CI on #14's squash, 0ae889b (run 40982985674), failed on amd64 and passed on
+arm64. One row failed: a 504 that `wrap-log` logged at 999 ms, where the row asked at
+least 1000. The owner chose to fix the row before the tag. Commits on
+`test/timeout-row-clocks`: the row (931f8d1), this close-out, and its CI run named here.
+
+- **why:** the timeout's deadline counts 1000 ms of libuv's loop clock (the server's
+  waits read `uv-now` after `uv-update-time!`), and `wrap-log` counts on Chez's
+  `real-time`; each counts whole milliseconds. As the deadline is armed the loop's
+  clock can trail by a millisecond, and the log's two readings each truncate, so the
+  log can count 998 or 999 for the deadline's 1000. `wrap-log` is outermost in the
+  example, so it reads its clock before the deadline is armed;
+- **the fix:** the floor is 998, the reason in a comment over the row. The ceiling,
+  under 1500, is as it was;
+- **watched to fail:** with the example's timeout at 990 the row failed, reading 994 ms
+  twice, and no other row did. That run showed the client's "no sooner than 1000 ms" row
+  passing at 990, now in Open;
+- `make test` passes 15 suites, 783 rows;
+- **no agents ran.**
 
 ### 2026-10-29: v0.1.0, the first release, in PR #14
 
