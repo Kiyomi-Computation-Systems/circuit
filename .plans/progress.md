@@ -62,8 +62,10 @@ close-out under **Close-outs**, newest first.
   tag waits for that row's fix.
 - **The timing row's fix is merged**, squashed from
   [PR #15](https://github.com/Kiyomi-Computation-Systems/circuit/pull/15) on 2026-10-29;
-  its close-out is below. The signed tag `v0.1.0` and its GitHub Release go on its squash
-  once main's CI passes there.
+  its close-out is below.
+- **v0.1.0 is tagged and released** on bf38a4b, #15's squash, recorded in
+  [PR #16](https://github.com/Kiyomi-Computation-Systems/circuit/pull/16) on 2026-10-29;
+  its close-out is below.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
   the open items below.
 
@@ -134,6 +136,29 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-29: v0.1.0 tagged and released, recorded in PR #16
+
+On the owner's "Run the whole chain" for v0.1.0, and their "Yes, like the server" for a
+release page. This PR holds this close-out alone; CI passed on it (run 40985448682).
+
+- **CI on the tagged commit:** main's run on bf38a4b, 40984525973, passed on amd64 and
+  arm64. main's run on #14's squash, 0ae889b, had failed a timing row, so the tag waited
+  for #15's fix;
+- **the tag:** `v0.1.0` (tag object 30960aa) on bf38a4b, annotated and signed with the
+  Kiyomi release key (`git tag -v`: a good signature), checked absent locally and on
+  origin first, then pushed alone. Its message: "circuit v0.1.0 — an HTTP layer in the
+  manner of Ring, for R6RS Scheme", then a paragraph from `[0.1.0]`'s intro. The tag's
+  day is `[0.1.0]`'s date;
+- **the GitHub Release:** that title, from the tag with `--verify-tag`, not a draft or a
+  prerelease, and the repository's latest. Its notes are `[0.1.0]` as the tag holds it,
+  intro to last bullet; the published body is those notes, byte for byte;
+- **a fresh clone of the tag**, as README.org says: `git clone --branch v0.1.0` from
+  GitHub (HEAD bf38a4b), `make submodules`, `make check-pins`, and in its own Guix
+  container `make test`, 15 suites, 783 rows, and `make check-help`;
+- **GitHub's source tarball** for the tag: 286 entries, `vendor/`'s two directories
+  empty, and neither `.plans/` nor `AGENTS.md`;
+- **no agents ran.**
 
 ### 2026-10-29: a 504's logged ms, at least 998, in PR #15
 
