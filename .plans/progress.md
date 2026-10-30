@@ -216,7 +216,8 @@ and 403, 80 and 400, G5 382 and 338, 380 and 340, G7 308 and 304, G8 532 on both
 - **the allowlist** takes `print-record` and `parameterize`, which R6RS lacks: ADR-0006
   amended, the global constraints and the design's §6 passage with it. The owner was told
   of `print-record` before the pin; `parameterize` came with it, as `(rnrs)` exports none
-  (probed), so the amendment awaits the owner's review on this PR. The audit's suite was watched
+  (probed). The owner accepted both on this PR, over setting and restoring `print-record`
+  by `dynamic-wind`, which would take one name but no longer be the server's code. The audit's suite was watched
   failing first (5 rows), then passing (57); its fixtures take both names, bare and under
   `prefix` and `rename`, and refuse `print-graph`, `print-level` and `fluid-let` beside
   them;

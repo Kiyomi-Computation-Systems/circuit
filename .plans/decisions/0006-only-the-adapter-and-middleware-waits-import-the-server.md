@@ -16,8 +16,8 @@
   (item 4; the slice 6 design §6 and §7 item 4, design §15.16, the owner's decision);
   2026-10-30, with the pins at chez-http-server v0.10.0 and chez-websocket v0.5.1: it
   takes `print-record` and `parameterize` too, which show a record inside the catch
-  helper's line by its type alone, as the server's log now does (proposed in PR #22,
-  for the owner's review)
+  helper's line by its type alone, as the server's log now does (PR #22; the owner's
+  decision, 2026-10-30, over setting and restoring `print-record` by `dynamic-wind`)
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
