@@ -189,11 +189,17 @@ none of its raises was one v0.10.0 changed (reproduced: with them added it fails
 v0.10.0). That went to chez-websocket as #105 and #106, fixed in its #107 and released as
 v0.5.1 (4b70f22), whose server gitlink is 5c16f64. Commits on
 `pins/server-0.10.0-websocket-0.5.1`: the pins, the code, the rows and the docs (1fb2436),
-then the records with this close-out. `make test` passes 16 suites, 954 rows;
+the records with this close-out (79bde28), and its CI run named here. `make test` passes
+16 suites, 954 rows;
 `make check-site` and `make gate` pass, and `make check-pins` on the host. The gate's
 worst figures: G1 1,442, G2 1,437, G3 306 a GET and 277 a POST, G4 81 and 406, G5 385 and
 350 with a park, G7 308, G8 533, G8 own 293, G8 on-done 248, G9 606 and 596 with a park,
-G10 87, 165 and 4: none moved from v0.9.1's.
+G10 87, 165 and 4: none moved from v0.9.1's. CI passed on the PR (run 41115454175,
+4m02s), on amd64 and arm64: 16 suites, 953 rows and the curl row skipped, beside the
+site's 78; the gate's worst figures, amd64 then arm64, G3 307 and 275, 307 and 273, G4 81
+and 403, 80 and 400, G5 382 and 338, 380 and 340, G7 308 and 304, G8 532 on both, G8 own
+292 on both, G8 on-done 243 and 240, G9 609 and 593, 609 and 604, G10 83, 164 and 0, 84,
+164 and 3.
 
 - **the trial first:** circuit's `main` on the new server, before any change, failed 3 of
   16 suites, and only where expected: the adapter suite's five rows on a body past a cap,
