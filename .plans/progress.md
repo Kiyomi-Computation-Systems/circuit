@@ -181,7 +181,7 @@ close-out under **Close-outs**, newest first.
 ### 2026-10-30: v0.1.2 tagged, released and published, recorded in PR #25
 
 On the owner's "Ritual, then the whole chain" for v0.1.2. This PR holds this close-out
-alone, and its CI run named here.
+alone; CI passed on it (run 41126419813).
 
 - **CI on the tagged commit:** main's run on 12f5944, #24's squash, 41125275154, passed on
   amd64, arm64 and the site job, every job completed;
