@@ -37,8 +37,9 @@
 ;;;
 ;;; Arguments, after the program: [SEED [MULTIPLIER]]. make test gives
 ;;; none, so the seed and the case counts are the fixed ones. Each case's
-;;; random state comes from the seed and its index alone, through a linear
-;;; congruential sequence, so a seed means the same everywhere.
+;;; random state comes from the seed and its index alone, mixed by murmur3's
+;;; finalizer, then drawn on through a linear congruential sequence, so a
+;;; seed means the same everywhere.
 (import (rnrs)
         (srfi :64)
         (circuit-testing)
@@ -128,18 +129,39 @@
     ((_ (((a b) e) more ...) body0 body ...)
      (let* ((pr e) (a (car pr)) (b (cdr pr))) (let-pair* (more ...) body0 body ...)))))
 
+;; mix : Nat -> Nat
+;; murmur3's 32-bit finalizer, taken modulo 2^31: each bit of X moves about
+;; half the bits of the answer.
+(define (mix x)
+  (let* ((x (mod x 4294967296))
+         (x (bitwise-xor x (bitwise-arithmetic-shift-right x 16)))
+         (x (mod (* x #x85ebca6b) 4294967296))
+         (x (bitwise-xor x (bitwise-arithmetic-shift-right x 13)))
+         (x (mod (* x #xc2b2ae35) 4294967296))
+         (x (bitwise-xor x (bitwise-arithmetic-shift-right x 16))))
+    (mod x 2147483648)))
+
 ;; case-state : Nat Nat -> Nat
-;; Property PROP's case INDEX's first state, from the seed alone.
+;; Property PROP's case INDEX's first state, from the seed alone. Mixed, not
+;; affine in the index: an affine start, through the affine sequence, put
+;; the first draws of neighbouring cases on a line, and a third of them
+;; drew alike.
 (define (case-state prop index)
-  (let loop ((x (mod (+ (* seed 7919) (* prop 1000003) (* index 104729) 12345) 2147483648)) (k 3))
-    (if (= k 0) x (loop (next-random x) (- k 1)))))
+  (mix (+ (mix (+ (mix seed) prop)) index)))
 
 ;; g-int : Nat -> Gen Nat
-;; A whole number in [0, n), n at most 32768: the state's bits 16 to 30.
+;; A whole number in [0, n), n at most 32768, each equally likely: the
+;; state's bits 16 to 30, drawn again while they are at or above the largest
+;; multiple of n not above 32768. Taken modulo n as they are, the lowest
+;; 32768 mod n values would each come once more.
 (define (g-int n)
-  (lambda (s)
-    (let ((s (next-random s)))
-      (cons (mod (div s 65536) n) s))))
+  (let ((limit (* n (div 32768 n))))
+    (lambda (s)
+      (let retry ((s (next-random s)))
+        (let ((bits (div s 65536)))
+          (if (< bits limit)
+              (cons (mod bits n) s)
+              (retry (next-random s))))))))
 
 ;; g-range : Nat Nat -> Gen Nat
 ;; A whole number in [lo, hi].
@@ -1634,6 +1656,33 @@
 
 (test-equal "the arguments are a seed and a multiplier, whole numbers, or none"
   #t (and parsed-arguments #t))
+
+;; first-draws : Nat Nat -> (Listof Nat)
+;; Property PROP's cases 0 to N - 1, each case's first draw of (g-int 100).
+(define (first-draws prop n)
+  (map (lambda (i) (car ((g-int 100) (case-state prop i)))) (iota n)))
+
+;; same-neighbours : (Listof Nat) -> Nat — how many neighbours in XS are equal.
+(define (same-neighbours xs)
+  (let loop ((xs xs) (k 0))
+    (if (or (null? xs) (null? (cdr xs)))
+        k
+        (loop (cdr xs) (if (= (car xs) (cadr xs)) (+ k 1) k)))))
+
+(test-equal "the generators: neighbouring cases start apart: of each property's first 4,000 cases, 10 to 90 of the 3,999 neighbouring pairs draw the same first (g-int 100), where chance is about 40"
+  '()
+  (filter-map (lambda (prop)
+                (let ((k (same-neighbours (first-draws prop 4000))))
+                  (and (not (<= 10 k 90)) (list prop k))))
+              '(1 2 3 4 5 6 7)))
+
+(test-equal "the generators: g-int is uniform where n doesn't divide 32,768: of 32,768 draws of (g-int 20000) from one state, 62% to 66% are below 12,768, where a uniform draw gives 63.8% and the 15 bits taken modulo n 77.9%"
+  '()
+  (let loop ((i 0) (below 0) (s 20261030))
+    (if (= i 32768)
+        (if (<= 20316 below 21627) '() (list below))
+        (draw* s ((x (g-int 20000)))
+          (loop (+ i 1) (if (< x 12768) (+ below 1) below) s)))))
 
 (sanity-row "sanity: §5's example app: a parameter, a group's middleware, a mount, HEAD by GET"
   example-app
