@@ -130,7 +130,9 @@ close-out under **Close-outs**, newest first.
 ### 2026-10-29: v0.1.0, the first release, in PR #14
 
 On the owner's "Do v0.1.0". Commits on `release/v0.1.0`: the release (421e40a), this
-close-out, and its CI run named here. No code or suite changed.
+close-out, and its CI run named here. No code or suite changed. `make test` passes 15
+suites, 783 rows. CI passed on the PR (run 40982073168): amd64 in 3m48s and arm64 in
+4m06s, its Chez restored from `main`'s cache, each 782 rows and the curl row skipped.
 
 - **CHANGELOG.md:** Unreleased, kept since slice 1 as a log in slice order, becomes
   `[0.1.0] - 2026-10-29` in the siblings' first-release form: an intro (a Ring-like
