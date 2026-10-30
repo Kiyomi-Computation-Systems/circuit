@@ -56,8 +56,11 @@ close-out under **Close-outs**, newest first.
 - **CI runs on arm64 as well as amd64**, squashed from
   [PR #13](https://github.com/Kiyomi-Computation-Systems/circuit/pull/13) on 2026-10-29;
   its close-out is below. It holds the cost gate on both.
+- **v0.1.0, the first release, is merged**, squashed from
+  [PR #14](https://github.com/Kiyomi-Computation-Systems/circuit/pull/14) on 2026-10-29;
+  its close-out is below. The signed tag and the GitHub Release follow the merge.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call:
-  the open items below, and a first release.
+  the open items below.
 
 ## Open
 
@@ -123,6 +126,27 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-29: v0.1.0, the first release, in PR #14
+
+On the owner's "Do v0.1.0". Commits on `release/v0.1.0`: the release (421e40a), this
+close-out, and its CI run named here. No code or suite changed.
+
+- **CHANGELOG.md:** Unreleased, kept since slice 1 as a log in slice order, becomes
+  `[0.1.0] - 2026-10-29` in the siblings' first-release form: an intro (a Ring-like
+  layer for R6RS; the core plain R6RS; the server's v0.9.1 and chez-websocket's v0.4.1,
+  pinned; the API may change before 1.0), then what each library does as it stands.
+  Entries such as "`same?` is gone" spoke of states no release had. Every name in a code
+  span was checked against the six public libraries' exports, 105 names read by
+  `library-exports`; the rest by hand: the server's `handler-failed`, the variables, the
+  forms and the make targets. A fresh empty Unreleased, and the links;
+- **README.org:** Status names v0.1.0 and the API's terms before 1.0. Build and test says
+  to clone the tag: a release's source archive leaves `vendor/` empty (checked:
+  `git archive` holds `vendor/`'s two directories and nothing in them, and neither
+  `.plans/` nor `AGENTS.md`, which `.gitattributes` leaves out);
+- **the version:** 0.1.0, the owner's. No other file names one: circuit has no Akku
+  manifest while the server isn't on the index (ADR-0003);
+- **no agents ran.**
 
 ### 2026-10-29: CI on arm64, in PR #13
 
