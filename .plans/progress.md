@@ -175,7 +175,8 @@ close-out under **Close-outs**, newest first.
 
 ### 2026-10-30: v0.1.1 tagged, released and published, recorded in PR #20
 
-On the owner's "Run the whole chain" for v0.1.1. This PR holds this close-out alone.
+On the owner's "Run the whole chain" for v0.1.1. This PR holds this close-out alone; CI
+passed on it (run 41057528711).
 
 - **CI on the tagged commit:** main's run on 55ca6df, #19's squash, 41056456599, passed on
   amd64, arm64 and the site job;
