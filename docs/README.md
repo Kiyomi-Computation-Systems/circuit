@@ -78,3 +78,16 @@ the [changelog](../CHANGELOG.md) says what each release has.
   own program.
 - [Quickstart](quickstart.md): a first app, step by step: the request, a
   router, middleware and a body.
+- [Requests and responses](requests.md): what a request holds, and how to
+  make a response.
+- [Bodies and streaming](bodies.md): reading a body, capping it, and
+  sending one as it is made.
+- [Middleware](middleware.md): writing one, and the catch, timeout and log
+  that come with circuit.
+- [Routing](routing.md): routes, groups and mounts.
+- [Waiting](waiting.md): sleeping, deadlines, and waiting for another
+  request.
+- [Upgrades and WebSockets](upgrades.md): taking a connection over.
+- [Testing handlers](testing.md): calling a handler with no server.
+- [Configuration](configuration.md): the environment variables.
+- [API reference](reference.md): every name, with its signature.

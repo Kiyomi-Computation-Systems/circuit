@@ -42,7 +42,8 @@
   `SERVER_PIN`, each pin it carries where the server records it, and
   chez-websocket at `WEBSOCKET_PIN` with its server gitlink at `SERVER_PIN`,
   and refuses a checkout with local edits. Move a gitlink and its pin
-  (`SERVER_PIN` or `WEBSOCKET_PIN`) on one commit.
+  (`SERVER_PIN` or `WEBSOCKET_PIN`) on one commit, with the docs' links into
+  that repository: `tests/test-reference.sps` holds them at the pin's tag.
 * chez-http-server isn't on the Akku index, so Akku can't install it for
   circuit: the submodule is the only way in.
 * chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
@@ -65,7 +66,9 @@
 * `/docs` is for user facing documentation only. `make site` renders it to
   `build/site/`, and the Pages workflow publishes it on a release tag.
   `make check-site` gates it: every page is in `site/pages.sls`, in the
-  home page's Read next order.
+  home page's Read next order. `tests/test-reference.sps` holds
+  `docs/reference.md` to every export of the six public libraries and its
+  signature comment: a new export needs an entry.
 * Documentation should be very concise, focused, to the point, ELI5 style.
 * `Makefile` should have a `help` command which lists all of its commands
 * Libraries are R6RS `.sls`; libraries and programs contain their own code —

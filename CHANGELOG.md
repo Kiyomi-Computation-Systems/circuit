@@ -12,7 +12,18 @@ release before 1.0.
 - **A docs site.** `docs/` is Markdown for developers, and `make site` renders it into
   `build/site/` through chez-cmark-gfm, as chez-http-server and chez-websocket render
   theirs. `make check-site` gates it in CI, and the Pages workflow publishes it on each
-  release tag. The first pages are Home, Installing and Quickstart.
+  release tag. Its pages: Home, Installing, Quickstart, Requests and responses, Bodies
+  and streaming, Middleware, Routing, Waiting, Upgrades and WebSockets, Testing handlers,
+  Configuration, and an API reference.
+- **The API reference is held to the code.** `tests/test-reference.sps`, in `make test`,
+  fails unless `docs/reference.md` has an entry for each export of the six public
+  libraries and no other, each with its signature as the source comments give it. It
+  also fails on a link to chez-http-server's or chez-websocket's repository at any ref but
+  the pinned tag.
+
+### Changed
+
+- **README.org is shorter.** Its guide sections moved to `docs/`, and it points there.
 
 ## [0.1.0] - 2026-10-29
 

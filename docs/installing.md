@@ -48,18 +48,8 @@ It has no network and no git, so run `make submodules` on the host first.
 
 ## The pinned dependencies
 
-Two git submodules under `vendor/`, each pinned at a release tag:
-
-- **chez-http-server v0.9.1**, the server. It carries its own pins:
-  chez-libuv, chez-httparse, uriparse, and chez-srfi for the tests.
-- **chez-websocket v0.4.1**, for `(circuit websocket)`.
-
-To check every checkout sits at its pin:
-
-```sh
-make check-pins
-```
-
+chez-http-server v0.9.1 and chez-websocket v0.4.1 are git submodules under
+`vendor/`, pinned at their release tags, and `make check-pins` checks them.
 Neither is on the Akku package index yet, so Akku can't install circuit:
 the checkout is the way in.
 
@@ -74,7 +64,9 @@ path, then runs the program. Yours can live anywhere:
 `make run PROGRAM=/path/to/app.sps`. In the Guix container it must be under
 the checkout, as the container sees nothing else.
 
-`make dev` starts a REPL with the same library path.
+`make dev` starts a REPL with the same library path. To run a program
+without make, in a service or a container, `make run` prints the command
+it runs: run that from the checkout.
 
 Each file under `examples/` is one small server, and
 [examples/README.md](../examples/README.md) says what each one shows.
