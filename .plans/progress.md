@@ -191,7 +191,9 @@ close-out, and its CI run named here.
   cmark-gfm assertions against fake libraries. Swapping the two paths fails only the
   variable's assertion: Guix's RUNPATH lets the extensions library load first;
 - `make check-guix` passes: the launcher test's 73 rows, and in the container every
-  assertion, `make test` with 15 suites among them;
+  assertion, `make test` with 15 suites among them. CI passed on the PR (run 41041967931):
+  amd64 in 2m24s and arm64 in 3m53s, each rendering and checking the site, and the site
+  job on apt's Chez in 29s;
 - **no agents ran.**
 
 ### 2026-10-29: v0.1.0 tagged and released, recorded in PR #16
