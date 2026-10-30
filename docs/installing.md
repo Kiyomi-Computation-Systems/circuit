@@ -32,7 +32,7 @@ make test
 
 `make help` lists every other target.
 
-To build a release, clone its tag: `git clone --branch v0.1.1` and the URL
+To build a release, clone its tag: `git clone --branch v0.1.2` and the URL
 above. A release's source download leaves `vendor/` empty, as every git
 archive leaves out submodules.
 
