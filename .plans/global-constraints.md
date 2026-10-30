@@ -8,7 +8,8 @@ provisional. They bind until that record is accepted or amended.
 ## Platforms and versions
 
 - **Platforms:** Linux and macOS, on amd64 and arm64. No Windows code paths or CI
-  (ADR-0001). CI runs on Linux only (AGENTS.md).
+  (ADR-0001). CI runs on Linux only (AGENTS.md), on amd64 and arm64, and holds the cost
+  gate on both (ADR-0007).
 - **Chez:** 10.4.1 or later, threaded: chez-http-server's floor (ADR-0002).
 - **libuv:** 1.48.0 or later, which pkg-config can see, and a C compiler, for chez-libuv's
   shim (ADR-0002).

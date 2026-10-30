@@ -9,7 +9,8 @@
   bounds at slice 5's review, 2026-10-27; 2026-10-27, in slice 6b: G10, the router's own
   work, is held (the owner's decision, design §15 item 24); 2026-10-29: on the server's
   v0.9.1, which fixes #245, G8 and G8 on-done read about 620 B less at 1 connection and
-  300 B less at 50, and no held gate moves
+  300 B less at 50, and no held gate moves; 2026-10-29: CI holds the gate on Linux arm64
+  too, where its first run read every gate within 12 B of amd64's
 - **Scope:** the bounds `make gate` holds and prints, and what they are measured on
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §4, §13, §15 item 6
 
