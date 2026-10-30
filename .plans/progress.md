@@ -91,9 +91,11 @@ close-out under **Close-outs**, newest first.
 - **v0.1.2, the pins at the server's v0.10.0 and chez-websocket's v0.5.1, is merged**,
   squashed from [PR #24](https://github.com/Kiyomi-Computation-Systems/circuit/pull/24)
   on 2026-10-30; its close-out is below.
-- **Next:** v0.1.2's tag on #24's squash once `main`'s CI passes there, its GitHub
-  Release, the site's deploy, and a ledger PR recording them. The design plans no slice
-  past 8 (§17); what follows is the owner's call: the open items below.
+- **v0.1.2 is tagged and released** on 12f5944, #24's squash, and its site is live,
+  recorded in [PR #25](https://github.com/Kiyomi-Computation-Systems/circuit/pull/25) on
+  2026-10-30; its close-out is below.
+- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
+  open items below.
 
 ## Open
 
@@ -175,6 +177,35 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: v0.1.2 tagged, released and published, recorded in PR #25
+
+On the owner's "Ritual, then the whole chain" for v0.1.2. This PR holds this close-out
+alone; CI passed on it (run 41126419813).
+
+- **CI on the tagged commit:** main's run on 12f5944, #24's squash, 41125275154, passed on
+  amd64, arm64 and the site job, every job completed;
+- **the tag:** `v0.1.2` (tag object 5770fab) on 12f5944, annotated and signed with the
+  Kiyomi release key (`git tag -v`: a good signature), pushed alone. Its message:
+  "circuit v0.1.2 — the server's v0.10.0 and chez-websocket's v0.5.1", then a paragraph
+  from `[0.1.2]`'s intro;
+- **the site:** the tag's push ran the Pages workflow (41125981606): its build in 23s and
+  its deploy in 11s. Live, each of the 12 pages answers 200; links to circuit's files
+  name `blob/v0.1.2/` (11), to the server's `blob/v0.10.0/` (31) and to chez-websocket's
+  `blob/v0.5.1/` (3); the home page says v0.1.2, Installing clones `--branch v0.1.2`, and
+  Middleware shows `request-refused 400 invalid-host 127.0.0.1`;
+- **the GitHub Release:** that title, from the tag with `--verify-tag`, not a draft or a
+  prerelease, and the repository's latest (`releases/latest` answers v0.1.2). Its notes
+  are `[0.1.2]` as the tag holds it, intro to last bullet, 1,799 bytes, and the published
+  body is those notes, byte for byte. The recipe first rebuilt v0.1.1's published notes,
+  1,472 bytes, byte for byte;
+- **a fresh clone of the tag**, as Installing says: `git clone --branch v0.1.2` from
+  GitHub (HEAD 12f5944), `make submodules`, `make check-pins`, `make site-deps`, and in its
+  own Guix container `make test`, 16 suites, `make check-site` and `make check-help`;
+- **GitHub's source tarball** for the tag: 320 entries, `vendor/`'s two directories
+  empty, neither `.plans/` nor `AGENTS.md`, the 12 docs pages and the generator in it,
+  and `Akku.manifest` naming 0.1.2;
+- **no agents ran.**
 
 ### 2026-10-30: v0.1.2, the pins at the server's v0.10.0 and chez-websocket's v0.5.1, in PR #24
 
