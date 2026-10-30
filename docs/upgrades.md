@@ -68,7 +68,7 @@ hi
   keep them quick. A raise in one is logged `taker-failed`, and the stream
   closed.
 - The server's
-  [Upgrades](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/upgrades.md)
+  [Upgrades](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.10.0/docs/upgrades.md)
   page has the rules for reads, writes, closing and shutdown.
 
 ## Wait inside a take-over
@@ -176,7 +176,7 @@ Content-Length: 0
   Let it out of `proc`, and the connection ends quietly.
 - `(websocket)` is chez-websocket's library: import it beside
   `(circuit websocket)` for the rest, such as `websocket-close!`. See its
-  [Handlers](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.4.1/docs/handlers.md).
+  [Handlers](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.5.1/docs/handlers.md).
 - curl 8.11 or later speaks WebSocket. It sends what it reads as one binary
   message, prints what comes back, and waits until `--max-time`. To type
   messages yourself, use [websocat](https://github.com/vi/websocat):

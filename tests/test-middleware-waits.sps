@@ -486,15 +486,18 @@
              (guard (e (#t e)) (car (car (list 5))))
              (make-warning))))
 
-(test-equal "the default line: a condition's line breaks made spaces, and nothing else changed"
+(test-equal "the default line: a condition's control characters made spaces, a carriage return, a line feed, an escape and a delete among them, and nothing else changed"
   (list "handler-failed Exception in app: two lines\n"
-        "handler-failed Exception in app: one\r two with irritant \"x\\ny\"\n")
+        "handler-failed Exception in app: one  two with irritant \"x\\ny\"\n"
+        "handler-failed Exception in app: an escape and a delete\n")
   (map (lambda (x) (cadr (default-line x)))
        (list (condition (make-who-condition 'app) (make-message-condition "two\nlines"))
              (condition (make-who-condition 'app) (make-message-condition "one\r\ntwo")
-                        (make-irritants-condition '("x\ny"))))))
+                        (make-irritants-condition '("x\ny")))
+             (condition (make-who-condition 'app)
+                        (make-message-condition "an\x1B;escape and a\x7F;delete")))))
 
-(test-equal "the default line: a string, a symbol, a number, a boolean and a character displayed"
+(test-equal "the default line: a string, a symbol, a number, a boolean and a character displayed, a control character in one made a space"
   (list "handler-failed a \"quoted\" string\n"
         "handler-failed oops\n"
         "handler-failed two words\n"
@@ -502,14 +505,28 @@
         "handler-failed 3/4\n"
         "handler-failed 1.5\n"
         "handler-failed #f\n"
-        "handler-failed x\n")
+        "handler-failed x\n"
+        "handler-failed two lines\n"
+        "handler-failed one  two\n"
+        "handler-failed two lines\n"
+        "handler-failed  \n")
   (map (lambda (x) (cadr (default-line x)))
-       (list "a \"quoted\" string" 'oops (string->symbol "two words") 42 3/4 1.5 #f #\x)))
+       (list "a \"quoted\" string" 'oops (string->symbol "two words") 42 3/4 1.5 #f #\x
+             "two\nlines" "one\r\ntwo" (string->symbol "two\nlines") #\newline)))
 
 (test-equal "the default line: a record as #< its record type's name >, an opaque one written"
   (list "handler-failed #<point>\n" "handler-failed #<secret>\n")
   (map (lambda (x) (cadr (default-line x)))
        (list (make-point 1 "two") (make-secret 3))))
+
+(test-equal "the default line: a record inside a condition, a list or a vector shown by its type alone, not its fields"
+  (list "handler-failed Exception in app: a point with irritant #<record of type point>\n"
+        "handler-failed (1 #<record of type point>)\n"
+        "handler-failed #(#<record of type point>)\n")
+  (map (lambda (x) (cadr (default-line x)))
+       (list (guard (e (#t e)) (error 'app "a point" (make-point 1 "two")))
+             (list 1 (make-point 2 3))
+             (vector (make-point 4 5)))))
 
 (test-equal "the default line: anything else written"
   (list "handler-failed (1 \"a\" #\\b)\n"
@@ -593,12 +610,13 @@
 
 ;; Raises of every kind put-detail tells apart, and its edges: conditions
 ;; with line breaks in their text, and with the other breaks Unicode names
-;; (a vertical tab, a form feed, NEL, LINE SEPARATOR), which stay as they
-;; are, only a line feed made a space; Chez's own records (an rtd, a
-;; hashtable), an opaque record, a procedure, the eof object; a string and a
-;; character holding a line feed, which the server displays as it is, so
-;; its line is two, and the other break characters, displayed too. Not the
-;; three conditions wrap-catch hands no on-raise.
+;; (a vertical tab and a form feed, control characters made spaces, and
+;; NEL and LINE SEPARATOR, which stay as they are); Chez's own records (an
+;; rtd, a hashtable), an opaque record, a procedure, the eof object; a
+;; string, a symbol and a character holding a line feed, and an escape and
+;; a delete, each made a space; a record inside a condition, a list and a
+;; vector, shown by its type alone. Not the three conditions wrap-catch
+;; hands no on-raise.
 (define raises
   (list (an-error)
         (condition (make-who-condition 'app) (make-message-condition "one\r\ntwo\nthree")
@@ -607,13 +625,16 @@
         (guard (e (#t e)) (error 'app "with\nbreaks" 1 "two"))
         (condition (make-who-condition 'app)
                    (make-message-condition "vt\x0B;ff\x0C;nel\x85;ls\x2028;end"))
+        (guard (e (#t e)) (error 'app "a point" (make-point 1 "two")))
         (make-resolve-error 'EAI_NONAME)
         (make-warning) (condition)
-        "a \"quoted\"\nstring" 'oops (string->symbol "two words") 42 -7 3/4 1.5 +inf.0
-        #t #f #\x #\newline #\x0B #\x85 #\x2028
+        "a \"quoted\"\nstring" "an\x1B;escape and a\x7F;delete" 'oops (string->symbol "two words")
+        (string->symbol "two\nlines") 42 -7 3/4 1.5 +inf.0
+        #t #f #\x #\newline #\x0B #\x1B #\x85 #\x2028
         (make-point 1 "two") (make-secret 3) (record-type-descriptor point)
         (make-eq-hashtable)
-        (list 1 "a" #\b) (vector 1 "a") (b "hi") (eof-object) car (lambda () 1) '()))
+        (list 1 "a" #\b) (list (make-point 1 2)) (vector (make-point 3 4))
+        (vector 1 "a") (b "hi") (eof-object) car (lambda () 1) '()))
 
 (test-equal "the default line is the line the server's log-line writes for the same raise, for a raise of each kind"
   (map (lambda (x) (server-line 'handler-failed (list x))) raises)

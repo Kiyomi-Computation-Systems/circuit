@@ -97,7 +97,7 @@
   "but an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme) through only, and the (http-server ...) libraries except (http-server private ...)")
 
 (define chez-tail
-  "but an impure library imports (chezscheme) only through only, right around it, naming getenv, port-has-port-length?, port-length, real-time, display-condition alone: anything wider gives its body import and eval, which reach any library")
+  "but an impure library imports (chezscheme) only through only, right around it, naming getenv, port-has-port-length?, port-length, real-time, display-condition, print-record, parameterize alone: anything wider gives its body import and eval, which reach any library")
 
 (define edge-tail
   "but only an impure library, (circuit http-server) or (circuit middleware waits), may import (chezscheme) or an (http-server ...) library")
@@ -177,7 +177,7 @@
          "a legal tree: core libraries and both impure ones; every wrapper over an (rnrs ...) import, nested; a version reference; getenv from (chezscheme) through only, and the (http-server ...) libraries but the private ones, in an impure library; a comment and a string that say what a library must not do; every file headed #!r6rs"
          (ok 6))
    (list "impure-chezscheme"
-         "rule (d): an impure library takes from (chezscheme) only getenv, port-has-port-length?, port-length, real-time and display-condition, through only right around it: bare, eval, getenv with import, call/1cc, except, prefix, rename, for, library, only around for, and only around a wider only are named; prefix, rename and for around the narrow only, only around (library (chezscheme)), and a version reference are not"
+         "rule (d): an impure library takes from (chezscheme) only getenv, port-has-port-length?, port-length, real-time, display-condition, print-record and parameterize, through only right around it: bare, eval, getenv with import, call/1cc, except, prefix, rename, for, library, only around for, and only around a wider only are named; prefix, rename and for around the narrow only, only around (library (chezscheme)), and a version reference are not"
          (apply refused
                 (map (lambda (i)
                        (imports "impure-chezscheme" "circuit/http-server.sls" "(circuit http-server)"
@@ -194,15 +194,15 @@
                                 "(circuit http-server)" "(chezscheme)" chez-tail))
                      (iota 4))))
    (list "impure-real-time"
-         "rule (d): both impure libraries take real-time and display-condition from (chezscheme), with the other allowed names and without, through only right around it, bare and under prefix and rename"
+         "rule (d): both impure libraries take real-time, display-condition, print-record and parameterize from (chezscheme), with the other allowed names and without, through only right around it, bare and under prefix and rename"
          (ok 2))
    (list "impure-real-time-wider"
-         "rule (d): an only beside real-time and display-condition still refuses a name off the list: current-time and cpu-time, which read clocks, condition-message, condition-continuation and display-statistics, which read or show a condition or the system, and interpret, which evaluates, are each named"
+         "rule (d): an only beside real-time, display-condition, print-record and parameterize still refuses a name off the list: current-time and cpu-time, which read clocks, condition-message, condition-continuation and display-statistics, which read or show a condition or the system, interpret, which evaluates, print-graph and print-level, the printer's other parameters, and fluid-let, which rebinds as parameterize does, are each named"
          (apply refused
                 (map (lambda (i)
                        (imports "impure-real-time-wider" "circuit/middleware/waits.sls"
                                 "(circuit middleware waits)" "(chezscheme)" chez-tail))
-                     (iota 6))))
+                     (iota 9))))
    (list "case-mismatch"
          "rule (a): a library's path matches its name letter for letter: (circuit request) in circuit/Request.sls is at the wrong path"
          (refused (misplaced "case-mismatch" "circuit/Request.sls" "(circuit request)"
@@ -569,7 +569,8 @@
 ;; in order, and the allowlist's are not. The complaint names the library,
 ;; not the name, so the count of complaints is what holds each refused: a
 ;; failure answers how many there were, and any line that differs.
-(define chez-allowed '(getenv port-has-port-length? port-length real-time display-condition))
+(define chez-allowed '(getenv port-has-port-length? port-length real-time display-condition
+                       print-record parameterize))
 
 (test-equal "rule (d): every name (chezscheme) exports but the allowlist's is refused through an only of its own; the allowlist's, beside them, are not"
   'refused-each

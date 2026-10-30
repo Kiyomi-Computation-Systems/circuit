@@ -62,8 +62,8 @@ provisional. They bind until that record is accepted or amended.
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`
   may import the server's libraries, never `(http-server private ...)`, and they take from
   `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's
-  allowlist, `getenv`, `port-has-port-length?`, `port-length`, `real-time` and
-  `display-condition` today. Every file under
+  allowlist, `getenv`, `port-has-port-length?`, `port-length`, `real-time`,
+  `display-condition`, `print-record` and `parameterize` today. Every file under
   `src/` begins with the line `#!r6rs` and holds `#!` nowhere else. `make check-imports`
   holds it, and `make test` runs it once `src/` exists (ADR-0006).
 - **Only `(circuit websocket)` may import `(websocket)`, chez-websocket's facade**, which

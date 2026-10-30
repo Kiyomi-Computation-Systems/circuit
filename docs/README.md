@@ -62,7 +62,7 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 
 - **No TLS, no HTTP/2.** The server speaks HTTP/1.1 over plain TCP. For
   `https://`, put a proxy such as Caddy or nginx in front (the server's
-  [Deploying](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/deploying.md)).
+  [Deploying](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.10.0/docs/deploying.md)).
 - **No framework.** There are no templates, sessions or database layer.
   Write what you need as middleware.
 - **No Windows.** Linux and macOS, on x86-64 and arm64.

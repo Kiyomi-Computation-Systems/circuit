@@ -13,7 +13,11 @@
   line (design §6, §7, §15 item 13, the owner's decision; both names accepted at slice
   5's review, 2026-10-27); 2026-10-28, in slice 6c: a third library, `(circuit
   websocket)`, may import chez-websocket's facade, `(websocket)`, which imports the server
-  (item 4; the slice 6 design §6 and §7 item 4, design §15.16, the owner's decision)
+  (item 4; the slice 6 design §6 and §7 item 4, design §15.16, the owner's decision);
+  2026-10-30, with the pins at chez-http-server v0.10.0 and chez-websocket v0.5.1: it
+  takes `print-record` and `parameterize` too, which show a record inside the catch
+  helper's line by its type alone, as the server's log now does (PR #22; the owner's
+  decision, 2026-10-30, over setting and restoring `print-record` by `dynamic-wind`)
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
@@ -47,7 +51,8 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
    import the server's libraries, but none of
    `(http-server private ...)`, **and take from `(chezscheme)` only through
    `(only (chezscheme) name ...)`, each name on the audit's allowlist**: `getenv`,
-   `port-has-port-length?`, `port-length`, `real-time` and `display-condition` today. A
+   `port-has-port-length?`, `port-length`, `real-time`, `display-condition`,
+   `print-record` and `parameterize` today. A
    bare `(chezscheme)` would give a
    library's body `import`, `eval` and `load`, which reach any library, the private ones
    included, whatever its header says.
@@ -94,3 +99,11 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
   `display-condition` shows a condition as the server's own log does. Neither can import,
   evaluate or load. Weighed for the clock: an ask for the server to export its loop's clock
   (design §15 item 13).
+- **The allowlist took `print-record` and `parameterize` with the server's v0.10.0**, whose
+  log shows a record inside a detail by its type alone, `#<record of type point>`, under
+  `(parameterize ((print-record #f)) ...)`: the catch helper's line is the server's for the
+  same raise, and `tests/test-middleware-waits.sps` holds the two equal. R6RS has neither
+  name. `print-record` is a parameter of Chez's printer and `parameterize` rebinds one for
+  a dynamic extent; neither can import, evaluate or load. `tests/test-check-imports.sps`
+  holds a fixture that takes both, which passes, and one that takes `print-graph`,
+  `print-level` and `fluid-let` beside them, each refused.

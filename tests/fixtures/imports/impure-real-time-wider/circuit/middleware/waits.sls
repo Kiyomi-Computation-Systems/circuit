@@ -7,4 +7,7 @@
           (only (chezscheme) display-condition condition-message)
           (only (chezscheme) display-condition condition-continuation)
           (only (chezscheme) real-time display-statistics)
-          (only (chezscheme) real-time display-condition interpret)))
+          (only (chezscheme) real-time display-condition interpret)
+          (only (chezscheme) print-record print-graph)
+          (only (chezscheme) print-record parameterize print-level)
+          (only (chezscheme) parameterize fluid-let)))

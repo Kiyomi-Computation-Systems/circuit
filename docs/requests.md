@@ -59,7 +59,7 @@ local   ("127.0.0.1" 8080)
   changes it. `req-host` is `""` when the request names no host.
 - The addresses are the connection's two ends, or `#f` where it can't say.
   Behind a proxy, the remote end is the proxy (the server's
-  [Deploying](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/deploying.md#behind-a-proxy)).
+  [Deploying](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.10.0/docs/deploying.md#behind-a-proxy)).
 
 ## Keep values on a request
 

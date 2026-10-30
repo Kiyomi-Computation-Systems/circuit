@@ -48,7 +48,7 @@ It has no network and no git, so run `make submodules` on the host first.
 
 ## The pinned dependencies
 
-chez-http-server v0.9.1 and chez-websocket v0.4.1 are git submodules under
+chez-http-server v0.10.0 and chez-websocket v0.5.1 are git submodules under
 `vendor/`, pinned at their release tags, and `make check-pins` checks them.
 Neither is on the Akku package index yet, so Akku can't install circuit:
 the checkout is the way in.

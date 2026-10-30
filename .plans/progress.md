@@ -80,8 +80,13 @@ close-out under **Close-outs**, newest first.
   [kiyomi-computation-systems.github.io/circuit](https://kiyomi-computation-systems.github.io/circuit/),
   recorded in [PR #20](https://github.com/Kiyomi-Computation-Systems/circuit/pull/20) on
   2026-10-30; its close-out is below.
-- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
-  open items below.
+- **The pins are at the server's v0.10.0 and chez-websocket's v0.5.1**, squashed from
+  [PR #22](https://github.com/Kiyomi-Computation-Systems/circuit/pull/22) on 2026-10-30;
+  its close-out is below. The server logs a request it refuses itself, and every log line,
+  `wrap-catch`'s default line among them, stays one line with a record inside it short:
+  the server's #249, #250 and #251, and chez-websocket's #105 and #106, filed from here.
+- **Next:** v0.1.2, when the owner asks. The design plans no slice past 8 (§17); what
+  follows is the owner's call: the open items below.
 
 ## Open
 
@@ -96,8 +101,9 @@ close-out under **Close-outs**, newest first.
 - **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
   2026-10-26, with the docs fix; see PR #2's close-out. **chez-http-server is submitted
   to the Akku index and awaits review**: the owner submitted 0.8.0 on 2026-10-24, then
-  0.9.0 and 0.9.1. On 2026-10-29 the index, last rebuilt on 2026-10-25, listed no
-  version of it, and its four dependencies at the versions it needs. Until it is published,
+  0.9.0 and 0.9.1 (0.10.0, of 2026-10-30, is the latest). On 2026-10-29 the index, last
+  rebuilt on 2026-10-25, listed no version of it, and its four dependencies at the
+  versions it needs. Until it is published,
   circuit can't be installed with Akku, and the submodule stays its only way in
   (ADR-0003).
 - **A wrap's `f` can meet a closed port in the test host** once the client has gone while
@@ -105,14 +111,6 @@ close-out under **Close-outs**, newest first.
   a FIN is heard at once, but the request stays open until its response is written: `f`
   reads its port, and the write fails, logged `read-error EPIPE` (slice 5, reproduced).
   Whether a reset makes `f` meet a closed port is unverified: curl can't send one.
-- **A request the server refuses before any handler runs is logged nowhere**: a 400, 408,
-  431 or 505, or a 413 for a declared length past the cap. No handler runs, so `wrap-log`
-  registers nothing, and the server logs none of them (design §7; reproduced in the test
-  host by slice 5's review). An ask for the server to log its own refusals would cover it.
-- **The server's log line breaks on a raised string or character holding a line feed**:
-  `put-detail` displays one as it is, and only a condition's text has its line feeds made
-  spaces (`private/serve.sls`). The catch helper's default line copies the server's on
-  purpose. Reproduced in slice 5; not filed.
 - **Unverified off Linux:** the adapter suite's FIFO row opens a FIFO read-write, which
   POSIX leaves undefined; it works on Linux. CI runs Linux alone.
 - **Left from the owner's `/code-review` of slice 4, not fixed:**
@@ -138,11 +136,14 @@ close-out under **Close-outs**, newest first.
   (2026-10-30). A change to the code can leave a page's program, or its output, wrong
   until someone reruns it, and `tests/test-reference.sps` checks names, signatures and
   links, not an entry's prose.
-- **A producer that reads `req-body` gets a 784-character log line:** the server answers
-  `handler-failed Exception in next-body-piece: only a handler's awaiting thunk may pull
-  its body`, with its internal coroutine and scheduler record as the irritant (PR #18,
-  reproduced). An ask for the server to name the coroutine, not print it, would cover it.
-  Not filed.
+- **`wrap-log`'s line has no client address**, where the server's `request-refused` line,
+  from v0.10.0, ends with one, as access logs' lines do. `req-remote-address` would give
+  it; a change to the line is the owner's call.
+- **The router's property generators** (`tests/test-router-properties.sps`): `g-int` is
+  biased where n doesn't divide 32768, and neighbouring cases start correlated, so P1–P7
+  explore fewer distinct cases than their counts suggest. The owner's
+  [#21](https://github.com/Kiyomi-Computation-Systems/circuit/issues/21), found porting it
+  to jsonparse, has the fix.
 - **`wrap-catch` with an `on-raise` isn't a middleware maker:** `wrap-timeout` and
   `wrap-body-cap` take their settings and return a middleware, while `wrap-catch` takes the
   handler first, so `wrap` needs `(lambda (h) (wrap-catch h on-raise))`. Middleware's
@@ -172,6 +173,62 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: the pins at the server's v0.10.0 and chez-websocket's v0.5.1, in PR #22
+
+On the owner's "circuit can pin chez-websocket v0.5.1 together with chez-http-server
+v0.10.0 in one commit". Before it, three log items from this ledger's Open list went to
+the server as Kiyomi-Computation-Systems/chez-http-server#249 (a line feed in a raised
+value breaks the line), #250 (a record inside a condition logged whole: 781 characters
+for the server's own late-pull raise) and #251 (a refusal logged nowhere), each
+reproduced at v0.9.1 over loopback; the server's session fixed them in #252 and #253 and
+released v0.10.0 (5c16f64). chez-websocket's v0.5.0 pinned it but kept its own copy of the
+log code, which still broke on a line feed and wrote a raise naming the `websocket` record
+in 1,169 characters (reproduced); its row against the server's `log-line` passed because
+none of its raises was one v0.10.0 changed (reproduced: with them added it fails on
+v0.10.0). That went to chez-websocket as #105 and #106, fixed in its #107 and released as
+v0.5.1 (4b70f22), whose server gitlink is 5c16f64. Commits on
+`pins/server-0.10.0-websocket-0.5.1`: the pins, the code, the rows and the docs (1fb2436),
+the records with this close-out (79bde28), and its CI run named here. `make test` passes
+16 suites, 954 rows;
+`make check-site` and `make gate` pass, and `make check-pins` on the host. The gate's
+worst figures: G1 1,442, G2 1,437, G3 306 a GET and 277 a POST, G4 81 and 406, G5 385 and
+350 with a park, G7 308, G8 533, G8 own 293, G8 on-done 248, G9 606 and 596 with a park,
+G10 87, 165 and 4: none moved from v0.9.1's. CI passed on the PR (run 41115454175,
+4m02s), on amd64 and arm64: 16 suites, 953 rows and the curl row skipped, beside the
+site's 78; the gate's worst figures, amd64 then arm64, G3 307 and 275, 307 and 273, G4 81
+and 403, 80 and 400, G5 382 and 338, 380 and 340, G7 308 and 304, G8 532 on both, G8 own
+292 on both, G8 on-done 243 and 240, G9 609 and 593, 609 and 604, G10 83, 164 and 0, 84,
+164 and 3.
+
+- **the trial first:** circuit's `main` on the new server, before any change, failed 3 of
+  16 suites, and only where expected: the adapter suite's five rows on a body past a cap,
+  the `wrap-catch` row that compares its line with the server's, and the reference's
+  links and `SERVER_PIN` comment at the old tags;
+- **the pins**, on one commit: both gitlinks with `SERVER_PIN` and `WEBSOCKET_PIN`, and the
+  docs' links into both repositories, which `tests/test-reference.sps` holds at the tags;
+- **`wrap-catch`'s default line** copies the server's new `put-detail`: every control
+  character a space (below U+0020, and delete), and a record inside a condition, list or
+  vector shown as `#<record of type point>` under `print-record` #f. The comparison row's
+  raises gain what v0.10.0 changed, the lesson of chez-websocket's row; three exact rows
+  hold the new rule. Watched: the old copy, records printed whole, line feeds alone made
+  spaces, and delete kept each fail an exact row and the comparison row;
+- **the allowlist** takes `print-record` and `parameterize`, which R6RS lacks: ADR-0006
+  amended, the global constraints and the design's §6 passage with it. The owner was told
+  of `print-record` before the pin; `parameterize` came with it, as `(rnrs)` exports none
+  (probed). The owner accepted both on this PR, over setting and restoring `print-record`
+  by `dynamic-wind`, which would take one name but no longer be the server's code. The audit's suite was watched
+  failing first (5 rows), then passing (57); its fixtures take both names, bare and under
+  `prefix` and `rename`, and refuse `print-graph`, `print-level` and `fluid-let` beside
+  them;
+- **the rows:** the adapter suite's five rows on a body past a cap, which PR #12 moved to
+  an empty log, now expect the test host's `(request-refused 413 body-too-large "-")`;
+- **the docs:** Middleware and Bodies say the server logs a refusal itself, with the line;
+  Installing names the new tags. The CHANGELOG's `[Unreleased]` has the pins and the fix.
+  Open loses the three log items and gains `wrap-log`'s missing address and the owner's
+  #21;
+- **no agents ran.** No review: the change copies the server's reviewed code, and each
+  row it moved was watched failing.
 
 ### 2026-10-30: v0.1.1 tagged, released and published, recorded in PR #20
 

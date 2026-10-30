@@ -7,6 +7,31 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Pinned at chez-http-server v0.10.0 and chez-websocket v0.5.1**, from v0.9.1 and
+  v0.4.1, on one commit. The server's pins under it are v0.9.1's. No name an app imports
+  changes.
+  - **A request the server refuses before any handler runs is logged.** A malformed
+    head, a missing `Host`, a timeout or a limit gets one line from the server, such as
+    `request-refused 400 invalid-host 127.0.0.1`: its status, why it refused, and the
+    client's address. `wrap-log` still never sees such a request.
+  - **The test host's log lists it too**, as `(request-refused 413 body-too-large "-")`,
+    with `-` for the address: a test that compares the whole log, such as a body past a
+    cap that the app lets out, sees the entry.
+  - **chez-websocket's `websocket-handler-failed` line is one line**, as the server's
+    are.
+- **The docs' links into chez-http-server and chez-websocket name v0.10.0 and v0.5.1.**
+
+### Fixed
+
+- **`wrap-catch`'s default line stays one line, and a record inside it is short.** The
+  line is the server's for the same raise, which v0.10.0 changed. A raised string, symbol
+  or character holding a line feed, or any other control character, wrote it over
+  several lines, the later ones naming no event. A record inside a raised condition, list
+  or vector was written whole, fields and all. Every control character is now a space,
+  and such a record reads `#<record of type point>`.
+
 ## [0.1.1] - 2026-10-30
 
 The second release, a patch: documentation. `docs/` is a guide for developers, published

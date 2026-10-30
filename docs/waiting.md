@@ -176,5 +176,5 @@ to your system.
   wait.
 
 The server's
-[Waiting](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.9.1/docs/waiting.md)
+[Waiting](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.10.0/docs/waiting.md)
 page goes deeper: memory, costs, and how a body read waits.
