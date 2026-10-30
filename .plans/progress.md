@@ -76,10 +76,12 @@ close-out under **Close-outs**, newest first.
   [PR #19](https://github.com/Kiyomi-Computation-Systems/circuit/pull/19) on 2026-10-30;
   its close-out is below. GitHub Pages is on, its source GitHub Actions, and its
   `github-pages` environment takes `main` and `v*` tags, as the server's does.
-- **Next**, on the owner's "Run the whole chain": once main's CI passes on #19's squash,
-  the signed tag `v0.1.1`, whose push deploys the site, then the GitHub Release from
-  `[0.1.1]`, recorded in a ledger PR. Past that, the design plans no slice past 8 (§17):
-  the open items below are the owner's call.
+- **v0.1.1 is tagged and released** on 55ca6df, #19's squash, and its site is live at
+  [kiyomi-computation-systems.github.io/circuit](https://kiyomi-computation-systems.github.io/circuit/),
+  recorded in [PR #20](https://github.com/Kiyomi-Computation-Systems/circuit/pull/20) on
+  2026-10-30; its close-out is below.
+- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
+  open items below.
 
 ## Open
 
@@ -170,6 +172,34 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: v0.1.1 tagged, released and published, recorded in PR #20
+
+On the owner's "Run the whole chain" for v0.1.1. This PR holds this close-out alone; CI
+passed on it (run 41057528711).
+
+- **CI on the tagged commit:** main's run on 55ca6df, #19's squash, 41056456599, passed on
+  amd64, arm64 and the site job;
+- **the tag:** `v0.1.1` (tag object 4b579a4) on 55ca6df, annotated and signed with the
+  Kiyomi release key (`git tag -v`: a good signature), checked absent locally and on
+  origin first, then pushed alone. Its message: "circuit v0.1.1 — the docs", then a
+  paragraph from `[0.1.1]`'s intro;
+- **the site:** the tag's push ran the Pages workflow (41057052851): its build gated the
+  site and wrote 12 pages with `SITE_REF=v0.1.1` in 27s, and its deploy took 9s. Live,
+  each of the 12 pages and the stylesheet answers 200, links to repository files name
+  `blob/v0.1.1/`, and Installing clones `--branch v0.1.1`;
+- **the GitHub Release:** that title, from the tag with `--verify-tag`, not a draft or a
+  prerelease, and the repository's latest. Its notes are `[0.1.1]` as the tag holds it,
+  intro to last bullet, and the published body is those notes, byte for byte. The recipe
+  first rebuilt v0.1.0's published notes from its tag, byte for byte: a first try ended
+  the section at any line opening with `[`, which v0.1.0's intro has, and was fixed to
+  end at the link definitions;
+- **a fresh clone of the tag**, as Installing says: `git clone --branch v0.1.1` from
+  GitHub (HEAD 55ca6df), `make submodules`, `make check-pins`, `make site-deps`, and in its
+  own Guix container `make test`, 16 suites, `make check-site` and `make check-help`;
+- **GitHub's source tarball** for the tag: 320 entries, `vendor/`'s two directories
+  empty, neither `.plans/` nor `AGENTS.md`, the docs and the generator in it;
+- **no agents ran.**
 
 ### 2026-10-30: v0.1.1, the docs, in PR #19
 
