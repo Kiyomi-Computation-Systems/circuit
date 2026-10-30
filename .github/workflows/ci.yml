@@ -6,7 +6,9 @@ name: CI
 # chez-websocket with `make submodules`, holds them at their pins with `make
 # check-pins`, builds Chez at its floor (once, then cached), and runs `make
 # test`, which builds chez-libuv's shim against the system libuv and runs
-# check-help, check-suites and every suite, then the cost gate, `make gate`.
+# check-help, check-suites and every suite, then checks the docs site and runs
+# the cost gate, `make gate`. The site job builds the site as the Pages
+# workflow does.
 #
 # Every action is pinned to a full commit SHA, with its tag in a comment: a tag
 # can be moved to other code, a commit cannot.
@@ -99,14 +101,16 @@ jobs:
       # X11 or curses; curl, which fetches Chez and oha and is the client the
       # integration suites run against the server, over loopback; coreutils
       # is GNU timeout, which `make test` and `make gate` run under, and
-      # sha256sum, which checks oha's fetch. Most are already on the image:
-      # naming them keeps the job from depending on that. No cmake: with
-      # libuv at its floor the shim links the system one.
+      # sha256sum, which checks oha's fetch; cmark-gfm, the library the docs
+      # site renders through, and xz-utils, which unpacks chez-cmark-gfm's
+      # archive. Most are already on the image: naming them keeps the job from
+      # depending on that. No cmake: with libuv at its floor the shim links the
+      # system one.
       - name: Install toolchain
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libuv1-dev git curl coreutils
+            build-essential pkg-config libuv1-dev git curl coreutils cmark-gfm xz-utils
 
       # The OS release for the Chez cache key, read off the machine rather than
       # restated from runs-on (which a bump could forget), so a new image misses
@@ -197,6 +201,16 @@ jobs:
       - name: Test
         run: make test
 
+      # The docs site: the fetch script's offline test, then the generator's
+      # suites, then docs/ rendered in memory (every page in the nav, every
+      # link and anchor resolving, anchors GitHub agrees with), so a pull
+      # request that breaks the docs fails before merge. chez-cmark-gfm comes
+      # from the archive Akku.lock pins and loads the cmark-gfm installed above.
+      - name: Docs site
+        run: |
+          make check-site-deps
+          make check-site
+
       # The cost gate (design §15.6), a step of its own: `make oha` fetches
       # oha, the gate's load client, at the version and sha256 the server's
       # tests/fetch-oha.sh pins; `make gate` reads bytes a request through
@@ -209,3 +223,34 @@ jobs:
         run: |
           make oha
           make gate
+
+  # The Pages workflow's build, on every pull request, so a release tag's
+  # deploy does not fail first: apt's Chez and cmark-gfm alone, no compiler
+  # and no libuv. apt's Chez is below the floor, which is fine here: nothing
+  # the site runs imports the server or (libuv). Of the submodules, the site
+  # needs only chez-srfi, for its suites' SRFI-64, which `make srfi` links.
+  site:
+    name: site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Init submodules
+        run: make submodules
+
+      - name: Install Chez and cmark-gfm
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends chezscheme cmark-gfm xz-utils
+
+      - name: Get chez-cmark-gfm as Akku.lock pins it
+        run: make site-deps
+
+      - name: Gate the site
+        run: make check-site CHEZ=chezscheme
+
+      - name: Build the site
+        run: make site CHEZ=chezscheme

@@ -6,7 +6,9 @@
   installs the test host circuit's tests use; 2026-10-28, in slice 6c: chez-websocket is a
   second submodule, pinned at v0.4.0 (`4456814`), its own server pin held to `SERVER_PIN`
   and not cloned (item 6; the slice 6 design §6); 2026-10-29: the pins moved together to
-  the server's v0.9.1 (`b7381a0`) and chez-websocket's v0.4.1 (`579c118`), on one commit
+  the server's v0.9.1 (`b7381a0`) and chez-websocket's v0.4.1 (`579c118`), on one commit;
+  2026-10-30: chez-cmark-gfm, which renders the docs site, is a development dependency that
+  `Akku.lock` pins (item 7)
 - **Scope:** circuit's dependencies
 - **Prior art:** chez-websocket, which takes the server the same way
 - **Related:** [ADR-0002](0002-builds-and-tests-run-in-a-pinned-guix-container-with-no-network.md)
@@ -45,6 +47,11 @@ either, and takes the server as a submodule.
    `SERVER_PIN`. `make submodules` clones chez-websocket alone, none of its submodules;
    `make check-pins` holds its gitlink and its checkout at `WEBSOCKET_PIN`, its server's
    gitlink at `SERVER_PIN`, and no local edits in it. No Akku dependency on it either.
+7. **chez-cmark-gfm, which renders `docs/` into the docs site, is pinned by `Akku.lock`**,
+   as the server and chez-websocket pin theirs: a development dependency of `Akku.manifest`,
+   which names no `depends`. No library under `src/` and no `tests/test-*.sps` imports it.
+   `make site-deps`, on the host, downloads the archive the lock names and checks its
+   sha256 (`scripts/fetch-akku-lock`), or takes an `akku install` tree when there is one.
 
 ## Consequences
 
@@ -54,6 +61,8 @@ either, and takes the server as a submodule.
   `make check-pins` fails: circuit runs chez-websocket on circuit's server, not its own.
 - **A pin move brings the server's pins along**, and `make check-pins` holds them where the
   server records them.
+- **`Akku.manifest` exists for the lock alone.** It names circuit's version, which a release
+  moves with `CHANGELOG.md`, and `.akkuignore` keeps `akku install` to chez-cmark-gfm.
 - **Circuit can't be installed with Akku as a whole** until the server is on the index. Until
   then a consumer takes circuit's `src/` and the server's tree as this repository does.
   Publishing the server is an ask on the server, not yet filed.

@@ -121,7 +121,29 @@ case "$status" in
   *) bad "no-bare-name-load: '${chez:-unset}' exited $status, expected 3" ;;
 esac
 
-# Assertion 7: the network is loopback only. A closed loopback port refuses
+# Assertion 7: CHEZ_CMARK_GFM_LIBS names the profile's cmark-gfm and its
+# extensions library, and Chez loads both by those paths, the core first,
+# as chez-cmark-gfm does. Exit 3 means both loaded, 4 that a load raised,
+# and anything else that Chez itself failed.
+libs=${CHEZ_CMARK_GFM_LIBS:-}
+core=${libs%%:*}
+ext=${libs#*:}
+want="$GUIX_ENVIRONMENT/lib/libcmark-gfm.so:$GUIX_ENVIRONMENT/lib/libcmark-gfm-extensions.so"
+if [ "$libs" = "$want" ]; then
+  ok "cmark-gfm-variable ($libs)"
+else
+  bad "cmark-gfm-variable: CHEZ_CMARK_GFM_LIBS is '${libs:-unset}', expected $want"
+fi
+printf '(exit (guard (e (#t 4)) (load-shared-object "%s") (load-shared-object "%s") 3))\n' \
+  "$core" "$ext" | "$chez" -q >/dev/null 2>&1
+status=$?
+case "$status" in
+  3) ok "cmark-gfm-loads" ;;
+  4) bad "cmark-gfm-loads: Chez could not load '$core' then '$ext'" ;;
+  *) bad "cmark-gfm-loads: '${chez:-unset}' exited $status, expected 3" ;;
+esac
+
+# Assertion 8: the network is loopback only. A closed loopback port refuses
 # the connection, so loopback is up, and an outside address (TEST-NET-1,
 # RFC 5737) is unreachable at once, not merely silent. bash's /dev/tcp
 # makes the connections; nothing listens on either port.
@@ -133,7 +155,7 @@ case "$inside|$outside" in
   *) bad "loopback-only: 127.0.0.1 said '$inside'; 192.0.2.1 said '$outside'" ;;
 esac
 
-# Assertion 8: there is no git in here. In a git worktree, .git names a
+# Assertion 9: there is no git in here. In a git worktree, .git names a
 # directory outside the one directory this container shares, so git here
 # would read nothing, and whatever needed it would fail in every worktree.
 if p=$(command -v git); then
@@ -142,7 +164,7 @@ else
   ok "no-git"
 fi
 
-# Assertion 9: the Makefile's own checks pass in here too: check-help, and
+# Assertion 10: the Makefile's own checks pass in here too: check-help, and
 # test, which runs every suite. check-pins is not one of them: it needs git,
 # so it runs on the host and in CI.
 if ! make --no-print-directory check-help; then

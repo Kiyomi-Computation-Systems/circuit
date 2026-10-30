@@ -80,6 +80,11 @@
      ;; The client the integration suites run against the server, over
      ;; loopback.
      "curl"
-     ;; What the Makefile and scripts shell out to. The container has
-     ;; nothing else.
-     "bash" "coreutils" "make" "grep" "sed" "gawk" "findutils" "diffutils"))))
+     ;; `make site` renders docs/ through chez-cmark-gfm, which loads this
+     ;; C library by the absolute paths scripts/guix-env-enter exports.
+     "cmark-gfm"
+     ;; What the Makefile and scripts shell out to; tar and xz build and
+     ;; unpack the archives tests/fetch-akku-lock.sh makes. The container
+     ;; has nothing else.
+     "bash" "coreutils" "make" "grep" "sed" "gawk" "findutils" "diffutils"
+     "tar" "xz"))))

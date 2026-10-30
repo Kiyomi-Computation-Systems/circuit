@@ -1,0 +1,278 @@
+#!r6rs
+;;; The docs site generator's pure libraries: slugs, the serializer, the
+;;; heading pass, the link rewrite, page names and the page template.  Not
+;;; named test-*.sps, so `make test` does not run it; `make check-site` does,
+;;; with no chez-cmark-gfm on the library path, so a pure library that starts
+;;; importing (cmark gfm) fails here at import.  From the repository root:
+;;;   CHEZSCHEMELIBDIRS=.:tests:build/scheme-libs chez --program tests/site-unit.sps
+(import (rnrs) (srfi :64) (circuit-testing)
+        (site slug) (site serializer) (site transform)
+        (site links) (site template) (site pages))
+
+;; string-contains-sub? : String String -> Boolean
+(define (string-contains-sub? hay needle)
+  (let ((h (string-length hay)) (n (string-length needle)))
+    (let loop ((i 0))
+      (cond ((> (+ i n) h) #f)
+            ((string=? needle (substring hay i (+ i n))) #t)
+            (else (loop (+ i 1)))))))
+
+;; index-of : String String Integer -> (U Integer #f)
+;; The first offset at or after START where NEEDLE begins in HAY.
+(define (index-of hay needle start)
+  (let ((h (string-length hay)) (n (string-length needle)))
+    (let loop ((i start))
+      (cond ((> (+ i n) h) #f)
+            ((string=? needle (substring hay i (+ i n))) i)
+            (else (loop (+ i 1)))))))
+
+;; offsets-of : String String -> (Listof Integer)
+;; Every offset where NEEDLE begins in HAY, in order.
+(define (offsets-of hay needle)
+  (let loop ((i (index-of hay needle 0)) (acc '()))
+    (if i
+        (loop (index-of hay needle (+ i 1)) (cons i acc))
+        (reverse acc))))
+
+;; script-of : String -> String
+;; The text of the first <script> element in HTML; raises if there is none.
+(define (script-of html)
+  (let* ((open (index-of html "<script>" 0))
+         (start (+ open (string-length "<script>"))))
+    (substring html start (index-of html "</script>" start))))
+
+;; unguarded-storage : String -> (Listof Integer)
+;; The offset of each `localStorage` in SCRIPT that no try block holds: no
+;; `try{` comes before it, or a `}` closes something between the last `try{`
+;; and it.
+(define (unguarded-storage script)
+  (filter (lambda (at)
+            (let ((tries (filter (lambda (t) (< t at)) (offsets-of script "try{"))))
+              (or (null? tries)
+                  (let ((last (apply max tries)))
+                    (index-of (substring script last at) "}" 0)))))
+          (offsets-of script "localStorage")))
+
+(define reg '(("README.md" . ("five-ideas-to-keep-in-mind"))
+              ("handlers.md" . ("reading-a-request"))
+              ("bodies.md" . ("streaming-a-download"))))
+
+;; rw : SXML String -> SXML
+(define (rw body page)
+  (let-values (((b d) (rewrite-links body reg page "main"))) b))
+;; link : String -> SXML
+(define (link href) `(*TOP* (p (a (^ (href ,href)) "x"))))
+;; dangling : String String -> (Listof (Pairof String String))
+(define (dangling href page)
+  (let-values (((b d) (rewrite-links (link href) reg page "main"))) d))
+
+(define doc-out
+  (page->document '(("README.md" . "Home") ("handlers.md" . "Handlers")
+                    ("bodies.md" . "Bodies and streaming"))
+                  "handlers.md" "Handlers"
+                  '(*TOP* (h2 (^ (id "reading-a-request")) "Reading a request"))
+                  '((2 "Reading a request" "reading-a-request"))
+                  '("README.md" . "Home") '("bodies.md" . "Bodies and streaming")))
+(define doc-html (sxml->html doc-out))
+
+(define runner (test-runner-simple))
+(test-runner-current runner)
+(test-begin "site-unit")
+
+;; --- slugify ---------------------------------------------------------
+(test-equal "spaces to single hyphen, lowercased"
+  "bodies-and-streaming" (slugify "Bodies and streaming"))
+(test-equal "commas dropped, 'and' kept"
+  "caddy-nginx-and-a-supervisor" (slugify "Caddy, nginx, and a supervisor"))
+(test-equal "backtick code in a heading is stripped to its text"
+  "What make build does" (heading-text '(h2 "What " (code "make build") " does")))
+(test-equal "the whole heading-to-slug path"
+  "what-make-build-does"
+  (slugify (heading-text '(h2 "What " (code "make build") " does"))))
+(test-equal "runs of spaces collapse"
+  "wrap-width" (slugify "Wrap  width"))
+(test-equal "leading and trailing punctuation trimmed"
+  "supported-versions" (slugify "  Supported versions.  "))
+
+;; --- make-slugger ----------------------------------------------------
+(test-equal "duplicate headings get -1, -2 suffixes"
+  '("options" "options-1" "options-2")
+  (let ((s (make-slugger))) (list (s "Options") (s "Options") (s "Options"))))
+(test-equal "heading-text skips the ^ attr node and inline tags"
+  "Some text" (heading-text '(h2 (^ (id "foo")) "Some " (code "text"))))
+
+;; --- serializer ------------------------------------------------------
+(test-equal "text is escaped on output, not before"
+  "<p>a &amp; &lt;b&gt;</p>" (sxml->html '(p "a & <b>")))
+(test-equal "text does not escape a double quote"
+  "<p>say \"hi\"</p>" (sxml->html '(p "say \"hi\"")))
+(test-equal "attributes render from the caret marker and are quoted"
+  "<a href=\"/x\">l</a>" (sxml->html '(a (^ (href "/x")) "l")))
+(test-equal "escape-attr turns a double quote into &quot;"
+  "<a title=\"say &quot;hi&quot;\">l</a>"
+  (sxml->html '(a (^ (title "say \"hi\"")) "l")))
+(test-equal "escape-attr escapes & < > in an attribute value"
+  "<a title=\"a&amp;b&lt;c&gt;d\">l</a>"
+  (sxml->html '(a (^ (title "a&b<c>d")) "l")))
+(test-equal "void elements have no body and no end tag"
+  "<hr>" (sxml->html '(hr)))
+(test-equal "*TOP* is a fragment: it emits its children only"
+  "<h1>a</h1>\n<p>b</p>\n" (sxml->html '(*TOP* (h1 "a") (p "b"))))
+(test-equal "indentation inside pre/code is content, preserved byte-for-byte"
+  "<pre><code>(define (f x)\n    (g\n      x))\n</code></pre>"
+  (sxml->html '(pre (code "(define (f x)\n    (g\n      x))\n"))))
+(test-equal "a *COMMENT* node renders as an HTML comment, not a bogus tag"
+  "<!-- raw HTML omitted -->" (sxml->html '(*COMMENT* " raw HTML omitted ")))
+
+;; --- transform -------------------------------------------------------
+(let-values (((body toc)
+              (transform-body '(*TOP* (h2 "Node shape") (p "x") (h2 "Node shape")))))
+  (test-equal "headings gain a caret id from their slug"
+    '(*TOP* (h2 (^ (id "node-shape")) "Node shape") (p "x")
+            (h2 (^ (id "node-shape-1")) "Node shape"))
+    body)
+  (test-equal "the toc lists (level text slug) in document order"
+    '((2 "Node shape" "node-shape") (2 "Node shape" "node-shape-1"))
+    toc))
+(let-values (((body toc)
+              (transform-body '(*TOP* (h1 "Title") (h3 "Detail")))))
+  (test-equal "the toc reads each heading's level from its tag"
+    '(1 3) (map car toc)))
+(let-values (((body toc)
+              (transform-body '(*TOP* (blockquote (p "⚠️ Answer quickly."))))))
+  (test-equal "a warning-sign blockquote is rewrapped as a warning callout div"
+    '(*TOP* (div (^ (class "callout warning")) (blockquote (p "⚠️ Answer quickly."))))
+    body))
+(let-values (((body toc)
+              (transform-body '(*TOP* (blockquote (p "A plain note."))))))
+  (test-equal "a blockquote without the warning sign is left as it is"
+    '(*TOP* (blockquote (p "A plain note.")))
+    body))
+
+;; --- links -----------------------------------------------------------
+(test-equal "doc .md link (with anchor) becomes .html, anchor kept"
+  (link "bodies.html#streaming-a-download")
+  (rw (link "bodies.md#streaming-a-download") "handlers.md"))
+(test-equal "bare doc .md link becomes .html"
+  (link "handlers.html") (rw (link "handlers.md") "bodies.md"))
+(test-equal "a link to README.md becomes index.html"
+  (link "index.html") (rw (link "README.md") "bodies.md"))
+(test-equal "a link to README.md#… becomes index.html#…"
+  (link "index.html#five-ideas-to-keep-in-mind")
+  (rw (link "README.md#five-ideas-to-keep-in-mind") "bodies.md"))
+(test-equal "a link to ./README.md becomes index.html"
+  (link "index.html") (rw (link "./README.md") "bodies.md"))
+(test-equal "a ./page.md link has its ./ stripped"
+  (link "handlers.html#reading-a-request")
+  (rw (link "./handlers.md#reading-a-request") "bodies.md"))
+(test-equal "same-page anchor is left as-is"
+  (link "#reading-a-request") (rw (link "#reading-a-request") "handlers.md"))
+(test-equal "a ../ escape is pinned to the GitHub blob at the ref"
+  (link "https://github.com/Kiyomi-Computation-Systems/circuit/blob/main/examples/echo.sps")
+  (rw (link "../examples/echo.sps") "handlers.md"))
+(test-equal "a ../ escape is pinned to the ref it is given"
+  (link "https://github.com/Kiyomi-Computation-Systems/circuit/blob/v1.2.3/examples/echo.sps")
+  (let-values (((b d) (rewrite-links (link "../examples/echo.sps") reg "handlers.md" "v1.2.3")))
+    b))
+(test-equal "an https URL is untouched, even one ending in .md"
+  (link "https://example.com/README.md")
+  (rw (link "https://example.com/README.md") "handlers.md"))
+(test-equal "an http URL is untouched, even one ending in .md"
+  (link "http://example.com/a.md") (rw (link "http://example.com/a.md") "handlers.md"))
+(test-equal "a non-.md relative target is left untouched"
+  (link "style.css") (rw (link "style.css") "handlers.md"))
+(test-equal "text naming a page is not a link, untouched"
+  '(*TOP* (pre (code "see handlers.md")))
+  (rw '(*TOP* (pre (code "see handlers.md"))) "handlers.md"))
+(test-equal "an href on a non-a/img element is left untouched"
+  '(*TOP* (span (^ (href "bodies.md")) "x"))
+  (rw '(*TOP* (span (^ (href "bodies.md")) "x")) "handlers.md"))
+(test-equal "an img src is rewritten like an href"
+  '(*TOP* (img (^ (src "index.html"))))
+  (rw '(*TOP* (img (^ (src "README.md")))) "handlers.md"))
+
+(test-equal "an anchor absent from the registry is reported as a dangler"
+  '(("handlers.md" . "bodies.md#nonesuch"))
+  (dangling "bodies.md#nonesuch" "handlers.md"))
+(test-equal "a README.md anchor absent from the registry is a dangler"
+  '(("handlers.md" . "README.md#nonesuch"))
+  (dangling "README.md#nonesuch" "handlers.md"))
+(test-equal "a bare .md link to a page absent from the registry is a dangler"
+  '(("handlers.md" . "missing.md")) (dangling "missing.md" "handlers.md"))
+(test-equal "an anchored .md link to a page absent from the registry is a dangler"
+  '(("handlers.md" . "missing.md#foo")) (dangling "missing.md#foo" "handlers.md"))
+(test-equal "a bare .md link to a page in the registry is not a dangler"
+  '() (dangling "bodies.md" "handlers.md"))
+(test-equal "a same-page anchor absent from the page is a dangler"
+  '(("handlers.md" . "#gone")) (dangling "#gone" "handlers.md"))
+(test-equal "danglers come back in document order"
+  '(("handlers.md" . "#one") ("handlers.md" . "#two"))
+  (let-values (((b d) (rewrite-links '(*TOP* (p (a (^ (href "#one")) "1")
+                                                (a (^ (href "#two")) "2")))
+                                     reg "handlers.md" "main")))
+    d))
+
+;; --- page-file-name --------------------------------------------------
+(test-equal "README.md is written as index.html"
+  "index.html" (page-file-name "README.md"))
+(test-equal "another page's .md becomes .html"
+  "handlers.html" (page-file-name "handlers.md"))
+
+;; --- pages -----------------------------------------------------------
+(test-equal "the home page comes first, the rest in the home page's Read next order"
+  '("README.md" "installing.md" "quickstart.md")
+  (map car pages))
+
+;; --- template --------------------------------------------------------
+(test-eq "the document is rooted at html" 'html
+  (and (pair? doc-out) (eq? (car doc-out) '*TOP*) (car (cadr doc-out))))
+(test-eq "the stylesheet is linked in head" 'linked
+  (if (string-contains-sub? doc-html "<link rel=\"stylesheet\" href=\"style.css\">")
+      'linked 'missing))
+(test-eq "the current page is marked in the nav" 'marked
+  (if (string-contains-sub?
+       doc-html "<a href=\"handlers.html\" class=\"on\" aria-current=\"page\">")
+      'marked 'unmarked))
+(test-eq "the TOC lists the page's headings" 'listed
+  (if (string-contains-sub? doc-html "href=\"#reading-a-request\"") 'listed 'missing))
+(test-eq "the wordmark names circuit and links the home page" 'present
+  (if (string-contains-sub?
+       doc-html "<a class=\"mark\" href=\"index.html\">circuit</a>")
+      'present 'missing))
+(test-eq "the top bar links the repository" 'present
+  (if (string-contains-sub?
+       doc-html "href=\"https://github.com/Kiyomi-Computation-Systems/circuit\">Source code</a>")
+      'present 'missing))
+(test-eq "a README.md nav entry links index.html" 'present
+  (if (string-contains-sub? doc-html "<a href=\"index.html\">Home</a>") 'present 'missing))
+(test-equal "the embedded theme script survives serialization unescaped"
+  '(#t #f #f #f)
+  (list (string-contains-sub? doc-html "<script>(function(){var r=document.documentElement")
+        (string-contains-sub? doc-html "&amp;")
+        (string-contains-sub? doc-html "&lt;")
+        (string-contains-sub? doc-html "&gt;")))
+;; A browser that refuses the page storage (site data blocked, some
+;; private modes) throws from localStorage.  Unguarded, that ends the
+;; script before it wires the toggle, and the toggle does nothing.
+(test-equal "the theme script reaches localStorage twice, each time inside a try block"
+  '(2 ())
+  (let ((js (script-of doc-html)))
+    (list (length (offsets-of js "localStorage")) (unguarded-storage js))))
+(test-eq "the mode toggle carries the knob icon" 'present
+  (if (string-contains-sub? doc-html "class=\"knob\"") 'present 'missing))
+(test-equal "the footer nav links the previous and next pages"
+  '(#t #t #t)
+  (list (string-contains-sub? doc-html "class=\"pagenav\"")
+        (string-contains-sub?
+         doc-html "<a href=\"index.html\"><span class=\"lbl\">Previous</span>")
+        (string-contains-sub? doc-html "<a href=\"bodies.html\" class=\"next\">")))
+(test-eq "a page with no neighbours has no footer nav" 'absent
+  (if (string-contains-sub?
+       (sxml->html (page->document '(("README.md" . "Home")) "README.md" "Home"
+                                   '(*TOP* (h1 "Home")) '() #f #f))
+       "class=\"pagenav\"")
+      'present 'absent))
+
+(test-end "site-unit")
+
+(exit (suite-exit-status runner))

@@ -7,10 +7,15 @@
 #         breaks Chez's boot-file lookup
 #   CC    the profile's gcc, which builds chez-libuv's shim: gcc-toolchain
 #         installs no cc
+#   CHEZ_CMARK_GFM_LIBS
+#         the profile's cmark-gfm and its extensions library, by absolute
+#         path, for chez-cmark-gfm, which renders the docs site: without
+#         it, chez-cmark-gfm searches /usr/lib and the like, which the
+#         container doesn't have
 #
 # It sets no LD_LIBRARY_PATH. chez-libuv's build bakes the absolute path of
-# the libuv it links into the config.sls it generates, so nothing loads a
-# library by bare name.
+# the libuv it links into the config.sls it generates, and chez-cmark-gfm
+# loads the two paths above, so nothing loads a library by bare name.
 set -eu
 
 die() { printf 'guix-env-enter: %s\n' "$*" >&2; exit 2; }
@@ -26,8 +31,11 @@ need() {
 
 need "$GUIX_ENVIRONMENT/bin/scheme"
 need "$GUIX_ENVIRONMENT/bin/gcc"
+need "$GUIX_ENVIRONMENT/lib/libcmark-gfm.so"
+need "$GUIX_ENVIRONMENT/lib/libcmark-gfm-extensions.so"
 
 export CHEZ="$GUIX_ENVIRONMENT/bin/scheme"
 export CC="$GUIX_ENVIRONMENT/bin/gcc"
+export CHEZ_CMARK_GFM_LIBS="$GUIX_ENVIRONMENT/lib/libcmark-gfm.so:$GUIX_ENVIRONMENT/lib/libcmark-gfm-extensions.so"
 
 exec "$@"
