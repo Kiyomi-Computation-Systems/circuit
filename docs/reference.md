@@ -774,7 +774,8 @@ make-router : (Listof Route) RouterOption ... -> Handler
 A handler for the routes, compiled once, here. A path no route takes gets
 an empty 404, a capture that doesn't decode an empty 400, and a method the
 route doesn't take an empty 405, unless an option gives a handler for it.
-The options come in any order, one for each answer. Two for one answer, two
+The options come in any order, one for each answer. Two for one answer, a
+constructor such as `on-bad-request` given without its handler, two
 templates of one shape, or two routes of one name, are an assertion
 violation. See [Routing](routing.md).
 
@@ -805,8 +806,8 @@ on-method-not-allowed : Handler -> RouterOption
 ```
 
 The handler for a method the route doesn't take. It gets the request with
-the route's match, and the router sets `allow` on its response. See
-[Routing](routing.md).
+the route's match. When it answers a 405, the router sets `allow` on it;
+any other answer goes out as it is. See [Routing](routing.md).
 
 ### `route`
 

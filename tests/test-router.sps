@@ -922,8 +922,8 @@
                    'GET "/g/api/3/u/a b"))))
 
 (test-equal (string-append "the 405 handler gets the request with the route's match: req-route its "
-                           "template, req-path-params decoded; the router sets allow on its answer, "
-                           "as the default 405 carries it")
+                           "template, req-path-params decoded; the router sets allow on the 405 it "
+                           "answers, as the default 405 carries it")
   '((res 405 (("content-type" . "text/plain") ("allow" . "GET, HEAD, PROPFIND")) #f)
     ((na DELETE "/users/a%20b" "/users/:id" (("id" . "a b")) "q=7")))
   (let ((app (make-router (list (route "/users/:id" (GET h) (METHOD 'PROPFIND h)))
@@ -933,20 +933,21 @@
     (let ((answer (ask app 'DELETE "/users/a%20b?q=7")))
       (list answer (take-log!)))))
 
-(test-equal (string-append "the router's allow replaces every allow the 405 handler set, in any "
-                           "case, where the first stood; a status of the handler's own gets it too")
+(test-equal (string-append "on a 405 the handler answers, the router's allow replaces every allow "
+                           "it set, in any case, where the first stood; any other status goes on "
+                           "untouched: a 404 gets no allow, and keeps one it set itself")
   (list '(res 405 (("x-a" . "1") ("allow" . "GET, HEAD") ("x-b" . "2")) #f)
-        '(res 404 (("allow" . "POST")) "gone"))
-  (list (ask (make-router (list (route "/x" (GET h)))
-                          (on-method-not-allowed
-                           (lambda (req)
-                             (make-res 405 '(("x-a" . "1") ("Allow" . "PUT") ("x-b" . "2")
-                                             ("allow" . "DELETE"))
-                                       #f))))
-             'PUT "/x?q=7")
-        (ask (make-router (list (route "/y" (POST h)))
-                          (on-method-not-allowed (lambda (req) (make-res 404 '() "gone"))))
-             'GET "/y?q=7")))
+        '(res 404 () "gone")
+        '(res 404 (("x-a" . "1") ("Allow" . "PUT") ("allow" . "DELETE")) "gone")
+        '(res 200 (("allow" . "TRACE")) #f))
+  (let ((app (lambda (status headers body)
+               (make-router (list (route "/x" (GET h)))
+                            (on-method-not-allowed (lambda (req) (make-res status headers body)))))))
+    (list (ask (app 405 '(("x-a" . "1") ("Allow" . "PUT") ("x-b" . "2") ("allow" . "DELETE")) #f)
+               'PUT "/x?q=7")
+          (ask (app 404 '() "gone") 'PUT "/x?q=7")
+          (ask (app 404 '(("x-a" . "1") ("Allow" . "PUT") ("allow" . "DELETE")) "gone") 'PUT "/x?q=7")
+          (ask (app 200 '(("allow" . "TRACE")) #f) 'PUT "/x?q=7"))))
 
 (test-equal (string-append "a 405 handler's answer that is no res goes on untouched; at a words-only "
                            "route it sees that route's match")
@@ -1369,6 +1370,50 @@
     (list (raised (lambda () (make-router routes (on-bad-request h) 'x)))
           (raised (lambda () (make-router routes a-route)))
           (raised (lambda () (make-router routes an-entry (on-not-found h)))))))
+
+;; refusal-text : (-> Any) -> Any
+;; What THUNK raised, as (WHO MESSAGE IRRITANTS) for an assertion
+;; violation, (other-raise X) for anything else, and no-raise if it returned.
+(define (refusal-text thunk)
+  (guard (e ((and (assertion-violation? e) (who-condition? e) (message-condition? e)
+                  (irritants-condition? e))
+             (list (condition-who e) (condition-message e) (condition-irritants e)))
+            ((condition? e) (list 'other-raise (describe e)))
+            (#t (list 'other-raise e)))
+    (thunk)
+    'no-raise))
+
+(test-equal (string-append "make-router refuses on-not-found itself among the options, saying to "
+                           "call it with a handler")
+  '((make-router "an option's constructor is no handler: call it with one, as (on-not-found handler)"
+                 (on-not-found))
+    (make-router "an option's constructor is no handler: call it with one, as (on-not-found handler)"
+                 (on-not-found)))
+  (list (refusal-text (lambda () (make-router (list (route "/x" (GET h))) on-not-found)))
+        (refusal-text (lambda () (make-router (list (route "/x" (GET h))) (on-bad-request h)
+                                              on-not-found)))))
+
+(test-equal (string-append "make-router refuses on-bad-request itself among the options, saying to "
+                           "call it with a handler")
+  '((make-router "an option's constructor is no handler: call it with one, as (on-bad-request handler)"
+                 (on-bad-request))
+    (make-router "an option's constructor is no handler: call it with one, as (on-bad-request handler)"
+                 (on-bad-request)))
+  (list (refusal-text (lambda () (make-router (list (route "/x" (GET h))) on-bad-request)))
+        (refusal-text (lambda () (make-router (list (route "/x" (GET h))) (on-not-found h)
+                                              on-bad-request)))))
+
+(test-equal (string-append "make-router refuses on-method-not-allowed itself among the options, "
+                           "saying to call it with a handler")
+  '((make-router
+     "an option's constructor is no handler: call it with one, as (on-method-not-allowed handler)"
+     (on-method-not-allowed))
+    (make-router
+     "an option's constructor is no handler: call it with one, as (on-method-not-allowed handler)"
+     (on-method-not-allowed)))
+  (list (refusal-text (lambda () (make-router (list (route "/x" (GET h))) on-method-not-allowed)))
+        (refusal-text (lambda () (make-router (list (route "/x" (GET h))) on-method-not-allowed
+                                              (on-bad-request h))))))
 
 (test-equal "make-router refuses two options for one answer before it applies any middleware"
   '((assertion-violation make-router (on-bad-request)) ())

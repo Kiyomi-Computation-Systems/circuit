@@ -149,11 +149,13 @@ no such page
 - The 404 and 400 handlers get the request as it came to the router. The
   405 handler gets it with the route's match: `req-route` and
   `req-path-params` work.
-- The router sets `allow` on what the 405 handler answers, replacing any it
-  set: HTTP requires it.
+- When the 405 handler answers a 405, the router sets `allow` on it,
+  replacing any it set: HTTP requires it on a 405. Any other answer goes
+  out as it is, so the handler can answer a 404 to hide the route.
 - A group's middleware runs for none of them. Middleware around the router
   runs for all of them.
-- Two options for one answer raise.
+- Two options for one answer raise, and so does a constructor without its
+  handler, such as `on-bad-request` alone.
 
 ## Write a template
 

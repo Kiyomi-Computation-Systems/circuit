@@ -33,8 +33,11 @@
 ;;; make-router's options, in any order: (on-not-found h), or h bare,
 ;;; (on-bad-request h) and (on-method-not-allowed h). The 404's and the
 ;;; 400's handler gets the request as it came to the router; the 405's gets
-;;; it with the route's match on it, and the router sets Allow on what it
-;;; answers, if that is a res. An answer left to the router is made once,
+;;; it with the route's match on it, and when it answers a 405 the router
+;;; sets Allow on it, as RFC 9110 requires. Any other answer goes on as it
+;;; is, so a 405 handler may answer a 404 that hides the route. A
+;;; constructor given bare among the options, such as on-bad-request with
+;;; no handler, is refused. An answer left to the router is made once,
 ;;; not at each request: the empty 404 and 400 here, each route's empty 405
 ;;; when the router is made.
 ;;;
@@ -81,7 +84,7 @@
   (import (rnrs) (rnrs mutable-strings)
           (only (circuit request)
                 req? req-method req-path req-ref req-set req-with-path make-req-key)
-          (only (circuit response) make-res res? res-set-header)
+          (only (circuit response) make-res res? res-status res-set-header)
           (only (circuit middleware) wrap))
 
   ;; Handler = Req -> Res
@@ -323,9 +326,9 @@
 
   ;; on-method-not-allowed : Handler -> RouterOption
   ;; HANDLER for a method its route doesn't take, the router's 405, handed
-  ;; the request with the route's match on it. The router sets Allow on
-  ;; what it answers, if that is a res. A HANDLER that is no procedure is
-  ;; an assertion violation.
+  ;; the request with the route's match on it. When it answers a 405, the
+  ;; router sets Allow on it, replacing any it set; any other answer goes on
+  ;; as it is. A HANDLER that is no procedure is an assertion violation.
   (define (on-method-not-allowed handler) (router-option 'on-method-not-allowed handler))
 
   (define (router-option who handler)
@@ -336,16 +339,25 @@
   ;; --- make-router: the checks ----------------------------------------------
 
   ;; option-handlers : (Listof Any) -> (List (U Handler #f) (U Handler #f) (U Handler #f))
-  ;; The not-found, 400 and 405 handlers OPTIONS give, #f where none does.
-  ;; A procedure stands for (on-not-found it). What is neither an option
-  ;; nor a procedure, or two options for one answer, is an assertion
-  ;; violation.
+  ;; The not-found, 400 and 405 handlers the options give, #f where none does.
+  ;; A procedure stands for (on-not-found it), but one of the option
+  ;; constructors themselves, given bare where its option was meant. That,
+  ;; what is neither an option nor a procedure, or two options for one
+  ;; answer, is an assertion violation.
   (define (option-handlers options)
     (let loop ((options options) (not-found #f) (bad-request #f) (not-allowed #f))
       (if (null? options)
           (list not-found bad-request not-allowed)
           (let* ((x (car options))
                  (answer (cond ((option? x) (option-answer x))
+                               ((constructor-name x)
+                                => (lambda (name)
+                                     (assertion-violation
+                                      'make-router
+                                      (string-append "an option's constructor is no handler: call it"
+                                                     " with one, as (" (symbol->string name)
+                                                     " handler)")
+                                      name)))
                                ((procedure? x) 'on-not-found)
                                (else (assertion-violation
                                       'make-router
@@ -364,6 +376,14 @@
               ((on-not-found) (loop (cdr options) handler bad-request not-allowed))
               ((on-bad-request) (loop (cdr options) not-found handler not-allowed))
               (else (loop (cdr options) not-found bad-request handler)))))))
+
+  ;; constructor-name : Any -> (U Symbol #f)
+  ;; The name of the option constructor X is, or #f.
+  (define (constructor-name x)
+    (cond ((eq? x on-not-found) 'on-not-found)
+          ((eq? x on-bad-request) 'on-bad-request)
+          ((eq? x on-method-not-allowed) 'on-method-not-allowed)
+          (else #f)))
 
   ;; One route or mount of the table: its template and segments, joined with
   ;; its groups', and its groups' middleware lists, innermost first.
@@ -616,12 +636,13 @@
   ;; takes goes to the not-found handler, by default an empty 404; a
   ;; capture that doesn't decode to the 400 handler, by default an empty
   ;; 400; a method its route doesn't take to the 405 handler, by default an
-  ;; empty 405, and Allow on either. The OPTIONS give those handlers, in
-  ;; any order. Routes that are no list of routes, an option that is no
-  ;; option nor procedure, two options for one answer, a joined template
-  ;; that breaks a template's rules, two templates of one shape, or two
-  ;; routes of one name are each an assertion violation, checked before any
-  ;; middleware is applied.
+  ;; empty 405, and Allow on any 405. The options after ROUTES give those
+  ;; handlers, in any order. Routes that are no list of routes, an option
+  ;; that is no option nor procedure, an option constructor given bare,
+  ;; two options for one answer, a joined template that breaks a
+  ;; template's rules, two templates of one shape, or two routes of one
+  ;; name are each an assertion violation, checked before any middleware is
+  ;; applied.
   (define (make-router items . options)
     (unless (list? items)
       (assertion-violation 'make-router "routes are a list" items))
@@ -688,8 +709,9 @@
   ;; The route's handler for REQ's method, handed REQ with the route's
   ;; match. A capture that doesn't decode is BAD-REQUEST's, handed REQ as
   ;; it came, or the empty 400; a method the route doesn't take is
-  ;; NOT-ALLOWED's, handed REQ with the match and its answer given the
-  ;; route's Allow, or the route's empty 405.
+  ;; NOT-ALLOWED's, handed REQ with the match, its answer given the route's
+  ;; Allow when it is a 405 and left as it is otherwise, or the route's
+  ;; empty 405.
   (define (serve-route leaf req path n bad-request not-allowed)
     (let ((params (if (null? (leaf-names leaf))
                       '()
@@ -704,7 +726,9 @@
             (cond (handler (handler (req-set req match-key (route-match req leaf params))))
                   (not-allowed
                    (let ((answer (not-allowed (req-set req match-key (route-match req leaf params)))))
-                     (if (res? answer) (res-set-header answer "allow" (leaf-allow leaf)) answer)))
+                     (if (and (res? answer) (= (res-status answer) 405))
+                         (res-set-header answer "allow" (leaf-allow leaf))
+                         answer)))
                   (else (leaf-refusal leaf)))))))
 
   ;; route-match : Req Leaf Params -> Match

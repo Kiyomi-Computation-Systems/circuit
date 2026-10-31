@@ -16,7 +16,9 @@
 ;;;     each middleware and not-found, 400 and 405 handler read of the
 ;;;     request, the response, and the middleware that ran. Groups'
 ;;;     middleware may also rewrite the path, hand on a request it made, or
-;;;     be a router of its own (design §15.23);
+;;;     be a router of its own (design §15.23); an option's handler may be
+;;;     wrapped or a router, and the 405's may answer another status, or set
+;;;     an Allow of its own;
 ;;;   - P2 reordering and regrouping a table, and reordering its options,
 ;;;     changes no answer;
 ;;;   - P3 a table is refused, by an assertion violation from the router's
@@ -239,11 +241,12 @@
 ;; --- the model ------------------------------------------------------------------
 
 ;; A table is data, so a case can be printed, pasted and shrunk:
-;;   HM     = (leaf Id) | (nf Id) | (br Id) | (mna Id) | (next) | (wrapped Tag HM)
-;;          | (router (Listof Entry) (U (nf Id) #f) [(Listof Opt)])
-;;   Opt    = (onf Id) | (br Id) | (mna Id): make-router's options after the
+;;   HM     = (leaf Id) | (nf Id) | (br Id) | (mna Id [Status Own]) | (next)
+;;          | (wrapped Tag HM) | (router (Listof Entry) (U (nf Id) #f) [(Listof Opt)])
+;;   Opt    = (onf HM) | (br HM) | (mna HM): make-router's options after the
 ;;            bare not-found handler, in order: on-not-found's, on-bad-request's
-;;            and on-method-not-allowed's
+;;            and on-method-not-allowed's, each handler a leaf of its kind, a
+;;            wrapped handler or a router
 ;;   Entry  = (route Template (U Symbol #f) (Listof MEntry))
 ;;          | (group Template (Listof MW) (Listof Entry))
 ;;          | (mount Template HM)
@@ -251,9 +254,11 @@
 ;;   MW     = (mw Tag) | (rw Tag) | (fresh Tag Method Path Query) | (mr Tag (Listof Entry))
 ;;   Req    = (Method Path (U String #f))
 ;; A leaf notes what it read and answers 200 with x-leaf; a nf is a
-;; not-found handler; (next), only in a middleware's router, is what the
-;; middleware hands on to. A middleware notes what it read on the way in,
-;; and notes out on the way out; its kinds are in run-stack.
+;; not-found handler, and br and mna the 400's and the 405's, which answer
+;; as a leaf does, but an mna answers STATUS, 200 unless given, with an
+;; Allow: OWN of its own when OWN; (next), only in a middleware's router,
+;; is what the middleware hands on to. A middleware notes what it read on
+;; the way in, and notes out on the way out; its kinds are in run-stack.
 ;;
 ;; Events, the same from the oracle and the router:
 ;;   (leaf Id Method Path MountPath Query Route Params Lookups)
@@ -272,10 +277,22 @@
   (if (null? (router-opts hm)) (list 'router entries nf) (list 'router entries nf (router-opts hm))))
 
 ;; opt-handler : (Listof Opt) Symbol -> (U HM #f)
-;; The handler of the option of KIND, as an HM: onf's a nf.
+;; The handler of the option of KIND.
 (define (opt-handler opts kind)
   (let ((o (assq kind opts)))
-    (and o (list (if (eq? kind 'onf) 'nf kind) (cadr o)))))
+    (and o (cadr o))))
+
+;; kind-leaf : Symbol -> HM — the plain handler of an option of KIND.
+(define (kind-leaf kind)
+  (case kind ((onf) '(nf hs)) ((br) '(br hs)) (else '(mna hs 405 #f))))
+
+(define (opt-leaf? h) (and (memq (car h) '(nf br mna)) #t))
+
+;; mna-status, mna-headers : HM -> Nat, Headers — what an mna leaf answers.
+(define (mna-status hm) (if (pair? (cddr hm)) (caddr hm) 200))
+(define (mna-headers hm)
+  (cons (cons "x-leaf" (symbol->string (cadr hm)))
+        (if (and (pair? (cddr hm)) (cadddr hm)) '(("Allow" . "OWN")) '())))
 
 (define param-names '("id" "x" "y" "v" "user-id" "n_2"))
 (define catch-names '("p" "rest" "r"))
@@ -290,9 +307,22 @@
 (define response-404 (list 404 '() (make-bytevector 0)))
 (define response-400 (list 400 '() (make-bytevector 0)))
 (define (response-405 allow) (list 405 (list (cons "allow" allow)) (make-bytevector 0)))
-;; §5: the router sets allow on what the 405 handler answers.
-(define (leaf-response-allow id allow)
-  (list 200 (list (cons "x-leaf" (symbol->string id)) (cons "allow" allow)) (make-bytevector 0)))
+(define (mna-response hm) (list (mna-status hm) (mna-headers hm) (make-bytevector 0)))
+
+;; with-allow : Response String -> Response
+;; §5: on a 405 the 405 handler answers, the router's allow, where the
+;; first allow of any case stood, the others gone, or last; any other
+;; answer as it is.
+(define (with-allow resp allow)
+  (if (and (pair? resp) (eqv? (car resp) 405))
+      (list 405
+            (let loop ((hs (cadr resp)) (placed #f))
+              (cond ((null? hs) (if placed '() (list (cons "allow" allow))))
+                    ((string-ci=? (caar hs) "allow")
+                     (if placed (loop (cdr hs) #t) (cons (cons "allow" allow) (loop (cdr hs) #t))))
+                    (else (cons (car hs) (loop (cdr hs) placed)))))
+            (caddr resp))
+      resp))
 
 ;; =================================================================================
 ;; The oracle, from §5.
@@ -414,7 +444,8 @@
   (case (car hm)
     ((leaf nf br mna) #f)
     ((wrapped) (handler-refusal (caddr hm)))
-    ((router) (or (entries-inner-refusal (cadr hm)) (router-refusal (cadr hm)) (options-refusal hm)))))
+    ((router) (or (entries-inner-refusal (cadr hm)) (router-refusal (cadr hm)) (options-refusal hm)
+                  (exists (lambda (o) (handler-refusal (cadr o))) (router-opts hm))))))
 
 ;; options-refusal : HM -> (U Symbol #f)
 ;; §5: two options for one answer, the bare not-found handler on-not-found's.
@@ -439,7 +470,8 @@
   (case (car hm)
     ((leaf nf br mna) '())
     ((wrapped) (cons (cadr hm) (expected-applies (caddr hm))))
-    ((router) (concat-map entry-applies (cadr hm)))))
+    ((router) (append (concat-map entry-applies (cadr hm))
+                      (concat-map (lambda (o) (expected-applies (cadr o))) (router-opts hm))))))
 
 (define (entry-applies e)
   (case (car e)
@@ -684,7 +716,8 @@
     ((nf) (cons (list (oracle-nf-event (cadr hm) st)) (leaf-response (cadr hm))))
     ;; The 400's and the 405's handlers note what they read, as a leaf does;
     ;; their callers give them the request §5 says.
-    ((br mna)(cons (list (cons (car hm) (cdr (oracle-leaf-event (cadr hm) st)))) (leaf-response (cadr hm))))
+    ((br) (cons (list (cons 'br (cdr (oracle-leaf-event (cadr hm) st)))) (leaf-response (cadr hm))))
+    ((mna) (cons (list (cons 'mna (cdr (oracle-leaf-event (cadr hm) st)))) (mna-response hm)))
     ((next) (next st))
     ((wrapped)
      (let ((inner (oracle-handler (caddr hm) st next)))
@@ -704,9 +737,11 @@
       (let ((br (opt-handler opts 'br)))
         (if br
             (begin (seen! (if (ostate-match st) 'br-under-match 'br-unmatched))
+                   (seen! (handler-kind 'br br))
                    (oracle-handler br st next))
             (cons '() response-400))))
     (define (not-found)
+      (when (and nf (not (equal? nf '(next))) (not (opt-leaf? nf))) (seen! (handler-kind 'nf nf)))
       (when (and nf (eq? (car nf) 'nf))
         (seen! (cond ((not (ostate-match st)) 'nf-unmatched)
                      ((not (ostate-mbase st)) 'nf-under-route)
@@ -732,6 +767,14 @@
 (define (handler-router? h)
   (or (eq? (car h) 'router) (and (eq? (car h) 'wrapped) (handler-router? (caddr h)))))
 
+;; handler-kind : Symbol HM -> Symbol — for the tallies: KIND's handler a
+;; router, wrapped, or a leaf.
+(define (handler-kind kind h)
+  (string->symbol (string-append (symbol->string kind)
+                                 (cond ((handler-router? h) "-router")
+                                       ((eq? (car h) 'wrapped) "-wrapped")
+                                       (else "-leaf")))))
+
 (define (oracle-matched w decoded opts st next)
   (let* ((item (cand-item w))
          (base (or (ostate-mbase st) (list "" '() "")))
@@ -749,15 +792,18 @@
                                         (ostate-mbase st) #f)))
               ;; §5: the 405 handler gets the request with the route's match, as
               ;; the route's handler would, but no group's middleware runs; the
-              ;; router sets allow on what it answers.
+              ;; router sets allow on a 405 it answers.
               (let ((mna (opt-handler opts 'mna)) (allow (allow-of (cadddr item))))
                 (if mna
                     (begin
                       (seen! (if (ostate-mbase st) 'mna-under-mount 'mna-top))
+                      (seen! (handler-kind 'mna mna))
                       (let ((r (oracle-handler mna (make-ostate (ostate-method st) (ostate-path st)
                                                                 (ostate-query st) match (ostate-mbase st) #f)
                                                next)))
-                        (cons (car r) (leaf-response-allow (cadr mna) allow))))
+                        (when (pair? (cdr r))
+                          (seen! (case (cadr r) ((405) 'mna-answered-405) (else 'mna-answered-other))))
+                        (cons (car r) (with-allow (cdr r) allow))))
                     (cons '() (response-405 allow))))))
         (let* ((path (ostate-path st))
                (end (cand-taken w))
@@ -897,8 +943,10 @@
   (case (car hm)
     ((leaf) (let ((id (cadr hm))) (lambda (r) (note! (real-leaf-event id r)) (real-leaf-res id))))
     ((nf) (let ((id (cadr hm))) (lambda (r) (note! (real-nf-event id r)) (real-leaf-res id))))
-    ((br mna) (let ((kind (car hm)) (id (cadr hm)))
-                (lambda (r) (note! (cons kind (cdr (real-leaf-event id r)))) (real-leaf-res id))))
+    ((br) (let ((id (cadr hm)))
+            (lambda (r) (note! (cons 'br (cdr (real-leaf-event id r)))) (real-leaf-res id))))
+    ((mna) (let ((id (cadr hm)) (status (mna-status hm)) (headers (mna-headers hm)))
+             (lambda (r) (note! (cons 'mna (cdr (real-leaf-event id r)))) (make-res status headers #f))))
     ((wrapped) (let ((inner (build-handler (caddr hm)))) (wrap inner (observing-mw (cadr hm) (lambda (next) next)))))
     ((router)
      (let* ((routes (build-entries (cadr hm)))
@@ -913,9 +961,9 @@
         (reverse acc)
         (let* ((o (car os))
                (built (case (car o)
-                        ((onf) (on-not-found (build-handler (list 'nf (cadr o)))))
-                        ((br) (on-bad-request (build-handler (list 'br (cadr o)))))
-                        (else (on-method-not-allowed (build-handler (list 'mna (cadr o))))))))
+                        ((onf) (on-not-found (build-handler (cadr o))))
+                        ((br) (on-bad-request (build-handler (cadr o))))
+                        (else (on-method-not-allowed (build-handler (cadr o)))))))
           (loop (cdr os) (cons built acc))))))
 
 (define (build-entries entries)
@@ -1226,7 +1274,7 @@
     (draw* s ((n (g-range (if (null? seeded) 1 0) nmax)) (empty (g-chance 1 30)))
       (let loop ((i 0) (acc (reverse seeded)) (s s))
         (if (or (= i n) (and empty (null? seeded)))
-            (draw* s ((nf (g-chance (if (cfg-deep? c) 2 1) 4)) (opts (gen-opts c nf)))
+            (draw* s ((nf (g-chance (if (cfg-deep? c) 2 1) 4)) (opts (gen-opts c depth (reverse acc) nf)))
               (cons (router-with (list 'router '() #f opts)
                                  (cond ((and empty (null? seeded)) '())
                                        ((null? acc) (list '(route "/a" #f ((GET short (leaf h))))))
@@ -1243,18 +1291,50 @@
 
 (define (gen-router c depth) (gen-router-seeded c depth '() 5))
 
-;; gen-opts : Cfg Boolean -> Gen (Listof Opt)
+;; gen-opts : Cfg Nat (Listof Entry) Boolean -> Gen (Listof Opt)
 ;; With opts?, a 400 handler a time in three, a 405 handler as often, and
 ;; an on-not-found one a time in four when NF? says no bare one is there,
-;; in any order. Their ids are numbered later.
-(define (gen-opts c nf?)
+;; in any order, each handler gen-opt-handler's for ENTRIES' router. Their
+;; ids are numbered later.
+(define (gen-opts c depth entries nf?)
   (lambda (s)
     (if (not (cfg-opts? c))
         (cons '() s)
         (draw* s ((br (g-chance 1 3)) (mna (g-chance 1 3)) (onf (g-chance 1 4)))
-          ((g-shuffle (append (if br '((br b)) '()) (if mna '((mna a)) '())
-                              (if (and onf (not nf?)) '((onf n)) '())))
-           s)))))
+          (let loop ((kinds (append (if br '(br) '()) (if mna '(mna) '())
+                                    (if (and onf (not nf?)) '(onf) '())))
+                     (acc '())
+                     (s s))
+            (if (null? kinds)
+                ((g-shuffle (reverse acc)) s)
+                (draw* s ((h (gen-opt-handler c depth (car kinds) entries)))
+                  (loop (cdr kinds) (cons (list (car kinds) h) acc) s))))))))
+
+;; gen-opt-handler : Cfg Nat Symbol (Listof Entry) -> Gen HM
+;; An option's handler: mostly a leaf of KIND's, an mna answering a 405, a
+;; 404 or a 200, an Allow of its own a time in three; now and then that
+;; leaf wrapped; and, with DEPTH left, now and then a router. A 400's or a
+;; 405's router is mostly seeded with one of ENTRIES' routes renamed, so it
+;; takes some of the paths the router it serves takes.
+(define (gen-opt-handler c depth kind entries)
+  (lambda (s)
+    (draw* s ((r (g-int 100))
+              (status (g-weighted '((5 . 405) (3 . 404) (2 . 200))))
+              (own (g-chance 1 3)))
+      (let ((leaf (if (eq? kind 'mna) (list 'mna 'a status own) (kind-leaf kind))))
+        (cond ((and (> depth 0) (< r (if (cfg-deep? c) 25 12)))
+               (let ((routes (filter (lambda (item)
+                                       (and (eq? (car item) 'froute) (starts-with-slash? (cadr item))))
+                                     (flatten entries "" '()))))
+                 (draw* s ((seed (g-chance 3 4)) (pick (g-int (max 1 (length routes)))))
+                   (if (and seed (pair? routes) (not (eq? kind 'onf)))
+                       (let ((renamed (rename-captures (cadr (list-ref routes pick)))))
+                         (draw* s ((methods (gen-methods c 0 renamed)))
+                           ((gen-router-seeded c (- depth 1) (list (list 'route renamed #f methods)) 2)
+                            s)))
+                       ((gen-router c (- depth 1)) s)))))
+              ((< r 30) (cons (list 'wrapped 'w leaf) s))
+              (else (cons leaf s)))))))
 
 ;; --- ids --------------------------------------------------------------------------
 
@@ -1268,6 +1348,8 @@
   (case (car hm)
     ((leaf) (cons (list 'leaf (make-id "h" k)) (+ k 1)))
     ((nf) (cons (list 'nf (make-id "n" k)) (+ k 1)))
+    ((br) (cons (list 'br (make-id "b" k)) (+ k 1)))
+    ((mna) (cons (cons 'mna (cons (make-id "a" k) (cddr hm))) (+ k 1)))
     ((wrapped) (let-pair* (((inner k2) (number-handler (caddr hm) (+ k 1))))
                  (cons (list 'wrapped (make-id "w" k) inner) k2)))
     ((router) (let-pair* (((es k2) (number-entries (cadr hm) k))
@@ -1276,15 +1358,13 @@
                 (cons (router-with (list 'router '() #f opts) es nf) k4)))))
 
 ;; number-opts : (Listof Opt) Nat -> (Pair (Listof Opt) Nat)
-;; Each option's handler an id of its own: n, b or a and a number.
+;; Each option's handler numbered as any handler is.
 (define (number-opts opts k)
   (let loop ((os opts) (acc '()) (k k))
     (if (null? os)
         (cons (reverse acc) k)
-        (let ((kind (car (car os))))
-          (loop (cdr os)
-                (cons (list kind (make-id (case kind ((onf) "n") ((br) "b") (else "a")) k)) acc)
-                (+ k 1))))))
+        (let-pair* (((h k2) (number-handler (cadr (car os)) k)))
+          (loop (cdr os) (cons (list (car (car os)) h) acc) k2)))))
 
 (define (number-entries es k)
   (let loop ((es es) (acc '()) (k k))
@@ -1453,9 +1533,13 @@
 ;; The shapes of the paths HM's tree takes, through its mounts.
 (define (handler-patterns hm)
   (case (car hm)
-    ((leaf nf) '(((rest))))
+    ((leaf nf br mna) '(((rest))))
     ((wrapped) (handler-patterns (caddr hm)))
     ((router)
+     (append
+      ;; the shapes an option's router takes, so some paths reach it
+      (concat-map (lambda (o) (if (handler-router? (cadr o)) (handler-patterns (cadr o)) '()))
+                  (router-opts hm))
      (concat-map (lambda (item)
                    (let ((pat (map seg->pat (template-segs (cadr item)))))
                      (if (eq? (car item) 'froute)
@@ -1464,7 +1548,7 @@
                          (map (lambda (sub) (append pat sub))
                               (let ((subs (handler-patterns (caddr item))))
                                 (if (member '((rest)) subs) subs (cons '((rest)) subs)))))))
-                 (filter (lambda (item) (starts-with-slash? (cadr item))) (flatten (cadr hm) "" '()))))))
+                 (filter (lambda (item) (starts-with-slash? (cadr item))) (flatten (cadr hm) "" '())))))))
 
 (define (segs->path segs) (apply string-append (map (lambda (x) (string-append "/" x)) segs)))
 
@@ -1629,6 +1713,14 @@
                       (if (caddr hm) (list (router-with hm (cadr hm) #f)) '())
                       (map (lambda (i) (list 'router (cadr hm) (caddr hm) (remove-at (router-opts hm) i)))
                            (iota (length (router-opts hm))))
+                      (concat-map (lambda (i)
+                                    (let* ((opts (router-opts hm)) (o (list-ref opts i)) (h (cadr o)))
+                                      (map (lambda (h2)
+                                             (list 'router (cadr hm) (caddr hm)
+                                                   (splice-at opts i (list (list (car o) h2)))))
+                                           (append (if (opt-leaf? h) '() (list (kind-leaf (car o))))
+                                                   (handler-shrinks h)))))
+                                  (iota (length (router-opts hm))))
                       (map (lambda (es) (router-with hm es (caddr hm))) (entries-shrinks (cadr hm)))
                       (if (= (length (cadr hm)) 1) (list (router-with hm '() (caddr hm))) '())))))
 
@@ -1918,19 +2010,42 @@
   (router (list 'mount "/m" '(leaf mt)))
   (list (list '(GET "/m/a b/<c>" #f) (list (leaf-ev 'mt 'GET "/a b/<c>" "/m" #f "/m" '())) (leaf-response 'mt))))
 
-(sanity-row "sanity: the 400 handler gets the request as it came to the router; the 405 handler gets the route's match, no group's middleware runs, and its answer gets the route's allow"
+(sanity-row "sanity: the 400 handler gets the request as it came to the router; the 405 handler gets the route's match, no group's middleware runs, and its 405 gets the route's allow"
   (list 'router (list (rt "/u/:id" (get 'u)) (list 'group "/g" '((mw m)) (list (rt "/x" (get 'x) (list 'PROPFIND 'method '(leaf p))))))
-        #f '((mna a) (br b)))
+        #f '((mna (mna a 405 #f)) (br (br b))))
   (list (list '(GET "/u/%FF" #f) (list (list 'br 'b 'GET "/u/%FF" "" #f #f '() (lookups-in '()))) (leaf-response 'b))
         (list '(DELETE "/u/a b" "q=1") (list (list 'br 'b 'DELETE "/u/a b" "" "q=1" #f '() (lookups-in '()))) (leaf-response 'b))
         (list '(PUT "/u/7" #f) (list (list 'mna 'a 'PUT "/u/7" "" #f "/u/:id" '(("id" . "7")) (lookups-in '(("id" . "7")))))
-              (leaf-response-allow 'a "GET, HEAD"))
+              (list 405 '(("x-leaf" . "a") ("allow" . "GET, HEAD")) (make-bytevector 0)))
         (list '(POST "/g/x" #f) (list (list 'mna 'a 'POST "/g/x" "" #f "/g/x" '() (lookups-in '())))
-              (leaf-response-allow 'a "GET, HEAD, PROPFIND"))
+              (list 405 '(("x-leaf" . "a") ("allow" . "GET, HEAD, PROPFIND")) (make-bytevector 0)))
         (list '(GET "/nope" #f) '() response-404)))
 
+(sanity-row "sanity: the router's allow goes only on a 405 the 405 handler answers, where the handler's own Allow stood; a 404 or a 200 goes out as it is, its own Allow kept"
+  (router (list 'mount "/a" (list 'router (list (rt "/x" (get 'x))) #f '((mna (mna a 405 #t)))))
+          (list 'mount "/b" (list 'router (list (rt "/x" (get 'y))) #f '((mna (mna b 404 #t)))))
+          (list 'mount "/c" (list 'router (list (rt "/x" (get 'z))) #f '((mna (mna c 200 #f))))))
+  (list (list '(PUT "/a/x" #f) (list (list 'mna 'a 'PUT "/x" "/a" #f "/a/x" '() (lookups-in '())))
+              (list 405 '(("x-leaf" . "a") ("allow" . "GET, HEAD")) (make-bytevector 0)))
+        (list '(PUT "/b/x" #f) (list (list 'mna 'b 'PUT "/x" "/b" #f "/b/x" '() (lookups-in '())))
+              (list 404 '(("x-leaf" . "b") ("Allow" . "OWN")) (make-bytevector 0)))
+        (list '(DELETE "/c/x" #f) (list (list 'mna 'c 'DELETE "/x" "/c" #f "/c/x" '() (lookups-in '())))
+              (list 200 '(("x-leaf" . "c")) (make-bytevector 0)))))
+
+(sanity-row "sanity: an option's handler may be wrapped, its middleware around it, or a router, which matches the path itself: as the 405 handler, its own 405 gets the outer route's allow"
+  (list 'router (list (rt "/u/:id" (get 'u))) #f
+        (list (list 'br '(wrapped w (br b)))
+              (list 'mna (router (rt "/u/:n" (list 'POST 'short '(leaf inner)))))))
+  (list (list '(GET "/u/%FF" #f)
+              (list (in-ev 'w 'GET "/u/%FF" "" #f #f '()) (list 'br 'b 'GET "/u/%FF" "" #f #f '() (lookups-in '()))
+                    (out-ev 'w))
+              (leaf-response 'b))
+        (list '(PUT "/u/7" #f) '() (response-405 "GET, HEAD"))
+        (list '(POST "/u/7" #f) (list (leaf-ev 'inner 'POST "/u/7" "" #f "/u/:n" '(("n" . "7"))))
+              (leaf-response 'inner))))
+
 (sanity-row "sanity: on-not-found's handler is the not-found handler; a router under a mount hands its 400 and 405 handlers the mount's match"
-  (router (list 'mount "/api/:v" (list 'router (list (rt "/u/:id" (get 'u))) #f '((onf n) (br b) (mna a)))))
+  (router (list 'mount "/api/:v" (list 'router (list (rt "/u/:id" (get 'u))) #f '((onf (nf n)) (br (br b)) (mna (mna a 405 #f))))))
   (list (list '(GET "/api/2/zz" #f) (list (list 'nf 'n 'GET "/zz" "/api/2" #f "/api/:v" '(("v" . "2")) (lookups-in '(("v" . "2")))))
               (leaf-response 'n))
         (list '(GET "/api/2/u/%FF" #f) (list (list 'br 'b 'GET "/u/%FF" "/api/2" #f "/api/:v" '(("v" . "2")) (lookups-in '(("v" . "2")))))
@@ -1938,7 +2053,7 @@
         (list '(PUT "/api/2/u/7" #f)
               (list (list 'mna 'a 'PUT "/u/7" "/api/2" #f "/api/:v/u/:id" '(("v" . "2") ("id" . "7"))
                           (lookups-in '(("v" . "2") ("id" . "7")))))
-              (leaf-response-allow 'a "GET, HEAD"))))
+              (list 405 '(("x-leaf" . "a") ("allow" . "GET, HEAD")) (make-bytevector 0)))))
 
 (sanity-row "sanity: HEAD goes to HEAD, else GET, else ANY, and sees HEAD; ANY takes the unlisted methods"
   (router (rt "/g" (get 'g) (list 'ANY 'short '(leaf any)))
@@ -2010,7 +2125,7 @@
   '((refused refused) (refused refused) (refused refused) (refused refused) (refused refused)
     (refused refused) (refused refused) (refused refused) (refused refused) (refused refused)
     (refused refused) (refused refused) (refused refused) (refused refused) (refused refused)
-    (refused refused) (refused refused) (refused refused) (refused refused)
+    (refused refused) (refused refused) (refused refused) (refused refused) (refused refused)
     (accepted accepted) (accepted accepted) (accepted accepted) (accepted accepted) (accepted accepted))
   (guard (e (#t (list 'raised (describe e))))
     (verdicts
@@ -2029,15 +2144,17 @@
            (router (list 'group "/:x" '((mw m)) (list (rt "/b/:x" (get 'a)))))
            (router (rt "/a%20b" (get 'a)))
            (router (rt "users" (get 'a)))
-           (list 'router (list (rt "/a" (get 'a))) '(nf n) '((onf n2)))
-           (list 'router (list (rt "/a" (get 'a))) #f '((onf n) (br b) (onf n2)))
-           (list 'router (list (rt "/a" (get 'a))) #f '((br b) (mna a) (br b2)))
-           (list 'router (list (rt "/a" (get 'a))) '(nf n) '((mna a) (mna a2)))
+           (list 'router (list (rt "/a" (get 'a))) '(nf n) '((onf (nf n2))))
+           (list 'router (list (rt "/a" (get 'a))) #f '((onf (nf n)) (br (br b)) (onf (nf n2))))
+           (list 'router (list (rt "/a" (get 'a))) #f '((br (br b)) (mna (mna a)) (br (br b2))))
+           (list 'router (list (rt "/a" (get 'a))) '(nf n) '((mna (mna a)) (mna (mna a2))))
+           (list 'router (list (rt "/a" (get 'a))) #f
+                 (list (list 'br (router (rt "/u/:id" (get 'x)) (rt "/u/:n" (get 'y))))))
            (router (list 'group "/admin" '((mw m)) (list (rt "" (get 'a)))))
            (router (rt "/users/" (get 'a)) (rt "/users" (get 'b)))
            (router (rt "/p" (get 'a)) (list 'mount "/p" '(leaf b)))
            (router (rt "/a:b/~x/@/a*b" (get 'a)) (rt "/:user-id/*n_2" (get 'b)))
-           (list 'router (list (rt "/a" (get 'a))) '(nf n) '((mna a) (br b)))))))
+           (list 'router (list (rt "/a" (get 'a))) '(nf n) '((mna (mna a)) (br (br b))))))))
 
 ;; =================================================================================
 ;; The properties
@@ -2111,9 +2228,20 @@
     (case (car hm)
       ((leaf nf br mna) (cons hm s))
       ((wrapped) (draw* s ((inner (gen-transform (caddr hm)))) (cons (list 'wrapped (cadr hm) inner) s)))
-      ;; §5: the options come in any order.
-      ((router) (draw* s ((es (gen-transform-entries (cadr hm))) (opts (g-shuffle (router-opts hm))))
+      ;; §5: the options come in any order; their handlers are transformed too.
+      ((router) (draw* s ((es (gen-transform-entries (cadr hm)))
+                          (inside (gen-transform-opts (router-opts hm)))
+                          (opts (g-shuffle inside)))
                   (cons (router-with (list 'router '() #f opts) es (caddr hm)) s))))))
+
+;; gen-transform-opts : (Listof Opt) -> Gen (Listof Opt) — each handler transformed.
+(define (gen-transform-opts opts)
+  (lambda (s)
+    (let loop ((os opts) (acc '()) (s s))
+      (if (null? os)
+          (cons (reverse acc) s)
+          (draw* s ((h (gen-transform (cadr (car os)))))
+            (loop (cdr os) (cons (list (car (car os)) h) acc) s))))))
 
 (define (gen-transform-entries es)
   (lambda (s)
@@ -2273,7 +2401,8 @@
   (lambda (s)
     (draw* s ((deep (g-chance 1 4)) (more-option (g-chance 1 6)) (kind (g-pick '(onf br mna))))
       (if more-option
-          (cons (list 'router (cadr hm) (caddr hm) (append (router-opts hm) (list (list kind 'z)))) s)
+          (cons (list 'router (cadr hm) (caddr hm) (append (router-opts hm) (list (list kind (kind-leaf kind)))))
+                s)
       (let ((mounted (filter (lambda (i) (let ((e (list-ref (cadr hm) i)))
                                            (and (eq? (car e) 'mount) (eq? (car (caddr e)) 'router))))
                              (iota (length (cadr hm))))))
