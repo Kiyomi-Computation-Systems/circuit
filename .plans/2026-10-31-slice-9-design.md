@@ -314,7 +314,9 @@ judges. The owner chose it (§8.1).
 - **The query's characters are its bytes.** The server reads the request target as
   Latin-1, one character a byte, so `req-query-params` turns each character back into its
   byte before parsing.
-  - A raw UTF-8 `é`, as curl sends it, reads as `é`.
+  - A raw UTF-8 `é` would read as `é`, but the server answers a target holding a byte
+    past ASCII `400` before any handler runs (found in 9b). So a character from 128 to
+    255 reaches a query only through `req-with-query` or a test request.
   - A character past 255 can be in a query only if code put it there. It is an assertion
     violation.
   - So a test writes a non-ASCII value percent-encoded, as a browser sends it. The
@@ -356,6 +358,9 @@ judges. The owner chose it (§8.1).
 - **The body is read once.** After the middleware, `req-body` reads eof.
   - A body already taken outside it is `req-with-body-cap`'s assertion violation, a 500:
     two readers of one body is a bug.
+  - So it goes inside every cap (found in 9b): a `wrap-body-cap` inside it comes after the
+    port is made, the same violation for every form. In a router, it goes in the group of
+    the routes that take forms.
 - **`charset` is ignored.** WHATWG's parser decodes UTF-8 alone, and browsers send UTF-8
   from a UTF-8 page.
 - **It waits as the body does,** so `wrap-timeout` outside it covers a slow client.

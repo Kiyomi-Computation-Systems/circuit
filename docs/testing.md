@@ -35,6 +35,9 @@ hello, you
 - Headers are a list of `(name . value)` strings, and the host is the
   `host` field's, or `""`. A body is a bytevector, a string, read as its
   UTF-8 bytes, or `#f` for none.
+- Write a query's value past ASCII escaped, `/?q=caf%C3%A9`, as a browser
+  sends it: the server answers a target holding a byte past ASCII `400`
+  ([Query strings and forms](params.md)).
 - A test request is HTTP/1.1, and has no addresses: `req-remote-address`
   and the other three read `#f`.
 - `(res-body->bytevector res)` reads any body as the server would send it

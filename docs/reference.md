@@ -1,6 +1,6 @@
 # API reference
 
-Every name the eight public libraries export, one entry each, library by
+Every name the nine public libraries export, one entry each, library by
 library. An entry gives the name's signature, says what it does, and links
 the guide page that explains it. A name `(circuit http-server)` re-exports
 from chez-http-server has no signature here: its entry links the server's
@@ -17,6 +17,7 @@ Headers    = (Listof (Pair String String))
 Body       = (U #f Bytevector String Producer BinaryInputPort
                 SizedBody WrappedBody TappedBody)
 Producer   = (-> (U Bytevector Eof))
+Params     = (Listof (Pair String String))
 TakeOver   = (Transport Bytevector -> Answer)
 Env        = (String -> (U String #f))
 ```
@@ -1114,6 +1115,81 @@ req-mount-path : Req -> String
 
 The part of the path that the mounts above took, such as `"/api/2"`; `""`
 under none. See [Routing](routing.md).
+
+## `(circuit params)`
+
+The query and an urlencoded form, read as name and value pairs, by the
+parser browsers use.
+
+```scheme
+(import (rnrs) (circuit) (circuit params))
+```
+
+### `req-query-params`
+
+```text
+req-query-params : Req -> Params
+```
+
+The query's pairs, in order, read each time it is asked; `'()` with no
+query. See [Query strings and forms](params.md).
+
+### `wrap-form-params`
+
+```text
+wrap-form-params : Nat -> Middleware
+```
+
+Middleware that reads an `application/x-www-form-urlencoded` body before
+the handler, at most that many bytes, under any cap the request already
+has. A longer one is a `413`. It goes inside every cap. See
+[Query strings and forms](params.md).
+
+### `req-form-params`
+
+```text
+req-form-params : Req -> Params
+```
+
+The pairs `wrap-form-params` read from the body, or `'()` when it read
+none. See [Query strings and forms](params.md).
+
+### `param-value`
+
+```text
+param-value : Params String -> (U String #f)
+```
+
+The value of the first pair with that name, in its case, or `#f`. See
+[Query strings and forms](params.md).
+
+### `param-values`
+
+```text
+param-values : Params String -> (Listof String)
+```
+
+The value of every pair with that name, in its case, in order. See
+[Query strings and forms](params.md).
+
+### `parse-params`
+
+```text
+parse-params : Bytevector -> Params
+```
+
+Bytes read as urlencoded pairs. It never fails: a `%` that starts no
+escape stays a `%`, and bytes that are no UTF-8 read as U+FFFD. See
+[Query strings and forms](params.md).
+
+### `params->string`
+
+```text
+params->string : Params -> String
+```
+
+Pairs written urlencoded, a space as `+`, for a query or a test's form
+body. See [Query strings and forms](params.md).
 
 ## `(circuit websocket)`
 

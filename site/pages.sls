@@ -14,6 +14,7 @@
       ("quickstart.md"    . "Quickstart")
       ("requests.md"      . "Requests and responses")
       ("bodies.md"        . "Bodies and streaming")
+      ("params.md"        . "Query strings and forms")
       ("middleware.md"    . "Middleware")
       ("routing.md"       . "Routing")
       ("waiting.md"       . "Waiting")

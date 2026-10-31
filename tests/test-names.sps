@@ -13,7 +13,8 @@
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
 ;;; its list, so the (circuit) facade keeps the adapter's, the tests', the
-;;; router's and the CORS and header middleware's names out, that the adapter's re-exports are the server's own bindings,
+;;; router's, the CORS and header middleware's and the params' names out,
+;;; that the adapter's re-exports are the server's own bindings,
 ;;; compared through a prefixed import of each, and that the like-named
 ;;; bindings of the two make different things.
 (import (rnrs)
@@ -33,6 +34,7 @@
         (circuit middleware cors)
         (circuit middleware headers)
         (circuit router)
+        (circuit params)
         (circuit test)
         (circuit http-server)
         (circuit websocket)
@@ -119,9 +121,10 @@
 (test-begin "names")
 
 (test-equal "the server's libraries, chez-websocket's facade and circuit's are all loaded, side by side"
-  '(#t #t #t #t #t #t #t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t)
   (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler
-                        wrap-catch wrap-cors wrap-hsts make-router websocket-res websocket-handshake)))
+                        wrap-catch wrap-cors wrap-hsts make-router parse-params websocket-res
+                        websocket-handshake)))
 
 (test-equal "(circuit request) exports its list exactly"
   (sorted request-names)
@@ -161,6 +164,16 @@
 (test-equal "(circuit router) exports its list exactly"
   (sorted router-names)
   (sorted-exports '(circuit router)))
+
+(test-equal "(circuit params) exports its seven exactly"
+  '(param-value param-values params->string parse-params req-form-params req-query-params
+    wrap-form-params)
+  (sorted-exports '(circuit params)))
+
+(test-equal "(circuit) exports none of the params' names: an app imports (circuit params) beside it"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit))))
+          (library-exports '(circuit params))))
 
 (test-equal "(circuit websocket) exports websocket-res alone: an app takes the rest from (websocket)"
   '(websocket-res)
