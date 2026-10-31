@@ -15,11 +15,12 @@
 # fetches.
 
 # The Chez binary. In the container, scripts/guix-env-enter exports the
-# profile's real `scheme` binary. Elsewhere it is the first of `scheme` and
-# `chez`, the name Homebrew installs it under on macOS, on PATH that is Chez
-# Scheme, which scripts/require-chez --find asks each by running it: on a
-# Mac, another Scheme may own `scheme`. With neither, it is the first on
-# PATH, or `scheme`, which check-chez then refuses. A CHEZ given on the
+# profile's real `scheme` binary. Elsewhere, scripts/require-chez --find
+# runs `scheme` and `chez`, the name Homebrew installs it under on macOS,
+# to ask what each is, under a time limit, and takes the first on PATH that
+# is Chez Scheme 10.4.1 or later, threaded, else the first that is Chez at
+# all, else the first on PATH, else `scheme`, which check-chez then
+# refuses: on a Mac, another Scheme may own `scheme`. A CHEZ given on the
 # command line or in the environment stays as given. Asked once, when make
 # reads this file, and exported, so that chez-libuv's build, which make runs
 # below, and every make under this one use this one.
@@ -250,12 +251,12 @@ endef
 # Runs $(CHEZ) once, asking its version and build, and refuses one that is
 # not Chez Scheme 10.4.1 or later, threaded, chez-http-server's floor
 # (ADR-0002), naming what it found and what it needs (scripts/require-chez).
-# deps takes it first, so every target that runs Chez on circuit's
-# libraries, deps itself, which builds chez-libuv's shim with it, test,
-# run, dev, gate, gate-rps, check-suites and check-imports, holds it before
-# Chez runs. The docs site's targets ask less of it: see site.
+# A CHEZ that is empty or not on PATH it refuses itself, so require-tools
+# doesn't ask first. deps takes it first, so every target that runs Chez on
+# circuit's libraries, deps itself, which builds chez-libuv's shim with it,
+# test, run, dev, gate, gate-rps, check-suites and check-imports, holds it
+# before Chez runs. The docs site's targets ask less of it: see site.
 check-chez: ## Fail unless CHEZ is Chez Scheme 10.4.1 or later, threaded, naming what it found
-	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@scripts/require-chez "$(GOAL)" "$(CHEZ)"
 
 deps: check-chez ## Build chez-libuv's shim and link SRFI-64 into build/scheme-libs; never fetches
@@ -401,13 +402,14 @@ site-deps: ## (host, once) Get chez-cmark-gfm as Akku.lock pins it: an `akku ins
 	  AKKU_DEST=$(BUILD_DIR)/akku sh scripts/fetch-akku-lock chez-cmark-gfm; \
 	fi
 
-# The site's targets refuse a $(CHEZ) that is not Chez Scheme, but not one
-# below the server's floor or without threads: nothing they run loads the
-# server or libuv, and CI's site job and the Pages workflow run them on
-# apt's Chez, which is below it (scripts/require-chez --any).
+# The site's targets refuse a $(CHEZ) that is not a threaded Chez Scheme,
+# but not one below the server's floor: nothing they run loads the server
+# or libuv, and CI's site job and the Pages workflow run them on apt's
+# Chez, which is below it. Threaded, since check-site's suites import
+# (circuit-testing), which takes Chez's mutexes, a threaded build's alone
+# (scripts/require-chez --any-version).
 site: site-deps ## Render docs/ into build/site/ (open build/site/index.html); SITE_REF=<tag> pins links to repository files
-	@scripts/require-tools "$(GOAL)" $(CHEZ)
-	@scripts/require-chez --any "$(GOAL)" "$(CHEZ)"
+	@scripts/require-chez --any-version "$(GOAL)" "$(CHEZ)"
 	@mkdir -p $(BUILD_DIR)/site
 	@SITE_REF="$(SITE_REF)" SITE_OUT=$(BUILD_DIR)/site \
 	  $(CHEZ) --libdirs $(SITE_LIBDIRS) --program build-site.sps
@@ -419,8 +421,7 @@ site: site-deps ## Render docs/ into build/site/ (open build/site/index.html); S
 # path, so a site library it tests that starts importing (cmark gfm) fails
 # there at import.
 check-site: site-deps srfi ## Test the site generator, then render docs/ in memory: nav, links, anchors (GitHub's too), no .md leak, no <pre> reflow
-	@scripts/require-tools "$(GOAL)" $(CHEZ)
-	@scripts/require-chez --any "$(GOAL)" "$(CHEZ)"
+	@scripts/require-chez --any-version "$(GOAL)" "$(CHEZ)"
 	@$(CHEZ) --libdirs .:tests:$(SRFI_LIBS) --program tests/site-unit.sps
 	@$(CHEZ) --libdirs $(SITE_LIBDIRS):tests:$(SRFI_LIBS) --program tests/site-render-unit.sps
 	@SITE_REF="$(SITE_REF)" $(CHEZ) --libdirs $(SITE_LIBDIRS) --program tests/site-check.sps

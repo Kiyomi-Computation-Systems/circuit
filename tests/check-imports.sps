@@ -53,17 +53,18 @@
 ;;;       nor an (http-server ...) library, as a core library doesn't
 ;;;       (ADR-0006);
 ;;;   (j) each LIBDIR named after the directory, a directory on a library
-;;;       path, holds nothing named circuit or circuit.<anything>: a
-;;;       directory Chez would look in for a (circuit ...) library, or a file
-;;;       it would load as (circuit). Chez takes a library from the first
-;;;       directory on its path that has it, so one there could stand in for
-;;;       the directory's own, unread, wherever the path puts it. make passes
-;;;       every directory of the library paths it builds for circuit's
-;;;       libraries; the directory itself, and a LIBDIR that does not exist,
-;;;       which holds nothing, are passed over. A name such as
-;;;       circuit-testing is another library's, and tests/fixtures/, where
-;;;       this check's own fixtures hold (circuit ...) libraries, is no
-;;;       directory on a path.
+;;;       path, holds nothing named circuit or circuit.<anything>, in any
+;;;       case, as a Mac's disk finds one: a directory Chez would look in
+;;;       for a (circuit ...) library, or a file it would load as (circuit).
+;;;       Chez takes a library from the first directory on its path that has
+;;;       it, so one there could stand in for the directory's own, unread,
+;;;       wherever the path puts it. A LIBDIR it cannot list is named, as
+;;;       what it holds is unknown. make passes every directory of the
+;;;       library paths it builds for circuit's libraries; the directory
+;;;       itself, and a LIBDIR that does not exist, which holds nothing, are
+;;;       passed over. A name such as circuit-testing is another library's,
+;;;       and tests/fixtures/, where this check's own fixtures hold
+;;;       (circuit ...) libraries, is no directory on a path.
 ;;;
 ;;; The lists are allowlists: a library that is not on one is refused, so a
 ;;; route nobody thought of is closed until a reviewer opens it. Exports are
@@ -462,11 +463,13 @@
 ;; Whether NAME, an entry of a directory on a library path, is one Chez could
 ;; take a (circuit ...) library from: circuit, the directory of every
 ;; (circuit NAME ...), or circuit.<extension>, the file of (circuit) itself
-;; under any of Chez's library extensions, compiled ones among them.
+;; under any of Chez's library extensions, compiled ones among them. In any
+;; case: a Mac's default disk finds Circuit/ or CIRCUIT.sls for circuit.
 (define (circuit-entry? name)
-  (or (string=? name "circuit")
-      (and (> (string-length name) (string-length "circuit."))
-           (string=? (substring name 0 (string-length "circuit.")) "circuit."))))
+  (let ((name (string-downcase name)))
+    (or (string=? name "circuit")
+        (and (> (string-length name) (string-length "circuit."))
+             (string=? (substring name 0 (string-length "circuit.")) "circuit.")))))
 
 ;; path-dirs : String (Listof String) -> (Listof String)
 ;; The LIBDIRS rule (j) looks in, each without the slashes it ends with: not
@@ -476,15 +479,22 @@
           (map without-slashes libdirs)))
 
 ;; path-complaints : String (Listof String) -> (Listof String)
-;; Rule (j): each entry of each of DIRS that circuit-entry? takes, sorted.
+;; Rule (j): each entry of each of DIRS that circuit-entry? takes, sorted. A
+;; directory it cannot list is named, failing closed as rule (f) does: what
+;; it holds is unknown.
 (define (path-complaints root dirs)
   (apply append
          (map (lambda (dir)
-                (map (lambda (name)
-                       (string-append dir "/" name ": its directory is on the library path beside " root
-                                      ", so Chez could load a (circuit ...) library from it in place of "
-                                      root "'s, which this check reads; only " root " may hold one"))
-                     (list-sort string<? (filter circuit-entry? (directory-list dir)))))
+                (let ((names (guard (e (#t (describe e))) (directory-list dir))))
+                  (if (string? names)
+                      (list (string-append dir ": it is on the library path beside " root
+                                           ", and cannot be listed, so this check cannot tell whether it holds a (circuit ...) library: "
+                                           names))
+                      (map (lambda (name)
+                             (string-append dir "/" name ": its directory is on the library path beside " root
+                                            ", so Chez could load a (circuit ...) library from it in place of "
+                                            root "'s, which this check reads; only " root " may hold one"))
+                           (list-sort string<? (filter circuit-entry? names))))))
               dirs)))
 
 ;; main : (Listof String) -> Unit

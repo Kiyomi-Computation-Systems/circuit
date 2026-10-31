@@ -1,6 +1,6 @@
 #!/bin/sh
 # scripts/require-chez GOAL CHEZ
-# scripts/require-chez --any GOAL CHEZ
+# scripts/require-chez --any-version GOAL CHEZ
 # scripts/require-chez --find NAME...
 #
 # Asks CHEZ what it is by running it once on a program that prints one
@@ -14,21 +14,43 @@
 # (ADR-0002). The Makefile passes it $(GOAL), what the user typed, as
 # scripts/require-tools takes it.
 #
-# --any GOAL CHEZ: refuses a CHEZ that is not Chez Scheme, of any version,
-# threaded or not: for the docs site's targets, which load neither the
-# server nor libuv, and which CI's site job and the Pages workflow run on
-# apt's Chez, below the floor.
+# --any-version GOAL CHEZ: refuses a CHEZ that is not a threaded Chez
+# Scheme, of any version: for the docs site's targets, which load neither
+# the server nor libuv, and which CI's site job and the Pages workflow run
+# on apt's Chez, below the floor. Threaded, since check-site's suites
+# import (circuit-testing), which takes Chez's mutexes, and Chez has them
+# in a threaded build alone.
 #
 # A refusal is one line on stderr, naming what CHEZ is and what is needed,
 # then a hint line, and exit 2. Silent, and exit 0, when CHEZ will do.
 #
-# --find NAME...: prints the first NAME on PATH that is Chez Scheme, of any
-# version, else the first NAME on PATH, else the first NAME, and exits 0:
-# the Makefile's default CHEZ, which the checks above then hold.
+# --find NAME...: prints the first NAME on PATH that is Chez Scheme 10.4.1
+# or later, threaded, else the first that is Chez Scheme at all, else the
+# first on PATH, else the first NAME, and exits 0: the Makefile's default
+# CHEZ, which the checks above then hold. It asks each NAME on PATH until
+# one meets the floor.
 #
-# It needs nothing but shell builtins and CHEZ itself, so /bin/sh runs it
-# with no PATH of its own. A version is compared digit by digit, never as a
-# shell number, so a component of any length compares as it should.
+# The probe is bounded, as the Makefile runs --find for every target:
+#   - CHEZ runs under GNU timeout, or gtimeout, as Homebrew's coreutils
+#     names it, for REQUIRE_CHEZ_SECONDS, 10 unless set. timeout puts CHEZ
+#     in a process group of its own and ends the group when its time is
+#     up. When CHEZ ends first, the probe ends what is left of the group,
+#     so a child CHEZ left holding its output can't hold the probe. A
+#     timeout that isn't GNU's may make no group of its own, and then such
+#     a child holds the probe till it ends. With neither on PATH, CHEZ runs
+#     unbounded: one that never ends, or leaves a child holding its output,
+#     holds the probe, and make, with it.
+#   - The probe reads at most 4096 bytes of the answer, through head -c,
+#     and an answer cut there fails. With no head on PATH, it reads it all.
+#   - CHEZ's exit status comes after its answer, on a line of its own,
+#     since a pipeline's status is its last command's, head's.
+#
+# Beyond those two, it needs nothing but shell builtins and CHEZ itself,
+# so /bin/sh runs it with no PATH of its own. A version is compared digit
+# by digit, never as a shell number, so a component of any length compares
+# as it should. Every line it writes goes through printf '%s', never echo,
+# which in dash reads a backslash in CHEZ's answer, or its name, as an
+# escape: \c ends the line there.
 set -u
 
 floor_major=10
@@ -36,8 +58,10 @@ floor_minor=4
 floor_sub=1
 floor=$floor_major.$floor_minor.$floor_sub
 
+cap=4096
+
 usage() {
-  echo "usage: require-chez [--any] GOAL CHEZ | require-chez --find NAME..." >&2
+  printf '%s\n' "usage: require-chez [--any-version] GOAL CHEZ | require-chez --find NAME..." >&2
   exit 2
 }
 
@@ -52,17 +76,6 @@ program='(call-with-values scheme-version-number
     (display (if (threaded?) " threaded" " nothreads"))
     (newline)))'
 
-# probe CHEZ: runs it once on the program, setting out, all it wrote to
-# stdout and stderr, less its last line feeds, and code, its exit status.
-# The program goes to Chez's REPL on stdin, which -q keeps from printing a
-# greeting or a prompt. Not --script /dev/stdin: Chez 10.2 asks a script's
-# port its position, which a pipe refuses. A CHEZ that exits unread may
-# leave printf a closed pipe, whose complaint is no part of the answer.
-probe() {
-  out=$(printf '%s\n' "$program" 2>/dev/null | "$1" -q 2>&1)
-  code=$?
-}
-
 # digits S: whether S is one or more of 0 to 9, and nothing else.
 digits() {
   case $1 in
@@ -71,11 +84,100 @@ digits() {
   return 0
 }
 
+# unpadded S: S without its leading zeros, or 0.
+unpadded() {
+  s=$1
+  while [ "${#s}" -gt 1 ] && [ "${s#0}" != "$s" ]; do s=${s#0}; done
+  printf '%s' "$s"
+}
+
+seconds=${REQUIRE_CHEZ_SECONDS:-10}
+if ! digits "$seconds" || [ "$(unpadded "$seconds")" = 0 ]; then
+  printf '%s\n' "require-chez: REQUIRE_CHEZ_SECONDS is '$seconds', not a whole number of seconds, 1 or more" >&2
+  exit 2
+fi
+
+timeout_tool=
+for tool in timeout gtimeout; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    timeout_tool=$tool
+    break
+  fi
+done
+
+head_tool=
+if command -v head >/dev/null 2>&1; then
+  head_tool=head
+fi
+
+# answer CHEZ: runs it on the program, under timeout when there is one,
+# writing all it writes to stdout and stderr, then a line feed and the line
+# `probe-exit STATUS`. The pipeline runs in the background so that $! is
+# timeout's pid, which is its process group's id: once timeout has ended,
+# whatever is left in the group is ended too. Once head has its 4096
+# bytes, the line has nowhere to go, and its complaint is dropped.
+answer() {
+  if [ -n "$timeout_tool" ]; then
+    printf '%s\n' "$program" 2>/dev/null | "$timeout_tool" "$seconds" "$1" -q 2>&1 &
+  else
+    printf '%s\n' "$program" 2>/dev/null | "$1" -q 2>&1 &
+  fi
+  pid=$!
+  wait "$pid"
+  status=$?
+  if [ -n "$timeout_tool" ]; then
+    kill -s KILL -- "-$pid" 2>/dev/null
+  fi
+  printf '\nprobe-exit %s\n' "$status" 2>/dev/null
+}
+
+# probe CHEZ: runs it once on the program, setting out, its answer, less
+# its last line feeds; code, its exit status; and cut: no, or past when
+# the answer ran past the cap, or after when something CHEZ left running
+# wrote on after its exit status, which only a probe with no group to end
+# lets happen. The program goes to Chez's REPL on stdin, which -q keeps
+# from printing a greeting or a prompt. Not --script /dev/stdin: Chez 10.2
+# asks a script's port its position, which a pipe refuses. A CHEZ that
+# exits unread may leave printf a closed pipe, whose complaint is no part
+# of the answer.
+probe() {
+  if [ -n "$head_tool" ]; then
+    raw=$(answer "$1" | "$head_tool" -c "$cap")
+  else
+    raw=$(answer "$1")
+  fi
+  last=${raw##*"$nl"}
+  code=${last#probe-exit }
+  if [ "$last" != "$raw" ] && [ "probe-exit $code" = "$last" ] && digits "$code"; then
+    cut=no
+    out=${raw%"$nl"*}
+  else
+    cut=past
+    code=
+    out=$raw
+    case $raw in
+      *"${nl}probe-exit "[0-9]*"$nl"*)
+        cut=after
+        out=${raw%"${nl}probe-exit "*}
+        code=${raw##*"${nl}probe-exit "}
+        code=${code%%"$nl"*}
+        ;;
+    esac
+  fi
+  while :; do
+    case $out in
+      *"$nl") out=${out%"$nl"} ;;
+      *) break ;;
+    esac
+  done
+}
+
 # parse: whether $out is the program's line, exactly, and CHEZ exited 0.
 # The words around the version are fixed, so anything more, a second line
 # among it, lands in the version, which must be three runs of digits
 # between two dots. Sets version, major, minor, sub and threads.
 parse() {
+  [ "$cut" = no ] || return 1
   case $out in
     "chez-scheme "*" threaded") threads=threaded ;;
     "chez-scheme "*" nothreads") threads=nothreads ;;
@@ -95,30 +197,23 @@ parse() {
   digits "$major" && digits "$minor" && digits "$sub"
 }
 
-# unpadded S: S without its leading zeros, or 0.
-unpadded() {
-  s=$1
-  while [ "${#s}" -gt 1 ] && [ "${s#0}" != "$s" ]; do s=${s#0}; done
-  printf '%s' "$s"
-}
-
 # compare A B: prints lt, eq or gt for the digit strings A and B, of any
 # length: the longer is the greater, and two of one length compare digit
 # by digit from the left.
 compare() {
   a=$(unpadded "$1")
   b=$(unpadded "$2")
-  if [ "${#a}" -lt "${#b}" ]; then echo lt; return; fi
-  if [ "${#a}" -gt "${#b}" ]; then echo gt; return; fi
+  if [ "${#a}" -lt "${#b}" ]; then printf '%s\n' lt; return; fi
+  if [ "${#a}" -gt "${#b}" ]; then printf '%s\n' gt; return; fi
   while [ -n "$a" ]; do
     da=${a%"${a#?}"}
     db=${b%"${b#?}"}
-    if [ "$da" -lt "$db" ]; then echo lt; return; fi
-    if [ "$da" -gt "$db" ]; then echo gt; return; fi
+    if [ "$da" -lt "$db" ]; then printf '%s\n' lt; return; fi
+    if [ "$da" -gt "$db" ]; then printf '%s\n' gt; return; fi
     a=${a#?}
     b=${b#?}
   done
-  echo eq
+  printf '%s\n' eq
 }
 
 # at_floor: whether major.minor.sub is the floor or later.
@@ -135,9 +230,9 @@ at_floor() {
 # hint NEEDS: a refusal's last line.
 hint() {
   if command -v guix >/dev/null 2>&1 && [ -z "${GUIX_ENVIRONMENT:-}" ]; then
-    echo "On this Guix host, run it in the project's container: scripts/guix-env make $goal" >&2
+    printf '%s\n' "On this Guix host, run it in the project's container: scripts/guix-env make $goal" >&2
   else
-    echo "Install $1, or name one with CHEZ=/path/to/scheme, then run make $goal again." >&2
+    printf '%s\n' "Install $1, or name one with CHEZ=/path/to/scheme, then run make $goal again." >&2
   fi
 }
 
@@ -146,21 +241,25 @@ case ${1:-} in
   --find)
     shift
     [ "$#" -ge 1 ] || usage
-    first_found=
+    first_on_path=
+    first_chez=
     for name in "$@"; do
       command -v "$name" >/dev/null 2>&1 || continue
-      [ -n "$first_found" ] || first_found=$name
+      [ -n "$first_on_path" ] || first_on_path=$name
       probe "$name"
       if parse; then
-        printf '%s\n' "$name"
-        exit 0
+        if [ "$threads" = threaded ] && at_floor; then
+          printf '%s\n' "$name"
+          exit 0
+        fi
+        [ -n "$first_chez" ] || first_chez=$name
       fi
     done
-    printf '%s\n' "${first_found:-$1}"
+    printf '%s\n' "${first_chez:-${first_on_path:-$1}}"
     exit 0
     ;;
-  --any)
-    mode=any
+  --any-version)
+    mode=any-version
     shift
     ;;
 esac
@@ -169,16 +268,16 @@ esac
 goal=$1
 chez=$2
 
-if [ "$mode" = any ]; then
-  needs="Chez Scheme"
-  wanted="the docs site needs Chez Scheme"
+if [ "$mode" = any-version ]; then
+  needs="Chez Scheme, threaded"
+  wanted="the docs site needs Chez Scheme, threaded"
 else
   needs="Chez Scheme $floor or later, threaded"
   wanted="circuit needs Chez Scheme $floor or later, threaded"
 fi
 
 if [ -z "$chez" ] || ! command -v "$chez" >/dev/null 2>&1; then
-  echo "make $goal: CHEZ=$chez not found; $wanted." >&2
+  printf '%s\n' "make $goal: CHEZ=$chez not found; $wanted." >&2
   hint "$needs"
   exit 2
 fi
@@ -189,19 +288,26 @@ if ! parse; then
   first=${out%%"$nl"*}
   if [ -z "$out" ]; then
     answering=nothing
-  elif [ "$first" = "$out" ]; then
+  elif [ "$first" = "$out" ] && [ "$cut" = no ]; then
     answering="'$first'"
   else
     answering="'$first' and more"
   fi
-  echo "make $goal: CHEZ=$chez is not Chez Scheme: asked for its version, it exited $code, answering $answering; $wanted." >&2
+  if [ "$cut" = past ]; then
+    how="it ran past $cap bytes"
+  elif [ "$cut" = after ]; then
+    how="it exited $code, and something it left running wrote on after it"
+  elif [ -n "$timeout_tool" ] && [ "$code" = 124 ]; then
+    how="it had not ended after $seconds s"
+  else
+    how="it exited $code"
+  fi
+  printf '%s\n' "make $goal: CHEZ=$chez is not Chez Scheme: asked for its version, $how, answering $answering; $wanted." >&2
   hint "$needs"
   exit 2
 fi
 
-[ "$mode" = any ] && exit 0
-
-if at_floor && [ "$threads" = threaded ]; then
+if [ "$threads" = threaded ] && { [ "$mode" = any-version ] || at_floor; }; then
   exit 0
 fi
 
@@ -210,6 +316,6 @@ if [ "$threads" = threaded ]; then
 else
   build="not threaded"
 fi
-echo "make $goal: CHEZ=$chez is Chez Scheme $version, $build; $wanted." >&2
+printf '%s\n' "make $goal: CHEZ=$chez is Chez Scheme $version, $build; $wanted." >&2
 hint "$needs"
 exit 2

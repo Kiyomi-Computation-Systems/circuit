@@ -832,8 +832,11 @@
 ;; which POSIX leaves undefined. The child writes two bytes and exits, so a
 ;; read of the FIFO, which the adapter never makes, would end at eof rather
 ;; than wait for a writer; a write that comes after the reader is closed
-;; fails quietly. The reader is opened only once the child is started, so a
-;; failed start fails the row rather than hanging it.
+;; fails quietly. The reader is opened only when system answers 0, but
+;; system returns once the shell has put the job in the background, so the
+;; 0 says only that the shell ran: a child that starts and never opens the
+;; FIFO leaves the reader's open waiting until make test's timeout ends the
+;; suite.
 (test-equal "a measure that raises, a FIFO's position, answers 500 with the port closed"
   (list 0 0 (list server-error) #t '(handler-failed) 'port-position #t)
   (call-with-temp-directory

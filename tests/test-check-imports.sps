@@ -701,6 +701,48 @@
   (ok 6)
   (run (list (root "legal"))))
 
+;; A Mac's default disk finds a name in any case, so Chez there would take
+;; (circuit request) from Circuit/request.sls, and (circuit) from
+;; CIRCUIT.sls.
+(test-equal "rule (j): circuit's names in any case are named; names in another case that only begin with its letters are not"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("g/Circuit/request.sls" "g/CIRCUIT.sls" "g/cIrCuIt.Ss" "g/Circuits/x.sls"
+                      "g/CIRCUIT-TESTING.sls" "g/CIRCUITRY.SLS"))
+     (let* ((g (string-append dir "/g"))
+            (want (refused (on-path g "CIRCUIT.sls" (root "legal"))
+                           (on-path g "Circuit" (root "legal"))
+                           (on-path g "cIrCuIt.Ss" (root "legal"))))
+            (got (run (list (root "legal") g))))
+       (if (equal? got want) 'refused got)))))
+
+;; listing-error : String -> String
+;; What Chez raises listing the directory DIR, shown by describe, as the
+;; program shows it: the running Chez's words. A listing that raises
+;; nothing answers words no complaint holds, so its row fails.
+(define (listing-error dir)
+  (guard (e (#t (describe e)))
+    (directory-list dir)
+    "<the directory was listed, with no raise>"))
+
+;; A directory of mode 000 can't be listed but by root, which neither CI
+;; nor the container runs as. Its mode is given back before the directory
+;; is removed.
+(test-equal "rule (j): a library directory it cannot list is named, with Chez's words for why, and the audit fails closed"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((h (string-append dir "/h"))
+            (made (begin (make-tree dir '("h/")) (capture-command (list "chmod" "000" h))))
+            (why (listing-error h))
+            (got (run (list (root "legal") h)))
+            (restored (capture-command (list "chmod" "755" h)))
+            (want (refused (string-append h ": it is on the library path beside " (root "legal")
+                                          ", and cannot be listed, so this check cannot tell whether it holds a (circuit ...) library: "
+                                          why))))
+       (if (and (equal? got want) (= (car made) 0) (= (car restored) 0)) 'refused (list made got))))))
+
 ;; make-check-imports : String -> (List Integer String String)
 ;; make check-imports, in a make of its own, with BUILD_DIR at BUILD: its
 ;; scheme-libs, where deps links SRFI-64, is then a directory of every
