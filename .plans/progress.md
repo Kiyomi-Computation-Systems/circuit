@@ -187,8 +187,9 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "do d", the last of the four options the Open list held for
 `res-body->bytevector`'s pieces (design §15.29). Commits on `open/test-pieces`: the work
-(0203f84), this close-out, and its CI run named here. `make test` passes 17 suites;
-`make site` and `check-site` pass.
+(0203f84), this close-out (00092a2), and its CI run named here. `make test` passes 17
+suites; `make site` and `check-site` pass. CI passed on the PR (run 41202409607, 4m16s),
+on amd64, arm64 and the site job.
 
 - **the gap, probed first:** a 20,000-byte port under a wrap whose `f` writes each piece's
   length reads `[20000]` through `res-body->bytevector` at every setting, and through the
