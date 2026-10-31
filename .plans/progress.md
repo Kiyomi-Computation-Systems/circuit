@@ -203,8 +203,9 @@ close-out under **Close-outs**, newest first.
 ### 2026-10-31: slice 9c, cookies, in PR #36
 
 On the owner's "start 9c". Commits on `open/slice-9c`: the code, tests and docs (e99ab40),
-this close-out, and its CI run named here. `make test` passes 23 suites, and
-`make check-site` passes.
+this close-out (f5c265e), and its CI run named here. `make test` passes 23 suites, and
+`make check-site` passes. CI passed on the PR (run 41240216130, 4m18s), on amd64, arm64
+and the site job.
 
 - **`(circuit cookies)`:** `req-cookies`, `req-cookie`, `res-add-cookie`,
   `res-expire-cookie` and six option constructors, as the design's §6 has them. Reading
