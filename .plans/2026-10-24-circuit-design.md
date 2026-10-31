@@ -1564,6 +1564,22 @@ The owner's answer to §16.4 (2026-10-28):
     promise, with harder counting rules. The tap's name was weighed
     against `res-observe-body`.
 
+The owner's answers to the ledger's Open list (2026-10-30):
+
+28. **The app can answer the router's 400 and 405, and a raw character a
+    path can't hold is a 400.** `make-router` takes options after its
+    table, in any order: `(on-not-found h)`, or `h` alone as before,
+    `(on-bad-request h)` and `(on-method-not-allowed h)`. The 405 handler
+    gets the route's match, and the router sets `allow` on its answer. A
+    capture holding a raw ASCII character outside RFC 3986's pchar, and
+    `/` in a catch-all, is the 400, as one that doesn't decode is. The
+    names are `on-…`: a program can't define a name it imports, and the
+    docs define `not-found` themselves. Weighed: positional handlers, `#f`
+    for the default, which adds no names but makes the 405 alone
+    `(make-router routes #f #f h)`; and keeping the answers fixed, with a
+    middleware around the router to rewrite them. The slice 6 design §5
+    has the rules.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a

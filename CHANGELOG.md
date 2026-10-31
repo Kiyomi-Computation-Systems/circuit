@@ -7,6 +7,23 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **The app can answer the router's 400 and 405 itself.** `make-router` takes options
+  after its table, in any order: `(on-not-found h)`, or `h` alone as before,
+  `(on-bad-request h)` and `(on-method-not-allowed h)`. The 400's handler gets the request
+  as it came to the router. The 405's gets it with the route's match, and the router sets
+  `allow` on its response. Two options for one answer raise. A program that defines one
+  of the three names itself must rename it.
+
+### Changed
+
+- **A capture holding a raw character a path can't hold is a 400**, as one that doesn't
+  decode as UTF-8 already was: a control character, a space, DEL, `"`, `#`, `<`, `>`, `?`,
+  `[`, `\`, `]`, `^`, a backtick, `{`, `|` or `}`. The server lets none of them into a
+  path, so only a path set with `req-with-path`, or a test's, can hold one. A mount's rest
+  is still unchecked.
+
 ## [0.1.2] - 2026-10-30
 
 The third release, a patch: the pins move to chez-http-server v0.10.0 and chez-websocket
