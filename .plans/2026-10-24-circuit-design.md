@@ -706,20 +706,24 @@ clock again and writes one line on standard output, flushed at once, in
 the server's own shape, a word and then its details:
 
 ```text
-request GET /users/7 200 written 3
-request GET /feed 200 client-closed 30012
-request GET /boom raised failed 0
+request GET /users/7 200 written 3 192.0.2.7
+request GET /feed 200 client-closed 30012 192.0.2.7
+request GET /boom raised failed 0 -
 ```
 
 The details are the method, the path without its query, the status, the
-ending, and the milliseconds between the two readings. Like the server's
-lines, it carries no timestamp: the environment that collects standard
-output adds one.
+ending, the milliseconds between the two readings, and the client's
+address, `req-remote-address`, or `-` for none (§15.27). In the method,
+the path and the address, each control character is a space. Like the
+server's lines, it carries no timestamp: the environment that collects
+standard output adds one. `(wrap-log-with clock)` makes the same log as
+a middleware (§15.27).
 
 - **It logs each request that reaches its handler.** A request the
   server answers before any handler runs, such as a 400, 408, 431 or 505,
-  or a 413 for a declared length past the cap, registers nothing, and
-  nothing logs it, circuit or the server (reproduced in the test host).
+  or a 413 for a declared length past the cap, registers nothing: from
+  the server's v0.10.0, the server logs it itself, `request-refused` with
+  its status, its reason and the client's address.
 - **The status is the one the handler answered**, not always the one
   sent. When the server answers in the app's place (§7's `failed`), the
   line reads, say, `200 failed` while the client got a 500: for a response
@@ -1565,6 +1569,19 @@ The owner's answer to §16.4 (2026-10-28):
     against `res-observe-body`.
 
 The owner's answers to the ledger's Open list (2026-10-30):
+
+27. **`wrap-catch` and `wrap-log` gain makers, and the log's line the
+    client's address.** `(wrap-catch-with on-raise)` and
+    `(wrap-log-with clock)` each return a middleware, so `wrap` takes them
+    as it takes `(wrap-timeout ms)`. `(wrap-catch handler [on-raise])` and
+    `(wrap-log handler [clock])` stay as they were. `wrap-log`'s line ends
+    with `req-remote-address`, or `-`, as the server's `request-refused`
+    line ends with the peer's address. Each control character in the
+    method, the path and the address is written as a space, as in the
+    server's lines (chez-http-server #250): a middleware can set the
+    address from a client's header. Weighed: both taking their settings
+    alone, which breaks every program so far; and the address first, as
+    the Common Log Format has it, which wouldn't match the server's line.
 
 28. **The app can answer the router's 400 and 405, and a raw character a
     path can't hold is a 400.** `make-router` takes options after its

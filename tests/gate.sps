@@ -429,7 +429,7 @@
                                (test-req-done! req 'written)
                                (if (res? r) (list 'res (res-status r)) r))))))
            (text (said)))
-      (unless (and (equal? got '(res 200)) (string=? text "request GET / 200 written 0\n"))
+      (unless (and (equal? got '(res 200)) (string=? text "request GET / 200 written 0 -\n"))
         (refuse (call-with-string-output-port
                  (lambda (p) (put-string p "wrap-log answered ") (write got p)
                          (put-string p " and wrote ") (write text p)

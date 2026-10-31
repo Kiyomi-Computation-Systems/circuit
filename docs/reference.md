@@ -735,6 +735,15 @@ answers, by default an empty 500 after a `handler-failed` line. A
 `&body-failed` gets its own status, and `&client-closed` and
 `&deadline-passed` are raised again. See [Middleware](middleware.md).
 
+### `wrap-catch-with`
+
+```text
+wrap-catch-with : (Req Any -> Res) -> Middleware
+```
+
+A middleware that makes `(wrap-catch handler on-raise)` of the handler it
+is given, for `wrap`. See [Middleware](middleware.md).
+
 ### `wrap-timeout`
 
 ```text
@@ -753,8 +762,19 @@ wrap-log : Handler [(-> Nat)] -> Handler
 ```
 
 The handler with a line written for each request once its response is
-done: `request METHOD PATH STATUS ENDING MS`. The clock reads milliseconds,
-Chez's `real-time` unless given. See [Middleware](middleware.md).
+done: `request METHOD PATH STATUS ENDING MS ADDRESS`, the address `-` for
+none, and a control character in any of them a space. The clock reads
+milliseconds, Chez's `real-time` unless given. See
+[Middleware](middleware.md).
+
+### `wrap-log-with`
+
+```text
+wrap-log-with : (-> Nat) -> Middleware
+```
+
+A middleware that makes `(wrap-log handler clock)` of the handler it is
+given, for `wrap`. See [Middleware](middleware.md).
 
 ## `(circuit router)`
 

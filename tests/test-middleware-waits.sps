@@ -10,7 +10,8 @@
 ;;;     before anything unwinds, its answer the answer, a res or not, a
 ;;;     raise from it reaching the caller; the default on-raise's line, rule
 ;;;     by rule, flushed, and its 500; the app's own answer returned; the
-;;;     refusals;
+;;;     refusals; and the same catch made by wrap-catch-with's middleware,
+;;;     with its own refusals;
 ;;;   - wrap-catch through the server's test host, (http-server testing): a
 ;;;     body that fails past the cap answered with its status and the
 ;;;     connection closed, a raise after a park, a client's close;
@@ -28,12 +29,16 @@
 ;;;     raise answered where it was raised; and the ms it refuses, against
 ;;;     the server's own rule;
 ;;;   - wrap-log directly, with a fake clock and test-req-done!: each status
-;;;     and each ending, when the clock is read, newest first, nothing
-;;;     caught, the port as it is then, flushed; through the test host, on
-;;;     the host's clock; the default clock, Chez's real time across a real
-;;;     sleep, bounded by the suite's own readings; the refusals;
+;;;     and each ending, the client's address or -, each control character
+;;;     in the method, the path and the address a space, when the clock is
+;;;     read, newest first, nothing caught, the port as it is then, flushed;
+;;;     through the test host, on the host's clock; the default clock,
+;;;     Chez's real time across a real sleep, bounded by the suite's own
+;;;     readings; the refusals; and the same log made by wrap-log-with's
+;;;     middleware, with its own refusals;
 ;;;   - composed, (wrap app wrap-catch (wrap-timeout ms) wrap-log): the 504
-;;;     and the 500 logged as written;
+;;;     and the 500 logged as written; and with the makers, on-raise's
+;;;     answer logged;
 ;;;   - around an upgrade, through the test host: wrap-catch passing one
 ;;;     through, wrap-timeout's deadline over the handler and not the
 ;;;     take-over, and wrap-log's line, 101 written, or 101 failed for a
@@ -302,14 +307,21 @@
 
 ;;; --- wrap-catch, called directly ---------------------------------------------
 
-;; re-raised : (-> Condition) -> (List Boolean (Listof Any))
-;; A condition MAKE builds, raised by the app under wrap-catch: whether the
-;; caller's guard got the very one, and what on-raise saw.
-(define (re-raised make)
+;; catch-with : Handler (Req Any -> Res) -> Handler
+;; HANDLER under the middleware (wrap-catch-with ON-RAISE) makes.
+(define (catch-with handler on-raise) ((wrap-catch-with on-raise) handler))
+
+;; re-raised : (-> Condition) [(Handler (Req Any -> Res) -> Handler)]
+;;             -> (List Boolean (Listof Any))
+;; A condition MAKE builds, raised by the app under CATCH, wrap-catch by
+;; default: whether the caller's guard got the very one, and what on-raise
+;; saw.
+(define (re-raised make . catch)
   (let* ((c (make))
          (seen '())
-         (wrapped (wrap-catch (lambda (r) (raise c))
-                              (lambda (r e) (set! seen (cons e seen)) (make-res 500 '() #f))))
+         (wrapped ((if (null? catch) wrap-catch (car catch))
+                   (lambda (r) (raise c))
+                   (lambda (r e) (set! seen (cons e seen)) (make-res 500 '() #f))))
          (got (outcome (lambda () (wrapped (make-test-req 'GET "/catch"))))))
     (list (and (eq? (car got) 'raised) (eq? (cadr got) c)) seen)))
 
@@ -373,16 +385,17 @@
            (list (if (eq? (car got) 'returned) (parts (cadr got)) got) seen)))
        '(400 408 413 431)))
 
-;; handed : Any -> (List Any Any Boolean)
-;; X raised by the app under wrap-catch, with an on-raise that answers a res
-;; of its own: whether on-raise saw the very request and the very X, and
-;; whether its res is the answer.
-(define (handed x)
+;; handed : Any [(Handler (Req Any -> Res) -> Handler)] -> (List Any Any Boolean)
+;; X raised by the app under CATCH, wrap-catch by default, with an on-raise
+;; that answers a res of its own: whether on-raise saw the very request and
+;; the very X, and whether its res is the answer.
+(define (handed x . catch)
   (let* ((req (make-test-req 'GET "/catch"))
          (mine (make-res 503 '(("x-mine" . "1")) "mine"))
          (seen '(on-raise-not-called on-raise-not-called))
-         (wrapped (wrap-catch (lambda (r) (raise x))
-                              (lambda (r e) (set! seen (list (eq? r req) (eq? e x))) mine)))
+         (wrapped ((if (null? catch) wrap-catch (car catch))
+                   (lambda (r) (raise x))
+                   (lambda (r e) (set! seen (list (eq? r req) (eq? e x))) mine)))
          (got (outcome (lambda () (wrapped req)))))
     (append seen (list (and (eq? (car got) 'returned) (eq? (cadr got) mine))))))
 
@@ -563,6 +576,44 @@
 (test-equal "wrap-catch refuses an on-raise that is no procedure, when it is called"
   '(assertion wrap-catch "on-raise is a procedure of a req and what was raised" ("not-on-raise"))
   (refusal (lambda () (wrap-catch (lambda (r) (make-res 200 '() #f)) "not-on-raise"))))
+
+;;; --- wrap-catch-with: the catch as a middleware ------------------------------------
+
+(test-equal "wrap-catch-with's middleware raises &deadline-passed and &client-closed again, the very ones, on-raise never called"
+  '((#t ()) (#t ()) (#t ()) (#t ()))
+  (map (lambda (make) (re-raised make catch-with))
+       (list make-deadline-passed server-deadline make-client-closed server-close)))
+
+(test-equal "wrap-catch-with's middleware answers a &body-failed with its status, and calls no on-raise"
+  '(((413 () #f) ()) ((431 () #f) ()))
+  (map (lambda (status)
+         (let* ((seen '())
+                (wrapped (catch-with (lambda (r) (raise (make-body-failed 'body-too-large status)))
+                                     (lambda (r e) (set! seen (cons e seen)) (make-res 500 '() #f))))
+                (got (outcome (lambda () (wrapped (make-test-req 'POST "/up"))))))
+           (list (if (eq? (car got) 'returned) (parts (cadr got)) got) seen)))
+       '(413 431)))
+
+(test-equal "wrap-catch-with's middleware hands any other raise, condition or not, to its on-raise with the request, and answers what it answers"
+  '((#t #t #t) (#t #t #t) (#t #t #t) (#t #t #t))
+  (map (lambda (x) (handed x catch-with))
+       (list (an-error) (make-warning) 'a-symbol (make-point 1 2))))
+
+(test-equal "wrap-catch-with's middleware with nothing raised answers the app's own answer, the very object, on-raise never called"
+  '(#t #t)
+  (map (lambda (answer)
+         (let ((got (outcome (lambda () ((catch-with (lambda (r) answer) no-on-raise)
+                                         (make-test-req 'GET "/"))))))
+           (and (eq? (car got) 'returned) (eq? (cadr got) answer))))
+       (list (make-res 201 '(("x-own" . "yes")) "own") 'not-a-res)))
+
+(test-equal "wrap-catch-with refuses an on-raise that is no procedure when it is called, and its middleware a handler that is no procedure when it is applied"
+  '((assertion wrap-catch-with "on-raise is a procedure of a req and what was raised" ("not-on-raise"))
+    (assertion wrap-catch-with "on-raise is a procedure of a req and what was raised" (#f))
+    (assertion wrap-catch-with "a handler is a procedure" (not-a-handler)))
+  (list (refusal (lambda () (wrap-catch-with "not-on-raise")))
+        (refusal (lambda () (wrap-catch-with #f)))
+        (refusal (lambda () ((wrap-catch-with no-on-raise) 'not-a-handler)))))
 
 ;;; --- wrap-catch through the test host --------------------------------------------
 
@@ -837,17 +888,17 @@
 
 ;;; --- wrap-log, called directly ------------------------------------------------------
 
-;; log-direct : Symbol String (Req -> Any) Symbol
+;; log-direct : Symbol String (Req -> Any) Symbol [(Handler (-> Nat) -> Handler)]
 ;;              -> (List (U (List 'returned Any) (List 'raised Any)) String (Listof Any) Nat)
-;; A request for METHOD and TARGET through (wrap-log APP clock), on a fake
-;; clock at 1000 when it is called and at 1002 once APP runs; then its
-;; response ended with ENDING at 1007: what the call gave, the text written
-;; then, what test-req-done! answered, and how many times the clock was
-;; read.
-(define (log-direct method target app ending)
+;; A request for METHOD and TARGET through (LOG APP clock), LOG wrap-log by
+;; default, on a fake clock at 1000 when it is called and at 1002 once APP
+;; runs; then its response ended with ENDING at 1007: what the call gave,
+;; the text written then, what test-req-done! answered, and how many times
+;; the clock was read.
+(define (log-direct method target app ending . log)
   (let-values (((clock set-now! reads) (make-clock)))
     (let* ((r (make-test-req method target))
-           (wrapped (wrap-log (lambda (r) (set-now! 1002) (app r)) clock)))
+           (wrapped ((if (null? log) wrap-log (car log)) (lambda (r) (set-now! 1002) (app r)) clock)))
       (set-now! 1000)
       (let ((got (outcome (lambda () (wrapped r)))))
         (set-now! 1007)
@@ -857,9 +908,9 @@
 (define own-res (make-res 200 '(("x-own" . "yes")) "own"))
 
 (test-equal "wrap-log, a res: its status, for each ending, the path without its query, the clock read at the call and at the end"
-  (list (list '(returned own) "request GET /users/7 200 written 7\n" '(returned ()) 2)
-        (list '(returned own) "request GET /users/7 200 client-closed 7\n" '(returned ()) 2)
-        (list '(returned own) "request GET /users/7 200 failed 7\n" '(returned ()) 2))
+  (list (list '(returned own) "request GET /users/7 200 written 7 -\n" '(returned ()) 2)
+        (list '(returned own) "request GET /users/7 200 client-closed 7 -\n" '(returned ()) 2)
+        (list '(returned own) "request GET /users/7 200 failed 7 -\n" '(returned ()) 2))
   (map (lambda (ending)
          (let ((seen (log-direct 'GET "/users/7?x=1&y=2" (lambda (r) own-res) ending)))
            (cons (if (equal? (car seen) (list 'returned own-res)) '(returned own) (car seen))
@@ -867,7 +918,7 @@
        '(written client-closed failed)))
 
 (test-equal "wrap-log, a raise: raised, the raise gone on untouched, the very object"
-  (list '(raised own) "request POST /up raised failed 7\n" '(returned ()) 2)
+  (list '(raised own) "request POST /up raised failed 7 -\n" '(returned ()) 2)
   (let* ((x (an-error))
          (seen (log-direct 'POST "/up" (lambda (r) (raise x)) 'failed)))
     (cons (if (equal? (car seen) (list 'raised x)) '(raised own) (car seen)) (cdr seen))))
@@ -895,20 +946,55 @@
               (if (eq? (car got) 'returned) (parts (cadr got)) (list 'raised (describe (cadr got)))))))))
 
 (test-equal "wrap-log, an answer that is no res: -, the answer returned as it is"
-  (list '(returned own) "request DELETE /thing - written 7\n" '(returned ()) 2)
+  (list '(returned own) "request DELETE /thing - written 7 -\n" '(returned ()) 2)
   (let* ((answer (list 'not 'a 'res))
          (seen (log-direct 'DELETE "/thing" (lambda (r) answer) 'written)))
     (cons (if (and (eq? (caar seen) 'returned) (eq? (cadar seen) answer)) '(returned own) (car seen))
           (cdr seen))))
 
 (test-equal "wrap-log, an answer that is no res but looks like a status, a number or a symbol: -"
-  '("request GET /n - written 7\n" "request GET /n - written 7\n" "request GET /n - written 7\n")
+  '("request GET /n - written 7 -\n" "request GET /n - written 7 -\n" "request GET /n - written 7 -\n")
   (map (lambda (answer) (cadr (log-direct 'GET "/n" (lambda (r) answer) 'written)))
        (list 200 404.0 'raised)))
 
 (test-equal "wrap-log, a status other than 200, read from the res"
-  "request PUT /a 418 written 7\n"
+  "request PUT /a 418 written 7 -\n"
   (cadr (log-direct 'PUT "/a" (lambda (r) (make-res 418 '() #f)) 'written)))
+
+;; logged-as : Symbol String (U String #f) -> String
+;; The line wrap-log writes, on a clock that doesn't move, for a request of
+;; METHOD for /, its path then set to PATH and its remote address to
+;; ADDRESS, answered 200 and written.
+(define (logged-as method path address)
+  (let-values (((clock set-now! reads) (make-clock)))
+    (let ((r (req-with-remote-address (req-with-path (make-test-req method "/") path) address)))
+      ((wrap-log (lambda (r) own-res) clock) r)
+      (output (lambda () (test-req-done! r 'written))))))
+
+(test-equal "wrap-log's line ends with the client's address, req-remote-address's, IPv4 or IPv6, or - for none or an empty one"
+  '("request GET / 200 written 0 192.0.2.7\n" "request GET / 200 written 0 2001:db8::1\n"
+    "request GET / 200 written 0 -\n" "request GET / 200 written 0 -\n")
+  (map (lambda (address) (logged-as 'GET "/" address)) (list "192.0.2.7" "2001:db8::1" #f "")))
+
+(test-equal "wrap-log makes each control character in the method, the path and the address a space, so a request is one line"
+  "request GE T /a b  c 200 written 0 192.0.2.7  request GET /forged 200 written 0 1.2.3.4\n"
+  (logged-as (string->symbol "GE\x7F;T") "/a\nb\r\tc" "192.0.2.7\r\nrequest GET /forged 200 written 0 1.2.3.4"))
+
+;; every-char : String — each character from U+0000 to U+007F, then U+0085
+;; and U+00E9.
+(define every-char
+  (let loop ((i 127) (cs (list #\x85 #\xE9)))
+    (if (< i 0) (list->string cs) (loop (- i 1) (cons (integer->char i) cs)))))
+
+;; spaced : String -> String — S, each character below U+0020, and DEL, a space.
+(define (spaced s)
+  (list->string (map (lambda (c) (if (or (< (char->integer c) 32) (= (char->integer c) 127)) #\space c))
+                     (string->list s))))
+
+(test-equal "wrap-log's rule at every ASCII character and two past it, in each field: below U+0020 and DEL a space, every other kept"
+  (let ((shown (spaced every-char)))
+    (string-append "request " shown " /" shown " 200 written 0 " shown "\n"))
+  (logged-as (string->symbol every-char) (string-append "/" every-char) every-char))
 
 (test-equal "wrap-log hands the app the very request, and writes nothing until the response ends"
   '(#t "")
@@ -920,7 +1006,7 @@
       (list seen written))))
 
 (test-equal "wrap-log registers first, so it hears last: after a procedure registered inside it, before one registered outside"
-  "inner\nrequest GET /order 204 written 0\nouter\n"
+  "inner\nrequest GET /order 204 written 0 -\nouter\n"
   (let-values (((clock set-now! reads) (make-clock)))
     (let* ((r (make-test-req 'GET "/order"))
            (say (lambda (s) (lambda (ending) (put-string (current-output-port) s))))
@@ -930,7 +1016,7 @@
       (output (lambda () (test-req-done! r 'written))))))
 
 (test-equal "wrap-log registers before calling the app: a raising app's response is still logged"
-  "request GET /raise raised failed 0\n"
+  "request GET /raise raised failed 0 -\n"
   (let-values (((clock set-now! reads) (make-clock)))
     (let* ((r (make-test-req 'GET "/raise"))
            (wrapped (wrap-log (lambda (r) (raise 'boom)) clock)))
@@ -938,7 +1024,7 @@
       (output (lambda () (test-req-done! r 'failed))))))
 
 (test-equal "wrap-log writes to the current output port as it is when the response ends"
-  '("" "" "request GET / 200 written 0\n")
+  '("" "" "request GET / 200 written 0 -\n")
   (let-values (((clock set-now! reads) (make-clock))
                ((at-wrap take-wrap) (open-string-output-port))
                ((at-call take-call) (open-string-output-port))
@@ -950,7 +1036,7 @@
       (list (take-wrap) (take-call) (take-end)))))
 
 (test-equal "wrap-log's line is flushed at once, for each ending: it has left the port's buffer when the procedure returns"
-  '("request GET / 200 written 0\n" "request GET / 200 client-closed 0\n" "request GET / 200 failed 0\n")
+  '("request GET / 200 written 0 -\n" "request GET / 200 client-closed 0 -\n" "request GET / 200 failed 0 -\n")
   (map (lambda (ending)
          (let-values (((clock set-now! reads) (make-clock))
                       ((port got) (recording-port)))
@@ -961,18 +1047,24 @@
              (got))))
        '(written client-closed failed)))
 
+;; ms-of : String String -> (U Number #f)
+;; The MS of LINE, a request line that begins with PREFIX and ends with no
+;; address, " -", and a line feed: the number between; else #f.
+(define (ms-of line prefix)
+  (let ((n (string-length line)) (m (string-length prefix)))
+    (and (> n (+ m 3))
+         (string=? (substring line 0 m) prefix)
+         (string=? (substring line (- n 3) n) " -\n")
+         (string->number (substring line m (- n 3)) 10))))
+
 (test-equal "wrap-log's default clock gives a line whose MS is a whole number of milliseconds"
-  '("request GET /clock 200 written" #t)
+  #t
   (let* ((r (make-test-req 'GET "/clock"))
          (wrapped (wrap-log (lambda (r) own-res))))
     (wrapped r)
     (let* ((line (output (lambda () (test-req-done! r 'written))))
-           (n (string-length line))
-           (space (let loop ((i (- n 1))) (cond ((< i 0) #f) ((char=? (string-ref line i) #\space) i) (else (loop (- i 1)))))))
-      (if (and space (> n 0) (char=? (string-ref line (- n 1)) #\newline))
-          (let ((ms (string->number (substring line (+ space 1) (- n 1)) 10)))
-            (list (substring line 0 space) (and ms (integer? ms) (exact? ms) (>= ms 0))))
-          (list 'not-a-line line)))))
+           (ms (ms-of line "request GET /clock 200 written ")))
+      (or (and ms (integer? ms) (exact? ms) (>= ms 0)) (list 'not-a-line line)))))
 
 ;; real-timed : Nat -> (List Integer Integer Integer)
 ;; A request through (wrap-log app) on the default clock, its response ended
@@ -994,13 +1086,7 @@
       (let* ((slept (real-time))
              (done (parameterize ((chez:current-output-port port)) (test-req-done! r 'written)))
              (after (real-time))
-             (line (extract))
-             (n (string-length line))
-             (prefix "request GET /clock 200 written ")
-             (m (string-length prefix))
-             (ms (and (> n m) (string=? (substring line 0 m) prefix)
-                      (char=? (string-ref line (- n 1)) #\newline)
-                      (string->number (substring line m (- n 1)) 10))))
+             (ms (ms-of (extract) "request GET /clock 200 written ")))
         (list ms (- slept called) (- after before))))))
 
 ;; A clock coarser than real-time gives an MS that is a multiple of its
@@ -1023,6 +1109,32 @@
   (list (refusal (lambda () (wrap-log 'not-a-handler)))
         (refusal (lambda () (wrap-log #f (lambda () 0))))
         (refusal (lambda () (wrap-log (lambda (r) own-res) 1000)))))
+
+;;; --- wrap-log-with: the log as a middleware --------------------------------------
+
+;; log-with : Handler (-> Nat) -> Handler
+;; HANDLER under the middleware (wrap-log-with CLOCK) makes.
+(define (log-with handler clock) ((wrap-log-with clock) handler))
+
+(test-equal "wrap-log-with's middleware logs as wrap-log does, on its clock, read at the call and at the end, for each ending"
+  (list (list '(returned own) "request GET /users/7 200 written 7 -\n" '(returned ()) 2)
+        (list '(returned own) "request GET /users/7 200 client-closed 7 -\n" '(returned ()) 2)
+        (list '(raised own) "request GET /users/7 raised failed 7 -\n" '(returned ()) 2))
+  (let ((x (an-error)))
+    (map (lambda (ending app)
+           (let ((seen (log-direct 'GET "/users/7?x=1" app ending log-with)))
+             (cons (if (member (car seen) (list (list 'returned own-res) (list 'raised x)))
+                       (list (caar seen) 'own)
+                       (car seen))
+                   (cdr seen))))
+         '(written client-closed failed)
+         (list (lambda (r) own-res) (lambda (r) own-res) (lambda (r) (raise x))))))
+
+(test-equal "wrap-log-with refuses a clock that is no procedure when it is called, and its middleware a handler that is no procedure when it is applied"
+  '((assertion wrap-log-with "a clock is a procedure of no arguments that reads milliseconds" (1000))
+    (assertion wrap-log-with "a handler is a procedure" (#f)))
+  (list (refusal (lambda () (wrap-log-with 1000)))
+        (refusal (lambda () ((wrap-log-with (lambda () 0)) #f)))))
 
 ;;; --- wrap-log through the test host --------------------------------------------------
 
@@ -1047,27 +1159,27 @@
     (append (car seen) (list (cadr seen)))))
 
 (test-equal "through the host, wrap-log writes a written response's line, MS the host's advance"
-  (list (response "200 OK" (list (length-field 2)) "ok") #f '() "request GET /logged 200 written 30\n")
+  (list (response "200 OK" (list (length-field 2)) "ok") #f '() "request GET /logged 200 written 30 -\n")
   (logged-through (lambda (r) (sleep-ms 30) (make-res 200 '() "ok"))
                   (lambda (host c) (test-host-advance! host 30))))
 
 (test-equal "through the host, a client that closes mid-stream: client-closed"
   (list (string-append (response "200 OK" (list chunked) "") "4\r\nabcd\r\n") #t '()
-        "request GET /logged 200 client-closed 10\n")
+        "request GET /logged 200 client-closed 10 -\n")
   (logged-through (lambda (r) (make-res 200 '() (producer 10 "abcd" "efgh")))
                   (lambda (host c) (test-host-advance! host 10) (test-client-close! c))))
 
 (test-equal "through the host, a producer that raises after the head: failed, the raise logged by the server"
   (list (response "200 OK" (list chunked) "") #t
         '((handler-failed (assertion producer "refused" (7))))
-        "request GET /logged 200 failed 20\n")
+        "request GET /logged 200 failed 20 -\n")
   (logged-through (lambda (r) (make-res 200 '() (lambda () (sleep-ms 20) (assertion-violation 'producer "refused" 7))))
                   (lambda (host c) (test-host-advance! host 20))))
 
 (test-equal "through the host, an app that raises: raised, the server's 500 failed"
   (list (response "500 Internal Server Error" '("Content-Length: 0" "Connection: close") "") #t
         '((handler-failed (assertion app "refused" (7))))
-        "request GET /logged raised failed 5\n")
+        "request GET /logged raised failed 5 -\n")
   (logged-through (lambda (r) (sleep-ms 5) (assertion-violation 'app "refused" 7))
                   (lambda (host c) (test-host-advance! host 5))))
 
@@ -1091,19 +1203,20 @@
 
 ;; on-host-clock : (-> TestHost) -> Middleware — wrap-log on the host's clock.
 (define (on-host-clock host)
-  (lambda (h) (wrap-log h (lambda () (test-host-now (host))))))
+  (wrap-log-with (lambda () (test-host-now (host)))))
 
 (test-equal "composed, an app that awaits past the timeout: the deadline passes the catch, the timeout answers 504, logged written"
-  (list (list empty-504) #f '() "request GET /slow 504 written 100\n")
+  (list (list empty-504) #f '() "request GET /slow 504 written 100 -\n")
   (composed forever on-host-clock "/slow" 100))
 
 (test-equal "composed, an app that raises after a park: the catch answers 500, its line, then the log's"
-  (list (list empty-500) #f '() "handler-failed Exception in app: boom\nrequest GET /boom 500 written 10\n")
+  (list (list empty-500) #f '() "handler-failed Exception in app: boom\nrequest GET /boom 500 written 10 -\n")
   (composed (lambda (r) (sleep-ms 10) (error 'app "boom")) on-host-clock "/boom" 10))
 
 ;; ms-blanked : String -> String
-;; TEXT with each request line's MS, its last field, as N when it is a whole
-;; number, so a line on the default clock is asserted whole but for it.
+;; TEXT with each request line's MS, the field before its address, as N
+;; when it is a whole number, so a line on the default clock is asserted
+;; whole but for it.
 (define (ms-blanked text)
   (let loop ((lines (split-lines text)) (out ""))
     (if (null? lines)
@@ -1119,25 +1232,54 @@
           (else (loop (+ i 1) start found)))))
 
 (define (blank-ms line)
-  (let loop ((i (- (string-length line) 1)))
-    (cond ((< i 0) line)
+  (let* ((words (split-words line))
+         (n (length words)))
+    (if (and (>= n 3) (string=? (car words) "request"))
+        (let ((ms (string->number (list-ref words (- n 2)) 10)))
+          (if (and ms (exact? ms) (integer? ms) (>= ms 0))
+              (join-words (append (list-head* words (- n 2)) (list "N" (list-ref words (- n 1)))))
+              line))
+        line)))
+
+;; split-words : String -> (Listof String) — LINE's fields, at each space.
+(define (split-words line)
+  (let loop ((i 0) (start 0) (found '()))
+    (cond ((= i (string-length line)) (reverse (cons (substring line start i) found)))
           ((char=? (string-ref line i) #\space)
-           (let ((ms (string->number (substring line (+ i 1) (string-length line)) 10)))
-             (if (and ms (exact? ms) (integer? ms) (>= ms 0)
-                      (>= (string-length line) 8) (string=? (substring line 0 8) "request "))
-                 (string-append (substring line 0 i) " N")
-                 line)))
-          (else (loop (- i 1))))))
+           (loop (+ i 1) (+ i 1) (cons (substring line start i) found)))
+          (else (loop (+ i 1) start found)))))
+
+;; join-words : (Listof String) -> String — WORDS, a space between each two.
+(define (join-words words)
+  (if (null? (cdr words))
+      (car words)
+      (string-append (car words) " " (join-words (cdr words)))))
 
 ;; list-head* : (Listof Any) Nat -> (Listof Any) — the first N of L.
 (define (list-head* l n) (if (= n 0) '() (cons (car l) (list-head* (cdr l) (- n 1)))))
 
 (test-equal "composed as the design writes it, (wrap app wrap-catch (wrap-timeout ms) wrap-log), on the default clock: 504 and 500, each logged written"
-  (list (list (list empty-504) #f '() "request GET /slow 504 written N\n")
-        (list (list empty-500) #f '() "handler-failed Exception in app: boom\nrequest GET /boom 500 written N\n"))
+  (list (list (list empty-504) #f '() "request GET /slow 504 written N -\n")
+        (list (list empty-500) #f '() "handler-failed Exception in app: boom\nrequest GET /boom 500 written N -\n"))
   (map (lambda (seen) (append (list-head* seen 3) (list (ms-blanked (list-ref seen 3)))))
        (list (composed forever (lambda (host) wrap-log) "/slow" 100)
              (composed (lambda (r) (sleep-ms 10) (error 'app "boom")) (lambda (host) wrap-log) "/boom" 10))))
+
+(test-equal "composed with the makers, (wrap app (wrap-catch-with on-raise) (wrap-timeout 100) (wrap-log-with clock)): on-raise's answer, logged on the clock"
+  (list (list (response "503 Service Unavailable" (list (length-field 5)) "sorry")) #f '()
+        "request GET /boom 503 written 10 -\n")
+  (let* ((host #f)
+         (seen (hosted (lambda ()
+                         (set! host (host-of (wrap (lambda (r) (sleep-ms 10) (error 'app "boom"))
+                                                   (wrap-catch-with (lambda (r e) (make-res 503 '() "sorry")))
+                                                   (wrap-timeout 100)
+                                                   (wrap-log-with (lambda () (test-host-now host))))
+                                             unset))
+                         (let ((c (test-host-connect! host)))
+                           (test-client-send! c (b (get "/boom")))
+                           (test-host-advance! host 10)
+                           (list (wire c) (test-client-connection-closed? c) (logged host)))))))
+    (append (car seen) (list (cadr seen)))))
 
 ;;; --- around an upgrade -----------------------------------------------------------------
 
@@ -1193,14 +1335,14 @@
             upgrade-request 210))
 
 (test-equal "wrap-log's line for an upgrade: 101 written, told once the 101 is written"
-  (list (string-append (switching '("Upgrade: echo")) "hello") #f '() "request GET /chat 101 written 30\n")
+  (list (string-append (switching '("Upgrade: echo")) "hello") #f '() "request GET /chat 101 written 30 -\n")
   (logged-through-sending (lambda (r) (sleep-ms 30) (upgrading r)) upgrade-request
                           (lambda (host c) (test-host-advance! host 30))))
 
 (test-equal "wrap-log's line for a switch the server refuses, to a request that asked for no upgrade: 101 failed, the client's 500"
   (list (response "500 Internal Server Error" '("Content-Length: 0" "Connection: close") "") #t
         '((invalid-response not-an-upgrade))
-        "request GET /chat 101 failed 5\n")
+        "request GET /chat 101 failed 5 -\n")
   (logged-through-sending (lambda (r) (sleep-ms 5) (upgrading r)) (get "/chat")
                           (lambda (host c) (test-host-advance! host 5))))
 
