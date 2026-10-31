@@ -120,8 +120,11 @@ close-out under **Close-outs**, newest first.
   [PR #33](https://github.com/Kiyomi-Computation-Systems/circuit/pull/33) on 2026-10-31;
   its close-out is below. The owner's answers are design §15.30: 9a CORS and security
   headers, 9b params, 9c cookies, then a design of sessions' own.
-- **Next:** slice 9a, CORS and security headers: `(circuit middleware cors)` and
-  `(circuit middleware headers)` (the slice 9 design §3 and §4).
+- **Slice 9a, CORS and security headers, is merged**, squashed from
+  [PR #34](https://github.com/Kiyomi-Computation-Systems/circuit/pull/34) on 2026-10-31;
+  its close-out is below. `(circuit middleware cors)` and `(circuit middleware headers)`
+  make eight public libraries. The owner's answer in it is design §15.31.
+- **Next:** slice 9b, params: `(circuit params)` (the slice 9 design §5).
 
 ## Open
 
@@ -181,6 +184,68 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: slice 9a, CORS and security headers, in PR #34
+
+On the owner's "start slice 9a". Commits on `open/slice-9a`: the code, tests and docs
+(e8a24ba), the owner's reading of `null` under `*` (c618209), this close-out (76a84d1),
+and its CI run named here. `make test` passes 19 suites, and `make check-site` passes.
+CI passed on the PR (run 41225144866, 5m01s), on amd64, arm64 and the site job.
+
+- **`(circuit middleware cors)`:** `wrap-cors` and nine options, each made by a
+  constructor and given once, checked when given. A preflight from an allowed origin is
+  answered `204` with its fields in the design's order, and never reaches the handler;
+  any other request goes to it, and the response gets the origin, credentials and the
+  expose list on a match, each replacing the handler's, and `vary: origin` on every
+  response, unless a vary field already lists it or is `*`. Under `cors-any-origin`,
+  `*` goes on every response with no Vary. An answer that is no response passes as it
+  is, as the router passes one;
+- **`(circuit middleware headers)`:** `wrap-default-headers` adds each field the response
+  lacks, after its own; `security-headers` is the design's three; `wrap-hsts` sets
+  `strict-transport-security` on an `https` request's response alone;
+- **beyond the design, from the review and Fetch:**
+  - a listed origin's IP address must be as URL's serializers write it: an IPv6 address
+    held to Python's `ipaddress` on 8,023 cases, none disagreeing, and a host whose last
+    label is a number held to canonical IPv4;
+  - port 0, which Fetch blocks, and the schemes a browser always sends as `null` are
+    refused, and so is a special scheme's default port;
+  - `cors-credentials` is refused with a `*` in `cors-methods`, `cors-headers` or
+    `cors-expose-headers`, which a credentialed request reads as a name (Fetch §3.3.4);
+  - `wrap-default-headers` refuses `content-length`, `transfer-encoding` and
+    `connection`, which the server writes itself: with one, every response was a `500`;
+  - both libraries copy the strings they keep;
+- **the owner's reading** (design §15.31): `null` is never an origin `cors-origins` or
+  the predicate allows, but under `*` a preflight from `null` gets `*`;
+- **the rows:** written before the code, but first run after it, so the mutants are what
+  watched them fail. 124 mutants: 122 killed by failing rows, every one of the 91 rows
+  watched failing at least once. One survivor,
+  `ipv6-gap-of-none`, is equivalent: a `::` standing for no pieces is never what URL
+  writes, so the final comparison refuses it anyway. Another, of an earlier round, found
+  a port-length check the 65535 bound made redundant, and it went. The mutants are in
+  `build/m9a/`, git-ignored; the old `build/m9a/port-six-digits/` is left there, its
+  removal refused by the safety check;
+- **traps:**
+  - Chez's `number->string` writes hex in capitals, so the first IPv6 check refused every
+    address with a letter. The good-origins row caught it;
+  - `|PU T|` symbols aren't R6RS: `#!r6rs` refuses them, so the rows use
+    `string->symbol`;
+- **the docs:** Middleware's CORS and headers sections, their programs run in the
+  container over loopback; its `wrap-hsts` example became `wrap-no-store`; a note for
+  apps from Ring. The reference has two sections, Upgrades says a WebSocket isn't CORS,
+  and the home page and `AGENTS.md` count eight libraries;
+- **the review**, read-only on Opus, found ten things, each fixed:
+  - the docs said CORS keeps cookies from being sent, where it only keeps a script from
+    reading the answer; the page now says it is no defence against CSRF;
+  - the page's subdomain predicate trusted `http://` subdomains;
+  - defaults the server refuses on every response;
+  - origins no browser sends;
+  - strings changed after the check;
+  - no bignum port row;
+  - `*` read literally under credentials;
+  - docs that said more than the code does;
+  - stale counts;
+  - two suites' headers that overclaimed;
+- **agents:** the reviewer, Opus, 230,289 tokens and 14.7 min. The build was mine.
 
 ### 2026-10-31: slice 9's design, in PR #33
 

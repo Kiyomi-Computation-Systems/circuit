@@ -1,6 +1,6 @@
 # API reference
 
-Every name the six public libraries export, one entry each, library by
+Every name the eight public libraries export, one entry each, library by
 library. An entry gives the name's signature, says what it does, and links
 the guide page that explains it. A name `(circuit http-server)` re-exports
 from chez-http-server has no signature here: its entry links the server's
@@ -31,6 +31,8 @@ Env        = (String -> (U String #f))
   `group` and `mount` make. `RouterOption` is what `on-not-found`,
   `on-bad-request` and `on-method-not-allowed` make, or a handler, which
   stands for `(on-not-found handler)`.
+- `CorsOption` is what a `cors-` constructor makes, such as
+  `cors-origins`, and `HstsOption` what `hsts-include-subdomains` makes.
 - `Request`, `Transport`, `Answer` and `Awaiting` are chez-http-server's.
   `WebSocket`, `HandshakeSettings` and `WebsocketLimits` are
   chez-websocket's.
@@ -775,6 +777,158 @@ wrap-log-with : (-> Nat) -> Middleware
 
 A middleware that makes `(wrap-log handler clock)` of the handler it is
 given, for `wrap`. See [Middleware](middleware.md).
+
+## `(circuit middleware cors)`
+
+CORS: lets a page on another origin call the app from a script.
+
+```scheme
+(import (rnrs) (circuit) (circuit middleware cors))
+```
+
+### `wrap-cors`
+
+```text
+wrap-cors : CorsOption ... -> Middleware
+```
+
+Middleware that answers a preflight from an allowed origin itself, `204`,
+and passes every other request to the handler. Its response gets the CORS
+fields when the origin is allowed, and `vary: origin` always; under
+`cors-any-origin`, `*` and no Vary. It takes one origin option and any of
+the rest, each once; `cors-credentials` is refused with `cors-any-origin`,
+and with a `*` in a list. Put it outside the router and `wrap-catch`.
+See [Middleware](middleware.md).
+
+### `cors-origins`
+
+```text
+cors-origins : String String ... -> CorsOption
+```
+
+The origins allowed, each written as a browser sends it:
+`scheme://host` or `scheme://host:port`, in lower case, with no path and
+no default port. Anything else, `"null"` too, is refused. See
+[Middleware](middleware.md).
+
+### `cors-origin-when`
+
+```text
+cors-origin-when : (String -> Any) -> CorsOption
+```
+
+The origins the predicate answers true for. It is asked only about an
+origin a browser could send, never `null`. See [Middleware](middleware.md).
+
+### `cors-any-origin`
+
+```text
+cors-any-origin : -> CorsOption
+```
+
+Every origin: `*` on every response. See [Middleware](middleware.md).
+
+### `cors-methods`
+
+```text
+cors-methods : Symbol Symbol ... -> CorsOption
+```
+
+The methods a preflight's answer allows, beyond `GET`, `HEAD` and `POST`,
+written as given. See [Middleware](middleware.md).
+
+### `cors-headers`
+
+```text
+cors-headers : String String ... -> CorsOption
+```
+
+The request headers a preflight's answer allows, beyond the safelisted
+ones, written in lower case. See [Middleware](middleware.md).
+
+### `cors-any-header`
+
+```text
+cors-any-header : -> CorsOption
+```
+
+The request headers the preflight asks for, echoed. See
+[Middleware](middleware.md).
+
+### `cors-expose-headers`
+
+```text
+cors-expose-headers : String String ... -> CorsOption
+```
+
+The response headers a script may read, beyond the safelisted ones. See
+[Middleware](middleware.md).
+
+### `cors-credentials`
+
+```text
+cors-credentials : -> CorsOption
+```
+
+Lets a script read the answer to a request sent with cookies:
+`access-control-allow-credentials: true`. See [Middleware](middleware.md).
+
+### `cors-max-age`
+
+```text
+cors-max-age : Nat -> CorsOption
+```
+
+How many seconds a browser may keep a preflight's answer. See
+[Middleware](middleware.md).
+
+## `(circuit middleware headers)`
+
+The fields every response should carry, and HSTS.
+
+```scheme
+(import (rnrs) (circuit) (circuit middleware headers))
+```
+
+### `wrap-default-headers`
+
+```text
+wrap-default-headers : Headers -> Middleware
+```
+
+Middleware that adds each field of the list the response lacks, by name in
+any case, after the response's own. A bad list, or one holding a field
+the server writes itself, such as `content-length`, is refused when it is
+given. See [Middleware](middleware.md).
+
+### `security-headers`
+
+```text
+security-headers : Headers
+```
+
+`x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN` and
+`referrer-policy: strict-origin-when-cross-origin`, for
+`wrap-default-headers`. See [Middleware](middleware.md).
+
+### `wrap-hsts`
+
+```text
+wrap-hsts : Nat HstsOption ... -> Middleware
+```
+
+Middleware that sets `strict-transport-security: max-age=N` on the
+response to an `https` request, and on no other. See
+[Middleware](middleware.md).
+
+### `hsts-include-subdomains`
+
+```text
+hsts-include-subdomains : -> HstsOption
+```
+
+Adds `includeSubDomains`, so every subdomain is `https` only too. See
+[Middleware](middleware.md).
 
 ## `(circuit router)`
 

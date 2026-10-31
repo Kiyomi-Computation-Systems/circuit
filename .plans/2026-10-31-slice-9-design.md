@@ -129,7 +129,8 @@ from Ring says so on the middleware page.
   - A sandboxed iframe, a `file:` page and some redirects send `null`. Any page can make
     one, so allowing it allows everyone.
   - `cors-origins` refuses `"null"`, and the predicate is never asked about it.
-  - `cors-any-origin`'s `*` is the way to allow everyone.
+  - `cors-any-origin`'s `*` is the way to allow everyone, `null` included: a preflight
+    from `null` gets `*` (the owner's reading in 9a, circuit design §15.31).
 - **The predicate is asked only about an Origin of that shape.** So a check such as "ends
   in `.example.com`" can't be passed by `https://evil.test/.example.com`. The docs show
   that check with its leading dot: `https://evilexample.com` ends in `example.com`.

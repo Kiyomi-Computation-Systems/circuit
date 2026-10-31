@@ -1648,6 +1648,16 @@ the design approved the same day:
     - **`null` is never an allowed origin.** Weighed: allowed when listed.
     - **`wrap-form-params` requires its cap.** Weighed: 1 MiB unless given.
 
+The owner's answer in slice 9a (2026-10-31), on a reading of the slice 9 design's §3:
+
+31. **`null` is never an origin `cors-origins` or `cors-origin-when` allows; under
+    `cors-any-origin`, `*` allows every page, `null` included.** A preflight from `null`
+    is answered with `*`, as one from any other origin is. The slice 9 design's "whatever
+    the option" is read so. A page from `null` can read a `*` answer anyway, and `*`
+    refuses credentials, so refusing its preflight would add no safety. Weighed: refusing
+    `null`'s preflight under `*` too, which only an uncredentialed preflighted request
+    from a sandboxed or `file:` page would notice.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a

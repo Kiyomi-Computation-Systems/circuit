@@ -67,7 +67,7 @@
   `build/site/`, and the Pages workflow publishes it on a release tag.
   `make check-site` gates it: every page is in `site/pages.sls`, in the
   home page's Read next order. `tests/test-reference.sps` holds
-  `docs/reference.md` to every export of the six public libraries and its
+  `docs/reference.md` to every export of the eight public libraries and its
   signature comment: a new export needs an entry.
 * Documentation should be very concise, focused, to the point, ELI5 style.
 * `Makefile` should have a `help` command which lists all of its commands
