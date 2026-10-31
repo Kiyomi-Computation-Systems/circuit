@@ -30,6 +30,15 @@ release before 1.0.
   read. Both use the parser browsers use, which never fails: a `%` that starts no
   escape stays a `%`, and bytes that are no UTF-8 read as U+FFFD. `parse-params` reads
   bytes so, and `params->string` writes pairs as a browser does.
+- **Cookies: `(circuit cookies)`.** `(req-cookies req)` reads every `cookie` field as
+  `(name . value)` strings, in order, a value's quotes kept, and `(req-cookie req name)`
+  the first of a name. `(res-add-cookie res name value option ...)` adds a `set-cookie`
+  field, with `cookie-path`, `cookie-domain`, `cookie-max-age`, `cookie-secure`,
+  `cookie-http-only` and `cookie-same-site`, and `res-expire-cookie` one that removes a
+  cookie. Many cookies a browser would drop without a word are refused when written: a
+  name that is no token, a value that isn't cookie-octets, over 4096 bytes, a domain no
+  host can hold, such as `localhost:8080`, `SameSite=None` without `Secure`, or a
+  `__Secure-` or `__Host-` name without what its prefix needs.
 - **`wrap-catch-with` and `wrap-log-with`**, in `(circuit middleware waits)`.
   `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each make a middleware, so
   `wrap` takes them as it takes `(wrap-timeout ms)`:

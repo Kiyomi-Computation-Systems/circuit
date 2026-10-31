@@ -8,9 +8,9 @@
 ;;; block whose info string is text, holding the signature, then words and
 ;;; links. Its rows:
 ;;;
-;;;   (a) the page's sections are the nine public libraries, in their order,
+;;;   (a) the page's sections are the ten public libraries, in their order,
 ;;;       each once;
-;;;   (b) every library under src/ is one of the nine, or the names it
+;;;   (b) every library under src/ is one of the ten, or the names it
 ;;;       exports that no public library exports are exactly the ones this
 ;;;       suite lists as the adapter's and the tests' own;
 ;;;   (c) under each section, the entries are the library's exports, by
@@ -98,11 +98,11 @@
 (define makefile "Makefile")
 
 ;; public-libraries : (Listof (Listof Symbol))
-;; The nine, in the page's order.
+;; The ten, in the page's order.
 (define public-libraries
   '((circuit) (circuit http-server) (circuit middleware waits) (circuit middleware cors)
-    (circuit middleware headers) (circuit router) (circuit params) (circuit websocket)
-    (circuit test)))
+    (circuit middleware headers) (circuit router) (circuit params) (circuit cookies)
+    (circuit websocket) (circuit test)))
 
 ;; internal-exports : (Listof (Pair (Listof Symbol) (Listof Symbol)))
 ;; What a library under src/ exports for the adapter and the tests, which no
@@ -1403,7 +1403,7 @@
 
 ;; --- (a) the sections ------------------------------------------------------------------------
 
-(test-equal (string-append page ": its ## sections are the nine public libraries, in order, each once")
+(test-equal (string-append page ": its ## sections are the ten public libraries, in order, each once")
   public-libraries
   (map section-library page-sections))
 
@@ -1440,7 +1440,7 @@
                      (let ((exports (exports-of library)))
                        (if exports (without exports all-public-names) 'unloadable)))))
          (test-equal (string-append (source-path s) ": " (written library)
-                                    " is no public library, so what it exports that none of the nine does is the adapter's and the tests' alone")
+                                    " is no public library, so what it exports that none of the ten does is the adapter's and the tests' alone")
            (sorted-symbols (cond ((assoc library internal-exports) => cdr) (else '())))
            left)))))
  sources)

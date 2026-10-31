@@ -127,10 +127,19 @@ close-out under **Close-outs**, newest first.
 - **Slice 9b, params, is merged**, squashed from
   [PR #35](https://github.com/Kiyomi-Computation-Systems/circuit/pull/35) on 2026-10-31;
   its close-out is below. `(circuit params)` makes nine public libraries.
-- **Next:** slice 9c, cookies: `(circuit cookies)` (the slice 9 design §6).
+- **Slice 9c, cookies, is merged**, squashed from
+  [PR #36](https://github.com/Kiyomi-Computation-Systems/circuit/pull/36) on 2026-10-31;
+  its close-out is below. `(circuit cookies)` makes ten public libraries, and slice 9 is
+  done.
+- **Next:** sessions, a design of their own (the slice 9 design §7), after the owner's
+  discussion of it, cryptography above all. A release after 9c is the owner's call (§1).
 
 ## Open
 
+- **`res-add-cookie` doesn't stop a second `set-cookie` of one name** (slice 9c): RFC
+  6265bis §4.1.1 says a server MUST NOT send two in a response. A browser takes both, the
+  later replacing the earlier when their paths and domains match, so it drops nothing.
+  Refusing a second would be a new refusal: the owner's call.
 - **`wrap-form-params` has no limit on pairs** (slice 9b): parsed, 1 MiB of `a&` is
   524,288 pairs, 25,142,936 bytes. Express's body-parser refuses a form of more than
   1,000 by default, `413`. A limit would be a new option: the owner's call.
@@ -190,6 +199,101 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: slice 9c, cookies, in PR #36
+
+On the owner's "start 9c". Commits on `open/slice-9c`: the code, tests and docs (e99ab40),
+this close-out (f5c265e), and its CI run named here. `make test` passes 23 suites, and
+`make check-site` passes. CI passed on the PR (run 41240216130, 4m18s), on amd64, arm64
+and the site job.
+
+- **`(circuit cookies)`:** `req-cookies`, `req-cookie`, `res-add-cookie`,
+  `res-expire-cookie` and six option constructors, as the design's §6 has them. Reading
+  needs no middleware; writing refuses, when the cookie is written, what a browser would
+  drop;
+- **beyond the design, and in it now** (§6's notes):
+  - a path or domain is held to the grammar's `av-octet`, so a character past ASCII is
+    refused, and a domain that is empty, which a browser reads as no `Domain`;
+  - `res-expire-cookie`'s `Expires` goes where `Max-Age` would;
+  - RFC 6265bis §4.1.1 says a server MUST NOT send two `Set-Cookie` fields of one name in a
+    response. A browser takes both, so it drops nothing, and `res-add-cookie` doesn't stop
+    a second: the page says to write a name once, and Open asks;
+- **found in the review, and in the design now:**
+  - a `Domain` holding a forbidden domain code point (WHATWG URL), such as
+    `localhost:8080`, `https://example.com` or `example.com/`, which no host holds, so a
+    browser ignores the cookie (§5.7, step 10). A domain isn't held to the grammar's
+    subdomain: `_` and an IP address pass, and the host it must match isn't known when
+    the cookie is written;
+  - a `Path` holding what WHATWG URL's path percent-encode set escapes, or a `\`, which an
+    http URL reads as `/`: no request's path holds one, so the cookie is never sent. This
+    takes in a check of my own, from before the review, that a path end in no space and a
+    domain neither start nor end with one, which a browser trims (§5.6);
+  - a `Domain` of `.` alone, which reads as no `Domain`, as `""` does;
+  - a `Max-Age` of more than 1024 digits, which a browser ignores (§5.6), keeping the
+    cookie for the session;
+- **the oracles:**
+  - RFC 6265bis, draft 22, the datatracker's latest on 2026-10-31, as rows: §3.1's
+    examples, §5.4's prefix examples, and cookie-octet, token and av-octet as their
+    ranges;
+  - WHATWG URL's path percent-encode set and forbidden domain code points, read from the
+    standard on 2026-10-31;
+  - the property suite's three oracles, each written apart from the library:
+    - a browser's model of a field, from §5.6's parsing and §5.7's storage steps;
+    - the design's refusals as rules over what a case drew;
+    - the design's reading, over lists of characters;
+  - curl 8.20's cookie engine, over loopback in the container: it stored the page's
+    `__Host-theme` cookie from 127.0.0.1, sent it back, and removed it on the expiry;
+- **the rows:** `tests/test-cookies.sps`, 52 rows, two through the server's test host, and
+  `tests/test-cookies-properties.sps`, 3 properties from a fixed seed.
+  - A stub library failed 49 of the first 50 rows and all 3 properties. Its readers
+    answer `'()` and `#f`, and its writers return the response unchanged. The row it
+    passed, no cookie field, was watched failing by three mutants.
+  - 179 mutants run against the final rows, 11 of them the reviewer's: 176 killed, each
+    by a failing row, and every one of the 55 rows and properties watched failing at
+    least once. Three survivors are equivalent:
+    - `(>= start end)` in the reader only skips the empty piece after a trailing `;`,
+      which is skipped anyway;
+    - `"Set-Cookie"` for `"set-cookie"`, as `res-add-header` writes a name in lower case;
+    - an `ascii-downcase` that misses `A`, which neither prefix holds.
+  - The mutants are in `build/m9c-final/`, git-ignored;
+- **traps:**
+  - a quoted expected list held a `string-append` call, which never runs: caught reading
+    the rows before they first ran;
+  - a property's tally counted inside its check, which shrinking calls again, so the
+    stub's run counted more than the real one: the tallies are in the case generators
+    now;
+  - `make-test-req` trims a field's ends, as the server does, so the reading rows put
+    their spaces and tabs inside a field;
+  - a first-round mutant died of an unbound identifier, not a failing row: it was remade
+    with its import;
+- **the docs:**
+  - a page, Cookies, its programs run in the container over loopback;
+  - the reference's section, its `Cookies` alias and `CookieOption`;
+  - the home page's table and Read next; the site's page list; `AGENTS.md` counts ten
+    libraries;
+- **the review**, read-only on Opus, found nine things, each fixed:
+  - a domain no host holds was taken, and so was a path no request holds (above). The
+    rows that pinned `Domain=a b` and `Path=/x y` as taken now refuse them;
+  - a `Max-Age` past 1024 digits was taken, against the library's and the design's
+    "sent as given; the browser caps it": both say so now, held from both sides;
+  - `Domain=.` was taken (above);
+  - the 1024-byte bound on a domain was held only without a leading dot: a row holds it
+    with one;
+  - P1's model takes the request from the cookie's own domain, so it can't see a domain
+    no host matches, and its expected domain took the browser's reading of `.` as host
+    only. `.` now fails P1, and the generators draw a dotted 1025, a Max-Age of 1024 and
+    1025 digits, and domains no host holds. The rows hold the host's set against its
+    whole complement;
+  - the order of checks inside `cookie-path` and `cookie-domain` was unpinned, and some
+    of `res-expire-cookie`'s, and some of the writing's, were held by P2 at its seed
+    alone. Two rows pin them, and the reviewer's eleven mutants die on rows;
+  - the reference left out the control-character refusal, and the page and the
+    CHANGELOG overclaimed what is refused;
+  - the page didn't say that a cookie set without a path can't be expired from another
+    page: it says to give one;
+  - a row's title said "as the RFC writes them" over a removal dated 1970, where the RFC
+    has 1994;
+- **agents:** the reviewer, Opus, 222,186 tokens and 15.8 min. The build was mine.
 
 ### 2026-10-31: slice 9b, params, in PR #35
 

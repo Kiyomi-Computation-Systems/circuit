@@ -13,7 +13,8 @@
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
 ;;; its list, so the (circuit) facade keeps the adapter's, the tests', the
-;;; router's, the CORS and header middleware's and the params' names out,
+;;; router's, the CORS and header middleware's, the params' and the
+;;; cookies' names out,
 ;;; that the adapter's re-exports are the server's own bindings,
 ;;; compared through a prefixed import of each, and that the like-named
 ;;; bindings of the two make different things.
@@ -35,6 +36,7 @@
         (circuit middleware headers)
         (circuit router)
         (circuit params)
+        (circuit cookies)
         (circuit test)
         (circuit http-server)
         (circuit websocket)
@@ -121,10 +123,10 @@
 (test-begin "names")
 
 (test-equal "the server's libraries, chez-websocket's facade and circuit's are all loaded, side by side"
-  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t #t)
   (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler
-                        wrap-catch wrap-cors wrap-hsts make-router parse-params websocket-res
-                        websocket-handshake)))
+                        wrap-catch wrap-cors wrap-hsts make-router parse-params req-cookies
+                        websocket-res websocket-handshake)))
 
 (test-equal "(circuit request) exports its list exactly"
   (sorted request-names)
@@ -174,6 +176,16 @@
   '()
   (filter (lambda (name) (memq name (library-exports '(circuit))))
           (library-exports '(circuit params))))
+
+(test-equal "(circuit cookies) exports its ten exactly"
+  '(cookie-domain cookie-http-only cookie-max-age cookie-path cookie-same-site cookie-secure
+    req-cookie req-cookies res-add-cookie res-expire-cookie)
+  (sorted-exports '(circuit cookies)))
+
+(test-equal "(circuit) exports none of the cookies' names: an app imports (circuit cookies) beside it"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit))))
+          (library-exports '(circuit cookies))))
 
 (test-equal "(circuit websocket) exports websocket-res alone: an app takes the rest from (websocket)"
   '(websocket-res)

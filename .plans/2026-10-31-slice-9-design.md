@@ -435,6 +435,11 @@ judges. The owner chose it (§8.1).
 - **`res-add-cookie` adds one `set-cookie` field** (`res-add-header`: duplicates kept).
   Its attributes always go in this order, whatever the order of the options: `Path`,
   `Domain`, `Max-Age`, `Secure`, `HttpOnly`, `SameSite`.
+  - RFC 6265bis §4.1.1: servers "MUST NOT include more than one Set-Cookie header field
+    in the same response with the same cookie-name" (found in 9c). A browser takes both,
+    the later replacing the earlier when their paths and domains match (§5.7), so it
+    drops nothing. `res-add-cookie` doesn't stop a second, and the page says to write a
+    name once.
 - **It refuses, with an assertion violation, what a browser would drop without a word:**
   - a name that isn't a token, or is empty;
   - a value that isn't `cookie-octet`s, bare or inside quotes (RFC 6265bis §4.1.1). A
@@ -443,10 +448,22 @@ judges. The owner chose it (§8.1).
   - a name and value over 4096 bytes together (§5.6, "ignore the set-cookie-string
     entirely"), held from both sides: 4096 passes, 4097 is refused;
   - a `Path` or `Domain` over 1024 bytes, or holding a control character or `;`. A
-    `Path` must start with `/`;
+    `Path` must start with `/`. Found in 9c: a character past ASCII is refused too, as
+    the grammar's `av-octet` is ASCII from a space to `~`, less `;`; a `Domain` that is
+    empty, which the grammar's subdomain isn't, and which a browser reads as no
+    `Domain`. Found in the review: a `Path` holding what WHATWG URL's path
+    percent-encode set escapes, or a `\`, which an http URL reads as `/`: no request's
+    path holds one, so the browser never sends the cookie; a `Domain` holding a
+    forbidden domain code point, such as `localhost:8080`, which no host holds, so a
+    browser ignores the cookie (§5.7, step 10); and a `Domain` of `.` alone, which reads
+    as no `Domain`, as `""` does. A `Domain` isn't held to the grammar's subdomain: an
+    `_` and an IP address pass, and the host it must match isn't known when the cookie is
+    written;
   - a `Max-Age` under 1. The grammar's `non-zero-digit *DIGIT` has no 0.
     `res-expire-cookie` is the way to expire one. A large `Max-Age` is sent as given,
-    a bignum included; the browser caps it at 400 days;
+    a bignum included; the browser caps it at 400 days. Found in the review: one of
+    more than 1024 digits is refused, as a browser ignores an attribute's value of more
+    than 1024 bytes (§5.6) and keeps the cookie for the session;
   - `SameSite=None` without `Secure`, which a browser ignores (§5.7, the storage model);
   - a `__Secure-` name without `Secure`, and a `__Host-` name without `Secure`, without
     `Path=/`, or with a `Domain` (§4.1.3). The prefixes match in any case, as browsers
@@ -456,7 +473,8 @@ judges. The owner chose it (§8.1).
   path and domain it is given. A browser removes a cookie only when they match the
   cookie's. It is a fixed date, so no clock is needed, and the grammar allows it, where
   `Max-Age=0` breaks the grammar. It takes the same options but `cookie-max-age`, and the
-  same prefix rules.
+  same prefix rules. `Expires` goes where `Max-Age` would, in the order above (found in
+  9c).
 - **`Partitioned` is left for later.** It isn't in RFC 6265bis, and only embedded
   third-party content needs it.
 - **Signing and encrypting are sessions' work** (§7).
