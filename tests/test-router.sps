@@ -1,8 +1,10 @@
 #!r6rs
-;;; (circuit router): matching and its precedence, the captures decoded, the
-;;; method's pick, 404, 405 and 400, groups' middleware, mounts and the
+;;; (circuit router): matching and its precedence, the captures decoded and
+;;; the raw characters they may hold, the method's pick, 404, 405 and 400
+;;; and the app's own handlers for them, groups' middleware, mounts and the
 ;;; routers under them, the request's accessors, req-mount-path among them,
-;;; the cost of a words-only route, and every refusal at construction.
+;;; the cost of a words-only route and of the options, and every refusal at
+;;; construction.
 ;;;
 ;;; Handlers here answer what they saw, as a list, not a response: the
 ;;; router hands back whatever its handler answers. A response the router
@@ -399,6 +401,51 @@
               (list 'GET (string #\/ #\u #\/ #\a #\b (integer->char #x80)))
               (list 'GET (string #\/ #\f #\/ #\a #\/ #\b (integer->char #xFF))))))
 
+;; raw-ask : Handler Symbol String -> Any
+;; What APP answers a request for METHOD whose path is PATH exactly, seen:
+;; a ? or # in PATH stays in the path, where make-test-req would split a
+;; target at its ?. The query is q=7.
+(define (raw-ask app method path)
+  (seen (app (req-with-path (make-test-req method "/?q=7") path))))
+
+;; What a capture holds raw: RFC 3986's pchar without pct-encoded, the word
+;; allowlist above, and / in a catch-all's rest. The server refuses the
+;; rest of ASCII on the wire; they reach a router through req-with-path.
+(define (capture-char? c) (and (memv c allowed-chars) #t))
+(define (rest-char? c) (or (capture-char? c) (char=? c #\/)))
+
+(test-equal (string-append "a parameter's value holds raw only RFC 3986's pchar: every other ASCII "
+                           "character is a 400, a lone % among them")
+  (map (lambda (c) (if (capture-char? c) (string #\a c #\b) bad-request)) ascii-but-slash)
+  (let ((app (make-router (list (route "/u/:id" (GET the-param))))))
+    (map (lambda (c) (raw-ask app 'GET (string #\/ #\u #\/ #\a c #\b))) ascii-but-slash)))
+
+(test-equal (string-append "a catch-all's value holds raw only RFC 3986's pchar and /: every other "
+                           "ASCII character is a 400")
+  (map (lambda (c) (if (rest-char? c) (string #\a c #\b) bad-request)) ascii)
+  (let ((app (make-router (list (route "/f/*p" (GET (lambda (req) (req-path-param req "p"))))))))
+    (map (lambda (c) (raw-ask app 'GET (string #\/ #\f #\/ #\a c #\b))) ascii)))
+
+(test-equal (string-append "a mount's parameter holds raw only RFC 3986's pchar: every other ASCII "
+                           "character is a 400, and the mount's handler doesn't run")
+  (map (lambda (c) (if (capture-char? c) (list (string #\a c #\b) "/x") bad-request))
+       ascii-but-slash)
+  (let ((app (make-router (list (mount "/m/:k"
+                                       (lambda (req) (list (req-path-param req "k") (req-path req))))))))
+    (map (lambda (c) (raw-ask app 'GET (string #\/ #\m #\/ #\a c #\b #\/ #\x))) ascii-but-slash)))
+
+(test-equal (string-append "a mount's rest is no capture: every ASCII character reaches the mount's "
+                           "handler as it came")
+  (map (lambda (c) (string #\/ #\x c #\y)) ascii)
+  (let ((app (make-router (list (mount "/m" (lambda (req) (req-path req)))))))
+    (map (lambda (c) (raw-ask app 'GET (string #\/ #\m #\/ #\x c #\y))) ascii)))
+
+;; unpathable : (Listof Char) — the ASCII a capture can't hold raw, but %,
+;; which the escape rows hold: the controls, space, " # < > ? [ \ ] ^ ` { |
+;; } and DEL.
+(define unpathable
+  (filter (lambda (c) (not (or (rest-char? c) (char=? c #\%)))) ascii))
+
 ;; at-every-position : String String -> (Listof String)
 ;; BASE with PIECE put before each of its characters in turn, then after
 ;; its last.
@@ -446,6 +493,39 @@
                (at-every-position plain-value "%C3%A9%F0%9F%98%80%2F"))
           (map (lambda (v) (ask app 'GET (string-append "/f/" v)))
                (at-every-position plain-rest "%C3%A9%F0%9F%98%80%2F")))))
+
+;; every-unpathable : String -> (Listof String)
+;; BASE with each character of unpathable put at each of its positions.
+(define (every-unpathable base)
+  (apply append (map (lambda (c) (at-every-position base (string c))) unpathable)))
+
+;; A parameter's value and a catch-all's with escapes in them, so a raw
+;; character after the first % is read by the decoder, not the plain scan.
+(define escaped-value "g%C3%A9h%2Fi")
+(define escaped-rest "g%C3%A9/h%2Fi/j")
+
+(test-equal (string-append "a raw character a path can't hold is a 400 at every position of a "
+                           "parameter's value, plain or escaped")
+  (map (lambda (v) (cons v bad-request))
+       (append (every-unpathable plain-value) (every-unpathable escaped-value)))
+  (let ((app (make-router (list (route "/u/:id" (GET the-param))))))
+    (map (lambda (v) (cons v (raw-ask app 'GET (string-append "/u/" v))))
+         (append (every-unpathable plain-value) (every-unpathable escaped-value)))))
+
+(test-equal (string-append "a raw character a path can't hold is a 400 at every position of a "
+                           "catch-all's value, plain or escaped")
+  (map (lambda (v) (cons v bad-request))
+       (append (every-unpathable plain-rest) (every-unpathable escaped-rest)))
+  (let ((app (make-router (list (route "/f/*p" (GET the-param))))))
+    (map (lambda (v) (cons v (raw-ask app 'GET (string-append "/f/" v))))
+         (append (every-unpathable plain-rest) (every-unpathable escaped-rest)))))
+
+(test-equal "the escaped bases decode, so the rows above are about the raw character alone"
+  (list "géh/i" "gé/h/i/j")
+  (let ((app (make-router (list (route "/u/:id" (GET the-param))
+                                (route "/f/*p" (GET (lambda (req) (req-path-param req "p"))))))))
+    (list (raw-ask app 'GET (string-append "/u/" escaped-value))
+          (raw-ask app 'GET (string-append "/f/" escaped-rest)))))
 
 (test-equal
   "the captures are decoded before the method is asked: a malformed one is a 400, not the 405"
@@ -798,6 +878,158 @@
   '(missing POST "/y" #f () "q=7")
   (ask (make-router (list (route "/x" (GET h))) (tell 'missing)) 'POST "/y?q=7"))
 
+;;; ------------------------------------------------------------------------
+;;; The app's own 404, 400 and 405
+
+;; refusing : Symbol Nat Headers -> Handler
+;; Notes what it saw, as tell answers it, and answers STATUS with HEADERS
+;; and no body.
+(define (refusing name status headers)
+  (lambda (req)
+    (note! ((tell name) req))
+    (make-res status headers #f)))
+
+(test-equal "on-not-found's handler is the not-found handler: it gets the request as it came, no match on it"
+  '(missing POST "/y" #f () "q=7")
+  (ask (make-router (list (route "/x" (GET h))) (on-not-found (tell 'missing))) 'POST "/y?q=7"))
+
+(test-equal (string-append "the 400 handler gets the request as it came, no match on it, for each "
+                           "capture that doesn't decode, in a parameter, a catch-all and a mount's "
+                           "parameter; nothing else runs")
+  (list (map (lambda (p) (list 'bad 'GET p #f '() "q=7"))
+             (list "/u/%G1" "/u/%FF" (string #\/ #\u #\/ #\a (integer->char #xE9)) "/u/a b"
+                   "/u/a?b" "/f/a/b%4" "/f/a/b c" "/m/a%FF/x" "/m/a b/x"))
+        '())
+  (let ((app (make-router (list (route "/u/:id" (GET (running 'u)))
+                                (route "/f/*p" (GET (running 'f)))
+                                (mount "/m/:k" (running 'm)))
+                          (on-bad-request (tell 'bad)))))
+    (take-log!)
+    (let ((answers (map (lambda (p) (raw-ask app 'GET p))
+                        (list "/u/%G1" "/u/%FF" (string #\/ #\u #\/ #\a (integer->char #xE9))
+                              "/u/a b" "/u/a?b" "/f/a/b%4" "/f/a/b c" "/m/a%FF/x" "/m/a b/x"))))
+      (list answers (take-log!)))))
+
+(test-equal (string-append "a router under a mount hands its 400 handler the request as the mount "
+                           "left it, as its not-found handler: the mount's match and the rest, a "
+                           "group's middleware around the mount or not")
+  '((bad "/u/%FF" "/api/:v" (("v" . "2")) "/api/2")
+    (bad "/u/a b" "/g/api/:v" (("v" . "3")) "/g/api/3"))
+  (let ((inner (lambda () (make-router (list (route "/u/:id" (GET h))) (on-bad-request (place 'bad))))))
+    (list (raw-ask (make-router (list (mount "/api/:v" (inner)))) 'GET "/api/2/u/%FF")
+          (raw-ask (make-router (list (group "/g" (list (lambda (next) (lambda (req) (next req))))
+                                        (mount "/api/:v" (inner)))))
+                   'GET "/g/api/3/u/a b"))))
+
+(test-equal (string-append "the 405 handler gets the request with the route's match: req-route its "
+                           "template, req-path-params decoded; the router sets allow on its answer, "
+                           "as the default 405 carries it")
+  '((res 405 (("content-type" . "text/plain") ("allow" . "GET, HEAD, PROPFIND")) #f)
+    ((na DELETE "/users/a%20b" "/users/:id" (("id" . "a b")) "q=7")))
+  (let ((app (make-router (list (route "/users/:id" (GET h) (METHOD 'PROPFIND h)))
+                          (on-method-not-allowed
+                           (refusing 'na 405 '(("content-type" . "text/plain")))))))
+    (take-log!)
+    (let ((answer (ask app 'DELETE "/users/a%20b?q=7")))
+      (list answer (take-log!)))))
+
+(test-equal (string-append "the router's allow replaces every allow the 405 handler set, in any "
+                           "case, where the first stood; a status of the handler's own gets it too")
+  (list '(res 405 (("x-a" . "1") ("allow" . "GET, HEAD") ("x-b" . "2")) #f)
+        '(res 404 (("allow" . "POST")) "gone"))
+  (list (ask (make-router (list (route "/x" (GET h)))
+                          (on-method-not-allowed
+                           (lambda (req)
+                             (make-res 405 '(("x-a" . "1") ("Allow" . "PUT") ("x-b" . "2")
+                                             ("allow" . "DELETE"))
+                                       #f))))
+             'PUT "/x?q=7")
+        (ask (make-router (list (route "/y" (POST h)))
+                          (on-method-not-allowed (lambda (req) (make-res 404 '() "gone"))))
+             'GET "/y?q=7")))
+
+(test-equal (string-append "a 405 handler's answer that is no res goes on untouched; at a words-only "
+                           "route it sees that route's match")
+  '(na PUT "/x" "/x" () "q=7")
+  (ask (make-router (list (route "/x" (GET h))) (on-method-not-allowed (tell 'na))) 'PUT "/x?q=7"))
+
+(test-equal "HEAD at a route with no GET, HEAD or ANY is the 405 handler's, which sees HEAD"
+  '(res 405 (("allow" . "POST")) #f)
+  (begin
+    (take-log!)
+    (let ((answer (ask (make-router (list (route "/x" (POST h)))
+                                    (on-method-not-allowed (refusing 'na 405 '())))
+                       'HEAD "/x?q=7")))
+      (if (equal? (take-log!) '((na HEAD "/x" "/x" () "q=7"))) answer 'not-seen-as-head))))
+
+(test-equal (string-append "a router under a mount hands its 405 handler the joined template and "
+                           "params, groups' prefixes in it; no group's middleware runs around it, "
+                           "and middleware around the router does")
+  '((outer na "/g/r/7" "/api/:v/g/r/:id" (("v" . "2") ("id" . "7")) "/api/2")
+    ((in outer) (out outer)))
+  (let* ((inner (make-router (list (group "/g" (list (tagging 'm)) (route "/r/:id" (GET h))))
+                             (on-method-not-allowed (place 'na))))
+         (app (wrap (make-router (list (mount "/api/:v" inner))) (tagging 'outer))))
+    (take-log!)
+    (let ((answer (ask app 'PUT "/api/2/g/r/7?q=7")))
+      (list answer (take-log!)))))
+
+(test-equal (string-append "the captures are decoded before the method is asked: a capture that "
+                           "doesn't decode is the 400 handler's, not the 405 handler's")
+  '((bad DELETE "/u/%G1" #f () "q=7") (bad DELETE "/u/a b" #f () "q=7")
+    (na DELETE "/u/a" "/u/:id" (("id" . "a")) "q=7"))
+  (let ((app (make-router (list (route "/u/:id" (GET h)))
+                          (on-bad-request (tell 'bad)) (on-method-not-allowed (tell 'na)))))
+    (list (raw-ask app 'DELETE "/u/%G1") (raw-ask app 'DELETE "/u/a b") (raw-ask app 'DELETE "/u/a"))))
+
+;; The routes and requests the option rows ask: a path no route takes, a
+;; capture that doesn't decode, and a method the route doesn't take.
+(define option-routes (lambda () (list (route "/u/:id" (GET h)))))
+(define option-requests '((GET "/nope?q=7") (GET "/u/%FF?q=7") (PUT "/u/7?q=7")))
+
+;; The six orders of three things, as the places to take them from.
+(define orders '((0 1 2) (0 2 1) (1 0 2) (1 2 0) (2 0 1) (2 1 0)))
+
+(test-equal (string-append "the options come in any order, a bare procedure among them the "
+                           "not-found handler: each answer goes to its own handler")
+  (map (lambda (o)
+         '((nf GET "/nope" #f () "q=7") (br GET "/u/%FF" #f () "q=7")
+           (na PUT "/u/7" "/u/:id" (("id" . "7")) "q=7")))
+       (append orders orders))
+  (let ((options (lambda (bare?)
+                   (list (if bare? (tell 'nf) (on-not-found (tell 'nf)))
+                         (on-bad-request (tell 'br))
+                         (on-method-not-allowed (tell 'na))))))
+    (map (lambda (bare? order)
+           (let ((os (options bare?)))
+             (asks (apply make-router (option-routes) (map (lambda (k) (list-ref os k)) order))
+                   option-requests)))
+         (append (map (lambda (o) #f) orders) (map (lambda (o) #t) orders))
+         (append orders orders))))
+
+(test-equal "each option left out keeps its default: the empty 404, the empty 400, the empty 405 with its allow"
+  (list (list not-found '(br GET "/u/%FF" #f () "q=7") (not-allowed "GET, HEAD"))
+        (list not-found bad-request '(na PUT "/u/7" "/u/:id" (("id" . "7")) "q=7"))
+        (list '(nf GET "/nope" #f () "q=7") bad-request (not-allowed "GET, HEAD"))
+        (list not-found bad-request (not-allowed "GET, HEAD")))
+  (list (asks (make-router (option-routes) (on-bad-request (tell 'br))) option-requests)
+        (asks (make-router (option-routes) (on-method-not-allowed (tell 'na))) option-requests)
+        (asks (make-router (option-routes) (on-not-found (tell 'nf))) option-requests)
+        (asks (make-router (option-routes)) option-requests)))
+
+(test-equal (string-append "the default 404, 400 and 405 are made once: each request gets the same "
+                           "response, beside the other options or without them")
+  '((#t #t #t) (#t #t) (#t #t))
+  (let ((same (lambda (app method target)
+                (eq? (app (make-test-req method target)) (app (make-test-req method target))))))
+    (let ((bare (make-router (option-routes)))
+          (nf (make-router (option-routes) (on-not-found (tell 'nf))))
+          (br-na (make-router (option-routes) (on-bad-request (tell 'br))
+                              (on-method-not-allowed (tell 'na)))))
+      (list (list (same bare 'GET "/nope") (same bare 'GET "/u/%FF") (same bare 'PUT "/u/7"))
+            (list (same nf 'GET "/u/%FF") (same nf 'PUT "/u/7"))
+            (list (same br-na 'GET "/nope") (same br-na 'GET "/nope?q=7"))))))
+
 (test-equal
   "req-route, req-path-params and req-path-param on a request no router matched: #f, () and #f"
   '(#f () #f)
@@ -879,6 +1111,32 @@
          (req (make-test-req 'GET "/users/new?q=7"))
          (per (bytes-a-call (lambda () (app req)) 10000)))
     (list (app req) (if (<= per 88) 'at-most-88 (list 'bytes-a-request (inexact per))))))
+
+;; table-of-eight : -> (Listof Route) — the cost row's table above.
+(define (table-of-eight)
+  (list (route "/" (GET h))
+        (route "/users" (GET h) (POST h))
+        (route "/users/new" (GET (lambda (req) 'new-user)))
+        (route "/users/:id" (GET h) (DELETE h))
+        (route "/users/:id/edit" (GET h))
+        (group "/admin" (list (lambda (next) next))
+          (route "/stats" (GET h)))
+        (route "/static/*path" (GET h))
+        (mount "/api" h)))
+
+(test-equal (string-append "the options cost the hit path nothing: a word route, a parameter route, "
+                           "a catch-all and a mount each allocate in a router with all three what "
+                           "they do in one without")
+  '(same same same same)
+  (let ((plain (make-router (table-of-eight)))
+        (optioned (make-router (table-of-eight) (on-method-not-allowed h) (on-not-found h)
+                               (on-bad-request h))))
+    (map (lambda (target)
+           (let* ((req (make-test-req 'GET target))
+                  (without (bytes-a-call (lambda () (plain req)) 10000))
+                  (with (bytes-a-call (lambda () (optioned req)) 10000)))
+             (if (<= (abs (- with without)) 1) 'same (list target (inexact without) (inexact with)))))
+         '("/users/new?q=7" "/users/42?q=7" "/static/a/b?q=7" "/api/x?q=7"))))
 
 ;; A mount's cost: the one req-set and its match, the rest of the path, and
 ;; the request req-with-path copies, 336 B here. A mount that a group's
@@ -1048,8 +1306,10 @@
         (raised (lambda () (group "/admin" (list (lambda (next) next) 'x) (route "/x" (GET h)))))
         (raised (lambda () (group "/admin" '() (route "/y" (GET h)) "/x")))))
 
-;; A method entry, made once under a guard, so a refusal can't end the suite.
+;; A method entry and a route, made once under a guard, so a refusal can't
+;; end the suite.
 (define an-entry (guard (e (#t 'no-entry)) (GET h)))
+(define a-route (guard (e (#t 'no-route)) (route "/y" (GET h))))
 
 (test-equal "group and make-router refuse a method entry where a route goes"
   (list (list 'assertion-violation 'group (list an-entry))
@@ -1074,6 +1334,49 @@
   (list (raised (lambda () (make-router 'routes)))
         (raised (lambda () (make-router (list (route "/y" (GET h)) "/x"))))
         (raised (lambda () (make-router (list (route "/y" (GET h))) 'x)))))
+
+(test-equal (string-append "on-not-found, on-bad-request and on-method-not-allowed each refuse a "
+                           "handler that is no procedure, naming itself")
+  '((assertion-violation on-not-found (x)) (assertion-violation on-bad-request (x))
+    (assertion-violation on-method-not-allowed (x)))
+  (list (raised (lambda () (on-not-found 'x)))
+        (raised (lambda () (on-bad-request 'x)))
+        (raised (lambda () (on-method-not-allowed 'x)))))
+
+(test-equal (string-append "make-router refuses two options for one answer: two not-found handlers, "
+                           "bare or not, in either order, two 400 handlers, two 405 handlers")
+  '((assertion-violation make-router (on-not-found))
+    (assertion-violation make-router (on-not-found))
+    (assertion-violation make-router (on-not-found))
+    (assertion-violation make-router (on-not-found))
+    (assertion-violation make-router (on-bad-request))
+    (assertion-violation make-router (on-method-not-allowed)))
+  (let ((routes (list (route "/x" (GET h)))))
+    (list (raised (lambda () (make-router routes h h)))
+          (raised (lambda () (make-router routes (on-not-found h) (on-not-found h))))
+          (raised (lambda () (make-router routes h (on-bad-request h) (on-not-found h))))
+          (raised (lambda () (make-router routes (on-not-found h) (on-method-not-allowed h) h)))
+          (raised (lambda () (make-router routes (on-bad-request h) h (on-bad-request h))))
+          (raised (lambda () (make-router routes (on-method-not-allowed h)
+                                          (on-method-not-allowed h)))))))
+
+(test-equal (string-append "make-router refuses an option that is neither an option nor a procedure: "
+                           "a symbol, a route, a method entry, after a good option too")
+  (list '(assertion-violation make-router (x))
+        (list 'assertion-violation 'make-router (list a-route))
+        (list 'assertion-violation 'make-router (list an-entry)))
+  (let ((routes (list (route "/x" (GET h)))))
+    (list (raised (lambda () (make-router routes (on-bad-request h) 'x)))
+          (raised (lambda () (make-router routes a-route)))
+          (raised (lambda () (make-router routes an-entry (on-not-found h)))))))
+
+(test-equal "make-router refuses two options for one answer before it applies any middleware"
+  '((assertion-violation make-router (on-bad-request)) ())
+  (begin
+    (take-log!)
+    (let ((r (raised (lambda () (make-router (list (group "/g" (list (tagging 'm)) (route "/x" (GET h))))
+                                             (on-bad-request h) (on-bad-request h))))))
+      (list r (take-log!)))))
 
 (test-equal (string-append "make-router refuses a joined template that doesn't begin with /: "
                            "(route \"\" ...) outside a prefix")

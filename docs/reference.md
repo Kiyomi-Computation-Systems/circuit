@@ -28,7 +28,9 @@ Env        = (String -> (U String #f))
   `res-tap-body` make, and `UpgradeBody` is the body of
   `make-upgrade-res`'s 101.
 - `MethodEntry` is what `GET` and its like make, and `Route` what `route`,
-  `group` and `mount` make.
+  `group` and `mount` make. `RouterOption` is what `on-not-found`,
+  `on-bad-request` and `on-method-not-allowed` make, or a handler, which
+  stands for `(on-not-found handler)`.
 - `Request`, `Transport`, `Answer` and `Awaiting` are chez-http-server's.
   `WebSocket`, `HandshakeSettings` and `WebsocketLimits` are
   chez-websocket's.
@@ -766,12 +768,44 @@ the path, then a handler by the method.
 ### `make-router`
 
 ```text
-make-router : (Listof Route) [Handler] -> Handler
+make-router : (Listof Route) RouterOption ... -> Handler
 ```
 
-A handler for the routes, compiled once, here. A path no route takes goes
-to the second handler, by default an empty 404. Two templates of one shape,
-or two routes of one name, are an assertion violation. See
+A handler for the routes, compiled once, here. A path no route takes gets
+an empty 404, a capture that doesn't decode an empty 400, and a method the
+route doesn't take an empty 405, unless an option gives a handler for it.
+The options come in any order, one for each answer. Two for one answer, two
+templates of one shape, or two routes of one name, are an assertion
+violation. See [Routing](routing.md).
+
+### `on-not-found`
+
+```text
+on-not-found : Handler -> RouterOption
+```
+
+The handler for a path no route takes. It gets the request as it came to
+the router. A bare handler among the options means the same. See
+[Routing](routing.md).
+
+### `on-bad-request`
+
+```text
+on-bad-request : Handler -> RouterOption
+```
+
+The handler for a capture that doesn't decode: a bad escape, bytes that
+aren't UTF-8, or a raw character a path can't hold, such as a space. It
+gets the request as it came to the router. See [Routing](routing.md).
+
+### `on-method-not-allowed`
+
+```text
+on-method-not-allowed : Handler -> RouterOption
+```
+
+The handler for a method the route doesn't take. It gets the request with
+the route's match, and the router sets `allow` on its response. See
 [Routing](routing.md).
 
 ### `route`

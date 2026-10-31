@@ -73,7 +73,8 @@
 ;; The router's: an app imports (circuit router) beside (circuit), which
 ;; leaves them out.
 (define router-names
-  '(make-router route GET POST PUT PATCH DELETE OPTIONS ANY METHOD group mount
+  '(make-router on-not-found on-bad-request on-method-not-allowed
+    route GET POST PUT PATCH DELETE OPTIONS ANY METHOD group mount
     req-path-param req-path-params req-route req-mount-path))
 
 ;; What an app uses: the request's accessors, keys and req-with- helpers,
