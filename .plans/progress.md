@@ -116,9 +116,10 @@ close-out under **Close-outs**, newest first.
   from [PR #32](https://github.com/Kiyomi-Computation-Systems/circuit/pull/32) on
   2026-10-31, which closes the owner's #30; its close-out is below.
 - **Slice 9 is designed** in [2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md),
-  approved by the owner on 2026-10-31, squashed from [PR #33](https://github.com/Kiyomi-Computation-Systems/circuit/pull/33)
-  on 2026-10-31; its close-out is below. The owner's answers are design §15.30: 9a CORS and
-  security headers, 9b params, 9c cookies, then a design of sessions' own.
+  approved by the owner on 2026-10-31, squashed from
+  [PR #33](https://github.com/Kiyomi-Computation-Systems/circuit/pull/33) on 2026-10-31;
+  its close-out is below. The owner's answers are design §15.30: 9a CORS and security
+  headers, 9b params, 9c cookies, then a design of sessions' own.
 - **Next:** slice 9a, CORS and security headers: `(circuit middleware cors)` and
   `(circuit middleware headers)` (the slice 9 design §3 and §4).
 
