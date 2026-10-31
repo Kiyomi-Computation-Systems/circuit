@@ -1570,7 +1570,8 @@ The owner's answers to the ledger's Open list (2026-10-30):
     path can't hold is a 400.** `make-router` takes options after its
     table, in any order: `(on-not-found h)`, or `h` alone as before,
     `(on-bad-request h)` and `(on-method-not-allowed h)`. The 405 handler
-    gets the route's match, and the router sets `allow` on its answer. A
+    gets the route's match, and the router sets `allow` on a 405 it
+    answers, but on no other status, so a 404 can hide the route. A
     capture holding a raw ASCII character outside RFC 3986's pchar, and
     `/` in a catch-all, is the 400, as one that doesn't decode is. The
     names are `on-…`: a program can't define a name it imports, and the

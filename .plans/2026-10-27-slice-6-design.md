@@ -205,6 +205,9 @@ req-mount-path  : Req -> String                         the part the mounts took
   - Each constructor checks its handler, with its own name as the who.
   - The names are `on-…` because a program can't define a name it imports, and the docs
     and tests define `not-found` and `bad-request` themselves.
+  - An option's constructor given bare among the options, such as `on-bad-request` with no
+    handler, is refused among the option checks, with a message that says to call it with
+    a handler (the review of PR #27: it had been taken as the not-found handler).
 - **`(circuit router)` isn't in the `(circuit)` facade:** an app imports it beside it.
 - **`METHOD`:**
   - Its symbol is an RFC 9110 token in upper case, as the server takes a method.
@@ -297,10 +300,12 @@ req-mount-path  : Req -> String                         the part the mounts took
     the request as the not-found handler does, with no match from this router.
   - **The route has no handler for the method:** the 405 handler runs, by default an
     empty 405, with `allow` listing the route's methods. The handler gets the request
-    with the route's match on it, one `req-set` on this path only. When it answers a res,
-    the router sets `allow` on it with `res-set-header`, to the default's value,
-    replacing any the handler set: RFC 9110 requires the header in a 405, and allows it
-    in any status. An answer that is no res goes on untouched.
+    with the route's match on it, one `req-set` on this path only. When it answers a res
+    whose status is 405, the router sets `allow` on it with `res-set-header`, to the value
+    the default 405 carries, replacing any `allow` the handler set: RFC 9110 §15.5.6
+    requires the header in a 405. Any other answer goes on untouched, an `allow` the
+    handler set itself included. So a 405 handler can answer a 404 that hides the route,
+    and that 404 carries no `allow` an unknown path's 404 lacks (the review of PR #27).
     - The methods come in the order the route lists them, joined by `", "`.
     - HEAD comes right after GET when the route has a GET and no HEAD of its own.
     - RFC 9110 §15.5.6 requires the header.

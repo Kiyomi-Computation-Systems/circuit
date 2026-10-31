@@ -12,9 +12,11 @@ release before 1.0.
 - **The app can answer the router's 400 and 405 itself.** `make-router` takes options
   after its table, in any order: `(on-not-found h)`, or `h` alone as before,
   `(on-bad-request h)` and `(on-method-not-allowed h)`. The 400's handler gets the request
-  as it came to the router. The 405's gets it with the route's match, and the router sets
-  `allow` on its response. Two options for one answer raise. A program that defines one
-  of the three names itself must rename it.
+  as it came to the router. The 405's gets it with the route's match, and when it answers
+  a 405 the router sets `allow` on it; any other status goes out as it is, so a 404 can
+  hide the route. Two options for one answer raise, and so does a constructor given
+  without its handler. A program that defines one of the three names itself must rename
+  it.
 
 ### Changed
 
