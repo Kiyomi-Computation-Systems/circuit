@@ -59,6 +59,10 @@ release before 1.0.
   comment to the server's reference.
 - **The tests no longer depend on Chez's exact read-error wording**, and the adapter
   suite opens its FIFO as POSIX defines.
+- **Testing's page said `res-body->bytevector` reads a body as the server sends it.** It
+  does with `CIRCUIT_PORT_PIECE_BYTES` unset: it reads a port in 64 KiB pieces whatever
+  the app's setting, so a wrap or a tap can see other pieces than in production. The page
+  now says so, and shows how to test a wrap across pieces.
 
 ## [0.1.2] - 2026-10-30
 

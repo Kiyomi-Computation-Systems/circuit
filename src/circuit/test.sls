@@ -116,7 +116,9 @@
 
   ;; res-body->bytevector : Res [Req] -> Bytevector
   ;; R's body, read as the adapter sends it: through res-body-stream, in
-  ;; pieces of 65,536 bytes, a bare port measured by port-read-ahead-length,
+  ;; pieces of 65,536 bytes, the adapter's default, whatever the app's
+  ;; CIRCUIT_PORT_PIECE_BYTES (design §15.29), a bare port measured by
+  ;; port-read-ahead-length,
   ;; so one of a piece or less is read whole, and its bytes are the answer.
   ;; A body with a length is read to it, never asking past it, and one that
   ;; runs long or ends short is an assertion violation naming both counts,

@@ -1022,7 +1022,8 @@ later: middleware libraries
 ```
 
 **`(res-body->bytevector res [req])` reads a body as the adapter sends
-it**, through `res-body-stream` in 64 KiB pieces.
+it**, through `res-body-stream` in 64 KiB pieces, the adapter's default,
+whatever the app's `CIRCUIT_PORT_PIECE_BYTES` (§15.29).
 - A sized body: to its `n`, never asking past it. One that runs long or
   ends short is an assertion violation naming both counts, where the
   server would close the connection.
@@ -1043,8 +1044,8 @@ it**, through `res-body-stream` in 64 KiB pieces.
   `req-body`, bare, sized, wrapped or tapped, as the adapter does (§9), so the
   natural echo fails its test as it would fail in production.
 
-So a tap sees the pieces it would see in production, and never the end
-(§6).
+So a tap sees the pieces it would see in production at the default
+setting, and never the end (§6).
 
 **What the adapter and the tests need of the core.** They need more of
 the core than an app does, and R6RS has no friend libraries. So
@@ -1597,6 +1598,28 @@ The owner's answers to the ledger's Open list (2026-10-30):
     `(make-router routes #f #f h)`; and keeping the answers fixed, with a
     middleware around the router to rewrite them. The slice 6 design §5
     has the rules.
+
+The owner's answer to the ledger's Open list (2026-10-31):
+
+29. **`res-body->bytevector` keeps its 64 KiB pieces, and Testing's page
+    says so.** It reads a port in the adapter's default pieces whatever
+    the app's `CIRCUIT_PORT_PIECE_BYTES`, so a wrap's `f` or a tap's
+    `on-piece` can see other pieces than in production (probed: a
+    20,000-byte port reaches a wrap as one piece through
+    `res-body->bytevector`, and as 16,384 and 3,616 bytes through the test
+    host under a setting of 16384). A test on a body of 64 KiB or less
+    never splits it at the default either, so what a test wants is to
+    choose its splits, not to match the deployed setting. Testing's page
+    shows it: a producer's pieces go out as they are, and the test host,
+    given an `env`, reads a port in the app's own pieces. Weighed: a
+    test passing the piece size, which adds an argument after the
+    optional request; a test passing an `Env`, which moves the setting's
+    parsing into the core, whose config error can't be the server's
+    kind; and a `test-handler` doing what the adapter does when the app
+    answers, a second model of the adapter that still can't ask Chez's
+    `port-length`. The ledger's other two gaps, measuring when called
+    rather than when the app answers and a file that shrinks while it
+    streams, no unit test would catch under any of them.
 
 ## 16. Open
 
