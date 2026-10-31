@@ -169,6 +169,21 @@
   (string-append path ": it holds #! on " lines
                  ", and only the #!r6rs it begins with may: a #! may switch Chez's reader to its own syntax, and this check, which cannot tell a directive from text, refuses one in a comment or a string too"))
 
+;; read-error : String -> String
+;; What Chez's reader raises on the file at PATH, read as the program reads
+;; it, port and all, and shown as the program shows it, by describe: the
+;; running Chez's own words, which another Chez may put otherwise. A file
+;; that reads without a raise answers words no complaint holds, so its row
+;; fails.
+(define (read-error path)
+  (guard (e (#t (describe e)))
+    (call-with-port (open-file-input-port path (file-options) (buffer-mode block)
+                                          (make-transcoder (utf-8-codec)))
+      (lambda (port)
+        (let loop ()
+          (unless (eof-object? (read port)) (loop)))))
+    "<the file was read whole, with no raise>"))
+
 ;; cases : (Listof (List String String Expected))
 ;; The fixture directory, what it holds, and the program's whole answer for it.
 (define cases
@@ -264,11 +279,10 @@
          (refused (string-append (at "no-datum" "circuit/empty.sls")
                                  ": it holds no datum, so it holds no library")))
    (list "unreadable"
-         "rule (f): a file that cannot be read as data"
+         "rule (f): a file that cannot be read as data, named with the running Chez's own words for it"
          (refused (string-append (at "unreadable" "circuit/broken.sls")
-                                 ": it cannot be read as data: Exception in read: unexpected end-of-file reading list before file-position 61 of #<input port "
-                                 (at "unreadable" "circuit/broken.sls")
-                                 ">; the character position might differ")))
+                                 ": it cannot be read as data: "
+                                 (read-error (at "unreadable" "circuit/broken.sls")))))
    (list "dir-symlink"
          "rule (a): a symbolic link to a directory, which the program names and does not follow"
          (refused (string-append (at "dir-symlink" "linked")
@@ -604,11 +618,193 @@
   (run '("tests/check-suites.sps")))
 
 (define usage
-  (list 1 "" "check-imports: usage: scheme --program tests/check-imports.sps DIR\n"))
+  (list 1 "" "check-imports: usage: scheme --program tests/check-imports.sps DIR [LIBDIR ...]\n"))
 
 (test-equal "no directory named: the usage line, exit 1" usage (run '()))
 
-(test-equal "two directories named: the usage line, exit 1" usage (run '("a" "b")))
+(test-equal "a directory that does not exist, named before LIBDIRs, is named"
+  (refused "no-such-directory: not a directory")
+  (run '("no-such-directory" "src")))
+
+;; --- rule (j): the library path ---------------------------------------------------------
+
+;; on-path : String String -> String
+;; Rule (j)'s complaint about ENTRY, in the library directory DIR, beside ROOT.
+(define (on-path dir entry root)
+  (string-append dir "/" entry ": its directory is on the library path beside " root
+                 ", so Chez could load a (circuit ...) library from it in place of " root
+                 "'s, which this check reads; only " root " may hold one"))
+
+;; path-ok : Natural Natural -> (List 0 String "")
+;; A pass with LIBDIRs named: the tree's line, then how many it looked in.
+(define (path-ok libraries looked)
+  (list 0
+        (string-append "check-imports: ok, libraries checked: " (number->string libraries) "\n"
+                       "check-imports: ok, no other directory on the library path holds circuit: "
+                       (number->string looked) " looked in\n")
+        ""))
+
+;; make-tree : String (Listof String) -> Unspecified
+;; Under DIR, each of PATHS: a file, or a directory when it ends with /.
+(define (make-tree dir paths)
+  (for-each (lambda (path)
+              (let ((full (string-append dir "/" path)))
+                (if (char=? (string-ref path (- (string-length path) 1)) #\/)
+                    (capture-command (list "mkdir" "-p" full))
+                    (begin
+                      (capture-command (list "mkdir" "-p" (dirname full)))
+                      (call-with-port (open-file-output-port full)
+                        (lambda (p) (put-bytevector p (string->utf8 "#!r6rs\n"))))))))
+            paths))
+
+;; dirname : String -> String
+(define (dirname path)
+  (let loop ((i (- (string-length path) 1)))
+    (cond ((< i 0) ".")
+          ((char=? (string-ref path i) #\/) (substring path 0 i))
+          (else (loop (- i 1))))))
+
+;; Every name Chez could take a (circuit ...) library from: the directory,
+;; a library file under each extension, source and compiled, and a link to
+;; a directory. Beside them, names that only begin with circuit's letters.
+(test-equal "rule (j): each library directory but DIR that holds circuit, or circuit.<anything>, is named, entry by entry, in the order the directories are named"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("a/circuit/request.sls" "b/circuit.sls" "b/circuit.ss" "b/circuit.chezscheme.sls"
+                      "b/circuit.so" "c/circuits/x.sls" "c/circuit-testing.sls" "c/circuitry.sls"
+                      "c/xcircuit.sls" "d/linked/" "e/"))
+     (capture-command (list "ln" "-s" (string-append dir "/d/linked") (string-append dir "/e/circuit")))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (want (refused (on-path (at "b") "circuit.chezscheme.sls" (root "legal"))
+                           (on-path (at "b") "circuit.sls" (root "legal"))
+                           (on-path (at "b") "circuit.so" (root "legal"))
+                           (on-path (at "b") "circuit.ss" (root "legal"))
+                           (on-path (at "a") "circuit" (root "legal"))
+                           (on-path (at "e") "circuit" (root "legal"))))
+            (got (run (list (root "legal") (at "b") (at "c") (at "a") (at "e") (at "d")))))
+       (if (equal? got want) 'refused got)))))
+
+(test-equal "rule (j): DIR itself, a LIBDIR that does not exist, a file, and names that only begin with circuit's letters pass, and the pass names how many it looked in"
+  'passed
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("c/circuits/x.sls" "c/circuit-testing.sls" "c/circuitry.sls" "c/xcircuit.sls"
+                      "f/plain.sls"))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (want (path-ok 6 2))
+            (got (run (list (root "legal") (at "c") (root "legal") (string-append (root "legal") "/")
+                            (at "no-such") (at "f/plain.sls") (at "f")))))
+       (if (equal? got want) 'passed got)))))
+
+(test-equal "rule (j): with no LIBDIR the pass is the tree's line alone"
+  (ok 6)
+  (run (list (root "legal"))))
+
+;; A Mac's default disk finds a name in any case, so Chez there would take
+;; (circuit request) from Circuit/request.sls, and (circuit) from
+;; CIRCUIT.sls.
+(test-equal "rule (j): circuit's names in any case are named; names in another case that only begin with its letters are not"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("g/Circuit/request.sls" "g/CIRCUIT.sls" "g/cIrCuIt.Ss" "g/Circuits/x.sls"
+                      "g/CIRCUIT-TESTING.sls" "g/CIRCUITRY.SLS"))
+     (let* ((g (string-append dir "/g"))
+            (want (refused (on-path g "CIRCUIT.sls" (root "legal"))
+                           (on-path g "Circuit" (root "legal"))
+                           (on-path g "cIrCuIt.Ss" (root "legal"))))
+            (got (run (list (root "legal") g))))
+       (if (equal? got want) 'refused got)))))
+
+;; listing-error : String -> String
+;; What Chez raises listing the directory DIR, shown by describe, as the
+;; program shows it: the running Chez's words. A listing that raises
+;; nothing answers words no complaint holds, so its row fails.
+(define (listing-error dir)
+  (guard (e (#t (describe e)))
+    (directory-list dir)
+    "<the directory was listed, with no raise>"))
+
+;; A directory of mode 000 can't be listed but by root, which neither CI
+;; nor the container runs as. Its mode is given back before the directory
+;; is removed.
+(test-equal "rule (j): a library directory it cannot list is named, with Chez's words for why, and the audit fails closed"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((h (string-append dir "/h"))
+            (made (begin (make-tree dir '("h/")) (capture-command (list "chmod" "000" h))))
+            (why (listing-error h))
+            (got (run (list (root "legal") h)))
+            (restored (capture-command (list "chmod" "755" h)))
+            (want (refused (string-append h ": it is on the library path beside " (root "legal")
+                                          ", and cannot be listed, so this check cannot tell whether it holds a (circuit ...) library: "
+                                          why))))
+       (if (and (equal? got want) (= (car made) 0) (= (car restored) 0)) 'refused (list made got))))))
+
+;; make-check-imports : String -> (List Integer String String)
+;; make check-imports, in a make of its own, with BUILD_DIR at BUILD: its
+;; scheme-libs, where deps links SRFI-64, is then a directory of every
+;; library path the Makefile builds. The make line that names the failed
+;; target is written as make 3.81 writes it, without the Makefile's line,
+;; which make 4 adds.
+(define (make-check-imports build)
+  (let ((got (capture-command (list "env" "-u" "MAKEFLAGS" "-u" "MAKELEVEL" "-u" "MFLAGS"
+                                    "make" "--no-print-directory" "check-imports"
+                                    (string-append "BUILD_DIR=" build)))))
+    (list (car got) (cadr got) (without-make-line (caddr got)))))
+
+;; without-make-line : String -> String
+;; TEXT with "Makefile:N: " cut from each line that begins "make: *** [".
+(define (without-make-line text)
+  (let ((head "make: *** [Makefile:"))
+    (apply string-append
+           (map (lambda (line)
+                  (string-append
+                   (if (and (>= (string-length line) (string-length head))
+                            (string=? (substring line 0 (string-length head)) head))
+                       (let loop ((i (string-length head)))
+                         (cond ((>= i (string-length line)) line)
+                               ((char=? (string-ref line i) #\:)
+                                (string-append "make: *** ["
+                                               (substring line (min (string-length line) (+ i 2))
+                                                          (string-length line))))
+                               (else (loop (+ i 1)))))
+                       line)
+                   "\n"))
+                (split-lines text)))))
+
+;; The Makefile's wiring: check-imports passes the audit every directory
+;; of the library paths, so a (circuit ...) library in one of them, here
+;; the scheme-libs of a BUILD_DIR of the row's own, fails make
+;; check-imports, and the same tree without it passes.
+(test-equal "rule (j), through make: a circuit/ in a directory of the library path fails make check-imports, and without it the audit passes"
+  'refused-then-passed
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((build (string-append dir "/build"))
+            (libs (string-append build "/scheme-libs"))
+            (deps-line (string-append "deps: chez-libuv's shim built; vendor/chez-http-server/vendor/chez-srfi linked into "
+                                      libs "/srfi\n"))
+            (passed (make-check-imports build))
+            (planted (begin (make-tree build '("scheme-libs/circuit/request.sls"))
+                            (make-check-imports build)))
+            (want-planted (list 2 deps-line
+                                (string-append "check-imports: " (on-path libs "circuit" "src") "\n"
+                                               "make: *** [check-imports] Error 1\n")))
+            (passed-lines (split-lines (cadr passed)))
+            (looked "check-imports: ok, no other directory on the library path holds circuit: "))
+       (if (and (equal? planted want-planted)
+                (= (car passed) 0)
+                (string=? (caddr passed) "")
+                (= (length passed-lines) 3)
+                (string=? (string-append (car passed-lines) "\n") deps-line)
+                (let ((last (caddr passed-lines)))
+                  (and (> (string-length last) (string-length looked))
+                       (string=? (substring last 0 (string-length looked)) looked))))
+           'refused-then-passed
+           (list 'passed passed 'planted planted))))))
 
 ;; --- the lists the program holds are exact ---------------------------------------------
 ;; The program's lists are read from it as data, never from its output.

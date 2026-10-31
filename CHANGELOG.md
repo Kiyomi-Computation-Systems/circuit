@@ -22,6 +22,13 @@ release before 1.0.
   hide the route. Two options for one answer raise, and so does a constructor given
   without its handler. A program that defines one of the three names itself must rename
   it.
+- **`make check-chez`**, run first by every target that runs Chez on circuit's libraries.
+  It refuses a Chez below 10.4.1, one without threads, or a `CHEZ` that is missing or
+  empty, saying what it found. The docs site's targets take a threaded Chez of any
+  version. It runs Chez once, for at most `REQUIRE_CHEZ_SECONDS` (10) under GNU
+  `timeout`, and reads at most 4 KiB of its answer.
+- **`make libdirs`** prints the library path a program needs, for running it without
+  make.
 
 ### Changed
 
@@ -38,6 +45,20 @@ release before 1.0.
   `[`, `\`, `]`, `^`, a backtick, `{`, `|` or `}`. The server lets none of them into a
   path, so only a path set with `req-with-path`, or a test's, can hold one. A mount's rest
   is still unchecked.
+- **The default `CHEZ`** is the first of `scheme` and `chez` on `PATH` that is Chez
+  Scheme 10.4.1 or later, threaded; failing that, the first that is Chez Scheme. On a
+  Mac, another Scheme may own `scheme`.
+- **`make check-imports` also refuses a `(circuit ...)` library on the library path
+  outside `src/`**: a `circuit` directory or `circuit.*` file, in any case. It names a
+  directory it can't list.
+
+### Fixed
+
+- **`(circuit http-server)`'s comment for `awaiting`** gives the server's signature,
+  `(-> Answer) -> Awaiting`, and the reference suite holds every re-exported procedure's
+  comment to the server's reference.
+- **The tests no longer depend on Chez's exact read-error wording**, and the adapter
+  suite opens its FIFO as POSIX defines.
 
 ## [0.1.2] - 2026-10-30
 

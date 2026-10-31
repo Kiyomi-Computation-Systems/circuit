@@ -32,7 +32,13 @@
 ;;;       a code span;
 ;;;   (f) every link in docs/*.md and README.org into chez-http-server's or
 ;;;       chez-websocket's repository, at blob/<ref>/ or tree/<ref>/, names
-;;;       its pin's tag as <ref>.
+;;;       its pin's tag as <ref>;
+;;;   (g) every re-export that is a procedure has one signature comment in
+;;;       the library under src/ that re-exports it, and its text is the one
+;;;       signature that one's docs/reference.md, as vendored at its pin,
+;;;       gives it: in a text fence, as a table row's name and type cells,
+;;;       or as an inline code span, whitespace runs collapsed. As in (d),
+;;;       a comment is held to a reference, never to what the code does.
 ;;;
 ;;; A pin's tag is v and the version its vendored copy's Akku.manifest
 ;;; gives, which the Makefile's comment on the pin, `SERVER_PIN := <sha>  #
@@ -740,6 +746,95 @@
              (loop (cdr lines) (cons (car current) (string-append (cdr current) " " (car lines))) out))
             (else (loop (cdr lines) (alias-line (car lines)) flushed))))))
 
+;; --- the upstreams' signatures --------------------------------------------------------
+
+;; signature-pairs : (Pair (Listof Symbol) String) -> (Listof (Pair Symbol String))
+;; A signature line's names, each with "name : Type", the type collapsed.
+(define (signature-pairs found)
+  (map (lambda (name) (cons name (collapse (string-append (symbol->string name) " : " (cdr found)))))
+       (car found)))
+
+;; span-signatures : String -> (Listof (Pair Symbol String))
+;; Each inline code span in the Markdown TEXT that is a signature, NAMES :
+;; TYPE, its whitespace collapsed: one pair a name.
+(define (span-signatures text)
+  (apply append
+         (map (lambda (span)
+                (let ((found (signature-line (collapse span))))
+                  (if (and found (not (string=? (cdr found) ""))) (signature-pairs found) '())))
+              (code-spans text))))
+
+;; split-at-bars : String -> (Listof String)
+(define (split-at-bars s)
+  (let ((n (string-length s)))
+    (let loop ((start 0) (i 0) (out '()))
+      (cond ((= i n) (reverse (cons (substring s start n) out)))
+            ((char=? (string-ref s i) #\|) (loop (+ i 1) (+ i 1) (cons (substring s start i) out)))
+            (else (loop start (+ i 1) out))))))
+
+;; lone-span : String -> (U String #f)
+;; What CELL's code span holds, when CELL is one code span and nothing else.
+(define (lone-span cell)
+  (and (> (string-length cell) 2)
+       (prefix? "`" cell)
+       (suffix? cell "`")
+       (let ((inner (substring cell 1 (- (string-length cell) 1))))
+         (and (not (memv #\` (string->list inner))) inner))))
+
+;; table-signatures : String -> (Listof (Pair Symbol String))
+;; Each table row, outside fences, in the Markdown TEXT whose first cell is
+;; one name in a code span and whose second is one code span: that name,
+;; with "name : " and the span's text, collapsed. A row whose second cell
+;; is prose, a code span in it or not, gives none.
+(define (table-signatures text)
+  (apply append
+         (map (lambda (line)
+                (let ((s (trim line)))
+                  (if (and (> (string-length s) 1) (prefix? "|" s) (suffix? s "|"))
+                      (let ((cells (map trim (split-at-bars (substring s 1 (- (string-length s) 1))))))
+                        (let* ((name (and (>= (length cells) 2) (lone-span (car cells))))
+                               (tokens (and name (name-tokens name)))
+                               (type (and tokens (= (length tokens) 1) (lone-span (cadr cells)))))
+                          (if type
+                              (list (cons (car tokens) (collapse (string-append name " : " type))))
+                              '())))
+                      '())))
+              (outside-fences text))))
+
+;; text-fences : String -> (Listof (Listof String))
+;; The lines of each fence in the Markdown TEXT whose info string is text.
+(define (text-fences text)
+  (let loop ((lines (string-lines text)) (fence #f) (block '()) (out '()))
+    (cond ((null? lines) (reverse out))
+          (fence
+           (if (string=? (trim (car lines)) "```")
+               (loop (cdr lines) #f '() (if (string=? fence "text") (cons (reverse block) out) out))
+               (loop (cdr lines) fence (cons (car lines) block) out)))
+          ((prefix? "```" (car lines))
+           (loop (cdr lines) (trim (substring (car lines) 3 (string-length (car lines)))) '() out))
+          (else (loop (cdr lines) #f '() out)))))
+
+;; block-signatures : (Listof String) -> (Listof (Pair Symbol String))
+;; The signatures a text fence's LINES hold: a line NAMES : TYPE, or NAMES :
+;; with the type below, then each line under it that begins with whitespace.
+(define (block-signatures lines)
+  (let loop ((lines lines) (current #f) (out '()))
+    (let ((flushed (if (and current (not (string=? (collapse (cdr current)) "")))
+                       (append out (signature-pairs current))
+                       out)))
+      (cond ((null? lines) flushed)
+            ((and current (starts-indented? (car lines)))
+             (loop (cdr lines) (cons (car current) (string-append (cdr current) " " (car lines))) out))
+            (else (loop (cdr lines) (signature-line (car lines)) flushed))))))
+
+;; documented-signatures : String -> (Listof (Pair Symbol String))
+;; Every signature an upstream's reference, the Markdown TEXT, gives: in a
+;; text fence, as a table row's name and type, and as an inline code span.
+(define (documented-signatures text)
+  (append (apply append (map block-signatures (text-fences text)))
+          (table-signatures text)
+          (span-signatures text)))
+
 ;; read-source : String -> (U Source String)
 ;; The library at PATH, or why it can't be read as one.
 (define (read-source path)
@@ -960,6 +1055,27 @@
 (define (upstream-of-repo repo)
   (find (lambda (u) (string=? (upstream-repo u) repo)) upstreams))
 
+;; upstream-signatures : (Listof (Pair String (Listof (Pair Symbol String))))
+;; Each upstream's repository, with every signature its reference gives.
+(define upstream-signatures
+  (guard (e (#t '()))
+    (map (lambda (u) (cons (upstream-repo u) (documented-signatures (upstream-reference-text u))))
+         upstreams)))
+
+;; upstream-signature : Upstream Symbol -> (U String (List Symbol String (Listof String)))
+;; The one signature U's reference gives NAME, or what is wrong: none, or
+;; two that differ.
+(define (upstream-signature u name)
+  (let* ((all (cond ((assoc (upstream-repo u) upstream-signatures) => cdr) (else '())))
+         (found (fold-left (lambda (types p)
+                             (if (and (eq? (car p) name) (not (member (cdr p) types)))
+                                 (append types (list (cdr p)))
+                                 types))
+                           '() all)))
+    (if (= (length found) 1)
+        (car found)
+        (list 'signatures-in (upstream-reference u) found))))
+
 ;; reference-url : Upstream -> String
 (define (reference-url u)
   (string-append github (upstream-repo u) "/blob/" (or (upstream-tag u) "<no tag>")
@@ -1168,6 +1284,23 @@
   (guard (e (#t (list 'raised (describe e))))
     (block-aliases '("Handler    = Req -> Res" "Body       = (U #f Bytevector" "                SizedBody)" ""
                      "Env = (String -> (U String #f))"))))
+
+(test-equal "documented-signatures reads a text fence's signatures, a table's name and type cells, and a code span's signature; no prose cell, no other fence, no header"
+  '((serve . "serve : (Request -> Answer) -> Void") (two . "two : Bytevector -> Nat")
+    (make-it . "make-it : a b [c] -> Thing")
+    (await . "await : ((Any -> Void) -> Any) -> Any") (sleep-ms . "sleep-ms : Nat -> Void")
+    (gone? . "gone? : Any -> Boolean") (why . "why : Gone -> Symbol") (a . "a : T") (b . "b : T"))
+  (guard (e (#t (list 'raised (describe e))))
+    (documented-signatures
+     (joined "\n" '("# Ref" "```text" "serve : (Request -> Answer)" "        -> Void" "" "two :"
+                     "  Bytevector -> Nat" "```" "```scheme" "(define (f x) x) : nope" "```"
+                     "```text" "make-it : a b [c]" "          -> Thing" "```"
+                     "| Name | Type | Does |" "|:--|:--|:--|"
+                     "| `await` | `((Any -> Void) -> Any) -> Any` | waits, with `resume` |"
+                     "| `sleep-ms` | `Nat  ->  Void` | sleeps |"
+                     "| `&gone` | a `serve` connection went | `gone? : Any -> Boolean` |"
+                     "| `two words` | `T` | not one name |"
+                     "`why : Gone -> Symbol` says why, and `a, b : T` both; `plain` is no signature")))))
 
 (test-equal "defined-names reads define, define-syntax, both kinds of record type and a condition type"
   '((f) (g) (h) (m)
@@ -1440,6 +1573,49 @@
                           (map (lambda (url) (names-it? u (list-ref (github-target url) 4) name)) links)))))))))
       (entries-of library))))
  public-exports)
+
+;; --- (g) the re-exports' signature comments -----------------------------------------------------
+
+;; reexported-procedures : (Listof (Pair (Listof Symbol) (Listof (Pair Symbol Upstream))))
+;; Each public library that re-exports a procedure, with each such name and
+;; the upstream it comes from. Syntax, such as a condition type, has no
+;; signature to hold.
+(define reexported-procedures
+  (guard (e (#t (list (list 'raised (describe e)))))
+    (filter (lambda (row) (pair? (cdr row)))
+            (map (lambda (p)
+                   (let ((library (car p)))
+                     (cons library
+                           (filter pair?
+                                   (map (lambda (name)
+                                          (let ((o (origin library name))
+                                                (b (binding library name)))
+                                            (and (eq? (car o) 'upstream)
+                                                 (eq? (car b) 'value)
+                                                 (procedure? (cdr b))
+                                                 (cons name (cdr o)))))
+                                        (or (cdr p) '()))))))
+                 public-exports))))
+
+(test-equal "some public library re-exports a procedure, so the rows below hold something"
+  #t
+  (and (pair? reexported-procedures)
+       (for-all (lambda (row) (and (list? (car row)) (pair? (cdr row)) (pair? (cadr row))
+                                   (upstream? (cdadr row))))
+                reexported-procedures)))
+
+(for-each
+ (lambda (row)
+   (let* ((library (car row))
+          (s (find (lambda (s) (equal? (source-name s) library)) sources)))
+     (test-equal (string-append src-dir "/, " (written library)
+                                ": each re-exported procedure has one signature comment, the signature its upstream's reference gives it")
+       (map (lambda (x) (cons (car x) (upstream-signature (cdr x) (car x)))) (cdr row))
+       (map (lambda (x) (cons (car x) (if s (source-signature s (car x)) 'no-library-under-src)))
+            (cdr row)))))
+ (if (and (pair? reexported-procedures) (list? (car (car reexported-procedures))))
+     reexported-procedures
+     '()))
 
 ;; --- the entries' words and links ---------------------------------------------------------------
 

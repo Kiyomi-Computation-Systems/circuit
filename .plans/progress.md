@@ -101,19 +101,34 @@ close-out under **Close-outs**, newest first.
   hold, are merged**, squashed from
   [PR #27](https://github.com/Kiyomi-Computation-Systems/circuit/pull/27) on 2026-10-31;
   its close-out is below. The owner's answers are design §15.28.
-- **Next:** the design plans no slice past 8 (§17). The owner chose to work through the
-  Open list below. One more PR is under way: the list's housekeeping.
+- **A Chez floor outside the container, and six housekeeping items from the Open list, are
+  merged**, squashed from
+  [PR #28](https://github.com/Kiyomi-Computation-Systems/circuit/pull/28) on 2026-10-31;
+  its close-out is below.
+- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
+  Open list below, where `res-body->bytevector`'s pieces await a choice among four
+  options.
 
 ## Open
 
-- **Left from the review, not fixed:**
-  - outside the container and CI, nothing refuses a Chez below 10.4.1 or without threads:
-    this host's own Chez is 10.4.0;
-  - the Makefile's default `CHEZ` prefers `scheme` to `chez`, as chez-curl's does; on a
-    Mac where another Scheme owns `scheme` it picks that one. Unverified;
-  - two rows (`test-check-imports`'s and `test-check-suites`'s unreadable cases) hold
-    Chez's exact read-error text, so a Chez that words it otherwise fails them;
-  - the audit's rule (g) assumes `src` comes first on the library path.
+- **`scripts/require-chez`, left from PR #28:**
+  - with no GNU `timeout` or `gtimeout` on PATH, as on a Mac without coreutils, its probe
+    is unbounded: a `scheme` that never exits hangs every make target, `make help`
+    included. Its comment says so;
+  - every make run without `CHEZ` set probes `scheme` and `chez` once, about 50 ms,
+    `make help` included;
+  - `test-require-chez`'s make rows rely on `make -o` skipping a phony prerequisite:
+    verified on GNU make 4.3 and 4.4, not on macOS's 3.81.
+- **Rule (j) can miss a library Chez would load** through a `CHEZSCHEMELIBEXTS` extension
+  that doesn't begin with `.`, as `circuit-x.sls` for `(circuit)`. Unverified, and `src`
+  comes first on every path but `GATE_FIRST`'s. `LIBRARY_DIRS` must be extended by hand
+  if a new library path variable is added.
+- **`make libdirs` prints relative paths,** so what it prints works only from the
+  checkout. Absolute ones, by `abspath`, would be the owner's call.
+- **AGENTS.md says "Do not write tests that rely on reading code comments"**, while
+  `tests/test-reference.sps` holds signature comments to the reference, and since PR #28
+  re-export comments to the server's. The review suggested rewording the rule to allow
+  doc checks: the owner's call.
 - **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
   2026-10-26, with the docs fix; see PR #2's close-out. **chez-http-server is submitted
   to the Akku index and awaits review**: the owner submitted 0.8.0 on 2026-10-24, then
@@ -127,8 +142,6 @@ close-out under **Close-outs**, newest first.
   a FIN is heard at once, but the request stays open until its response is written: `f`
   reads its port, and the write fails, logged `read-error EPIPE` (slice 5, reproduced).
   Whether a reset makes `f` meet a closed port is unverified: curl can't send one.
-- **Unverified off Linux:** the adapter suite's FIFO row opens a FIFO read-write, which
-  POSIX leaves undefined; it works on Linux. CI runs Linux alone.
 - **Left from the owner's `/code-review` of slice 4, not fixed:**
   - a procfs file such as `/proc/self/status` reports a length of 0, so it is measured at
     0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
@@ -136,7 +149,14 @@ close-out under **Close-outs**, newest first.
     `Content-Length: 0`;
   - `res-body->bytevector` reads a port whole at 64 KiB whatever the app's
     `CIRCUIT_PORT_PIECE_BYTES`, so for a smaller setting a file that shrinks after it is
-    measured passes its test and ends short in production;
+    measured passes its test and ends short in production. It also measures when it is
+    called, where the adapter measures when the app answers, and its pieces differ, so a
+    wrap's `f` or a tap's `on-piece` can see others. `(circuit test)` is core, so it can't
+    read the environment (ADR-0006). The options, the owner's call (PR #28's findings):
+    (a) a test passes the piece size; (b) a test passes an `Env`, the adapter's parsing
+    moved into the core; (c) a `test-handler` that does what the adapter does when the
+    app answers; (d) keep it, and say in Testing's page that the setting is tested through
+    the server's test host with `circuit->handler app env`;
   - `examples/long-poll.sps` may wake a waiter whose deadline fired in the same instant,
     answering "woke 1" and logging `late-resume`, as the server's example would.
     Unverified.
@@ -161,12 +181,6 @@ close-out under **Close-outs**, newest first.
   have such a heading. Filed as
   [chez-http-server#255](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/255):
   the generator is the server's, and circuit's and chez-websocket's are copies.
-- **A re-export's own comment is unchecked:** `(circuit http-server)` says
-  `awaiting : (-> Any) -> Awaiting`, the server's reference `(-> Answer) -> Awaiting`.
-  The reference gives re-exports no signature, so `tests/test-reference.sps` holds neither.
-- **Nothing prints the library path but `make run`,** which echoes its command line: the
-  docs say to run that, from the checkout, to start a program without make. A target
-  that prints it, or a deploying page, would serve a service or a container better.
 - **Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
   returns** (slice 6b, reproduced; its close-out has the repro). Circuit's libraries
   return values only from direct calls. Not filed: the owner chose not to, on 2026-10-30.
@@ -175,6 +189,61 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: a Chez floor outside the container, and six housekeeping items, in PR #28
+
+On the owner's "start the open list items": the items that needed no decision of theirs.
+Commits on `open/housekeeping`: the work (755b198), the review's fixes (309e25a), the
+CHANGELOG lines (6312456), main merged in after #26 (ce7bd80) and after #27 (0aba42f),
+this close-out (f9f2967), and its CI run named here. `make test` passes 17 suites;
+`check-site`, `check-help`, `check-imports` and `check-suites` pass; on this host, `make
+test` refuses its Chez 10.4.0. CI passed on the PR (run 41199350252, 4m09s), on amd64,
+arm64 and the site job.
+
+- **`check-chez`**, which `deps` runs first, so every target that runs Chez on circuit's
+  libraries: `scripts/require-chez` runs CHEZ once on a one-line program that only Chez
+  answers, `chez-scheme X.Y.Z threaded`, and compares the version digit by digit. A
+  refusal names what it found and what is needed, with a hint for a Guix host. It feeds
+  Chez's REPL, not `--script /dev/stdin`: Chez 10.2.0 asks a script's port its position,
+  which a pipe refuses (reproduced). The site's targets take a threaded Chez of any
+  version (`--any-version`): CI's site job and the Pages workflow run apt's
+  `chezscheme`, 9.5.8, below the floor, and `check-site`'s suites import
+  `(circuit-testing)`, which takes Chez's mutexes, a threaded build's alone. My brief had
+  held them to the floor, which would have broken every release's Pages deploy; the
+  builder caught it. PR #28's site job was the probe's first run on 9.5.8, and passed;
+- **the default `CHEZ`:** the first of `scheme` and `chez` on PATH at the floor, else the
+  first that is Chez, asked once as make reads the Makefile; a `CHEZ` given stays;
+- **rule (j)** in `check-imports`: no directory on the Makefile's library paths but `src`
+  holds a `circuit` directory or `circuit.*` file, in any case, so the library Chez loads
+  is the one the audit read, whatever a path's order. Chosen over holding each path to
+  start with `src`, which would need `GATE_FIRST` exempted and checks only the variables.
+  A directory it can't list is named, and it exits 1;
+- **the smaller items:** the unreadable rows take Chez's read error from the running Chez;
+  `awaiting`'s re-export comment gives the server's `(-> Answer) -> Awaiting`, and
+  `test-reference`'s row (g) holds each re-exported procedure's comment to the server's
+  reference (only `awaiting` of 21 differed); the FIFO row's writer is a background
+  child, so no end is opened for reading and writing; `make libdirs` prints `LIBDIRS`,
+  and Installing's page runs a program with it;
+- **the rows:** a new suite, `test-require-chez`, 86 rows against fake binaries on a PATH
+  of their own, and rows in `test-check-imports`, `test-check-suites` and
+  `test-reference`; each check watched failing under a mutant of the script, the
+  Makefile or the checker;
+- **the review**, read-only on Opus, of #27 and #28 together, found in #28, each fixed and
+  its row watched failing: the probe unbounded, so a `scheme` that never exits, or a child
+  left holding the pipe, hung every make target, and one that wrote without end grew
+  without bound (now GNU `timeout` for `REQUIRE_CHEZ_SECONDS`, 10, the probe killing what
+  is left of timeout's process group, since timeout ends it only when its time runs out,
+  and 4 KiB read, the exit status in-band); `--any` passing an unthreaded Chez that
+  `check-site` can't run on; `echo` under dash, CI's `/bin/sh`, cutting a refusal at `\c`;
+  `require-tools` hiding the script's own refusal of a missing or empty CHEZ; `--find`
+  taking a `scheme` below the floor over a `chez` at it; rule (j) dying with 255 on an
+  unreadable directory, and case-sensitive; and the FIFO row's comment claiming more than
+  it does. Left: the two unverified gaps in rule (j) (Open);
+- **traps, from the builder:** under Chez's `system`, a child shell starts with SIGPIPE
+  ignored, so a write after `head` closed the pipe prints `write error: Broken pipe`: the
+  probe's marker is written with its stderr sent to `/dev/null`;
+- **agents:** the builder, Opus, 390,465 tokens and 37.3 min, then 100,903 and 31.6 min
+  for the review's fixes; the reviewer's share is in PR #27's close-out.
 
 ### 2026-10-31: the router's own 400 and 405, and a 400 for a raw character, in PR #27
 
