@@ -7,6 +7,25 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`wrap-catch-with` and `wrap-log-with`**, in `(circuit middleware waits)`.
+  `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each make a middleware, so
+  `wrap` takes them as it takes `(wrap-timeout ms)`:
+  `(wrap app (wrap-catch-with on-raise) (wrap-log-with clock))`.
+  `(wrap-catch handler on-raise)` and `(wrap-log handler clock)` work as before.
+
+### Changed
+
+- **`wrap-log`'s line ends with the client's address**, `req-remote-address`, or `-` for
+  none, as the server's `request-refused` line does:
+  `request GET /users 200 written 0 127.0.0.1`. A program that reads the milliseconds as
+  the line's last field must take the one before it. A middleware that sets the address, such as one that believes a
+  proxy, goes after `wrap-log`.
+- **`wrap-log` writes each control character in the method, the path and the address as
+  a space**, so a request is always one line, even when a middleware set the address
+  from a client's header.
+
 ## [0.1.2] - 2026-10-30
 
 The third release, a patch: the pins move to chez-http-server v0.10.0 and chez-websocket

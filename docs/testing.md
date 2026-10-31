@@ -63,7 +63,7 @@ hello, you
 It prints `wrap-log`'s line, then what `test-req-done!` answers:
 
 ```text
-request GET /hello 200 written 5
+request GET /hello 200 written 5 -
 ()
 ```
 
@@ -73,7 +73,8 @@ request GET /hello 200 written 5
 - It answers a list of what they raised, `()` when nothing did. A raise
   doesn't stop the rest.
 - The first call ends the response: a later one calls nothing.
-- `wrap-log` takes a clock, so a test's line has a known time.
+- `wrap-log` takes a clock, so a test's line has a known time. A test
+  request has no address, so the line ends with `-`.
 
 ## Test a handler that waits
 
