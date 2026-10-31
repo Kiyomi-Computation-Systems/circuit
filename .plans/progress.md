@@ -185,8 +185,9 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "lets plan some work around common middleware patterns", after a
 discussion of Ring's `ring-core` middleware. Commits on `open/slice-9-design`: the design
-and its records in the circuit design (0630359), this close-out, and its CI run named
-here.
+and its records in the circuit design (0630359), this close-out (487f4f2), and its CI run
+named here. CI passed on the PR (run 41217973299, 4m23s), on amd64, arm64 and the site
+job.
 
 - **the design:** three PRs in the owner's order, 9a CORS and security headers, 9b
   params, 9c cookies, each a core library that `check-imports` holds unchanged.
