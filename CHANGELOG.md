@@ -23,6 +23,13 @@ release before 1.0.
   to each response that lacks them. `(wrap-hsts seconds)` sets
   `strict-transport-security` on an `https` request's response alone, with
   `(hsts-include-subdomains)` for every subdomain.
+- **The query and urlencoded forms: `(circuit params)`.** `(req-query-params req)` reads
+  the query, and `(wrap-form-params n)` reads an `application/x-www-form-urlencoded`
+  body of at most `n` bytes before the handler, for `(req-form-params req)`. Each is a
+  list of `(name . value)` strings, in order, which `param-value` and `param-values`
+  read. Both use the parser browsers use, which never fails: a `%` that starts no
+  escape stays a `%`, and bytes that are no UTF-8 read as U+FFFD. `parse-params` reads
+  bytes so, and `params->string` writes pairs as a browser does.
 - **`wrap-catch-with` and `wrap-log-with`**, in `(circuit middleware waits)`.
   `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each make a middleware, so
   `wrap` takes them as it takes `(wrap-timeout ms)`:
