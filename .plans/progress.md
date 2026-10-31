@@ -94,8 +94,12 @@ close-out under **Close-outs**, newest first.
 - **v0.1.2 is tagged and released** on 12f5944, #24's squash, and its site is live,
   recorded in [PR #25](https://github.com/Kiyomi-Computation-Systems/circuit/pull/25) on
   2026-10-30; its close-out is below.
-- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
-  open items below.
+- **`wrap-catch-with`, `wrap-log-with` and the client's address in `wrap-log`'s line are
+  merged**, squashed from [PR #26](https://github.com/Kiyomi-Computation-Systems/circuit/pull/26)
+  on 2026-10-30; its close-out is below. The owner's answers are design §15.27.
+- **Next:** the design plans no slice past 8 (§17). The owner chose to work through the
+  Open list below. Two more PRs are under way: the router's own 400 and 405 handlers with a
+  400 for a raw character a path can't hold, and the list's housekeeping.
 
 ## Open
 
@@ -137,26 +141,23 @@ close-out under **Close-outs**, newest first.
   (curl has it by default from 8.11), so the examples suite's curl echo row is skipped in
   CI and runs only in the container, on curl 8.20. The `/dev/tcp` rows prove the echo in
   both (slice 6c).
-- **The examples suite's "no sooner than 1000 ms" row holds the timeout only loosely**:
-  its clock starts before curl is spawned, so with the example's timeout at 990 ms it
-  still passed (PR #15's mutant). The log row holds the floor, at 998 ms.
 - **No test runs the docs' code.** Every program on the pages was run by hand for PR #18,
   and shows what it printed; the owner chose a reference check over running the blocks
   (2026-10-30). A change to the code can leave a page's program, or its output, wrong
   until someone reruns it, and `tests/test-reference.sps` checks names, signatures and
   links, not an entry's prose.
-- **`wrap-log`'s line has no client address**, where the server's `request-refused` line,
-  from v0.10.0, ends with one, as access logs' lines do. `req-remote-address` would give
-  it; a change to the line is the owner's call.
-- **`wrap-catch` with an `on-raise` isn't a middleware maker:** `wrap-timeout` and
-  `wrap-body-cap` take their settings and return a middleware, while `wrap-catch` takes the
-  handler first, so `wrap` needs `(lambda (h) (wrap-catch h on-raise))`. Middleware's
-  page shows it. Whether to change the API is the owner's call.
-- **`(site slug)` isn't quite GitHub's:** `slugify` drops `_` and merges runs of spaces and
-  hyphens (`a_b` is `ab`, `a - b` is `a-b`; reproduced), where github-slugger keeps `_` and
-  writes `a---b` (not checked against GitHub itself). `check-site`'s GitHub-anchor
-  invariant uses the same `slugify`, so it can't catch it. No heading hits it today. The
-  generator is the server's and chez-websocket's too.
+- **`req-remote-address` costs about 50 B a call on a real connection:** the server's
+  `request-remote-address` copies its string each time (its `view.sls:133`). So
+  `wrap-log`'s own share, G8 own, reads 340 B from about 290 since PR #26, under its 384 B
+  bound.
+- **`(site slug)` isn't GitHub's:** `slugify` drops `_`, merges runs of spaces and hyphens,
+  and trims hyphens, where GitHub keeps `_` and makes each space a hyphen. Checked against
+  GitHub's own anchors: `uv_eof` against `uveof`, `012---2026-10-30` against
+  `012-2026-10-30`. `check-site` holds each heading to its own `github-slug`, which states
+  GitHub's rule, and refuses one where the two differ: no link breaks, but a page can't
+  have such a heading. Filed as
+  [chez-http-server#255](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/255):
+  the generator is the server's, and circuit's and chez-websocket's are copies.
 - **A re-export's own comment is unchecked:** `(circuit http-server)` says
   `awaiting : (-> Any) -> Awaiting`, the server's reference `(-> Answer) -> Awaiting`.
   The reference gives re-exports no signature, so `tests/test-reference.sps` holds neither.
@@ -177,6 +178,50 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-30: `wrap-catch-with`, `wrap-log-with` and the client's address, in PR #26
+
+On the owner's "start the open list items": they chose, among the options offered, the
+makers over a breaking change or none, and the address at the end of the line, as the
+server's `request-refused` line has it, over first, as the Common Log Format has it
+(design §15.27). Commits on `open/waits-makers`: the code, tests and docs (4dae195), this
+close-out, and its CI run named here. `make test` passes 16 suites, and `make check-site`
+passes.
+
+- **the makers:** `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each check
+  their setting when called, and the handler, with their own name as the who, when
+  applied. The catch and the log they make are `make-catch`'s and `make-log`'s, as
+  `wrap-catch`'s and `wrap-log`'s are. Middleware's page shows
+  `(wrap app (wrap-catch-with on-raise))` where it showed a lambda;
+- **the address:** `wrap-log`'s line ends with `req-remote-address`, or `-` for `#f` or
+  `""`. The method, the path and the address are each written a character at a time, a
+  control character as a space (the server's #250 rule): a middleware can take the address
+  from a client's header, and before this, `req-with-path` could already break the line.
+  The log reads the request it was handed, so a middleware that sets the address goes after
+  it, and the page says so;
+- **the rows first:** the suite failed to load on the old code, then passed 80 rows.
+  Twelve mutants each failed their own rows: a maker that drops its `on-raise`, its clock
+  or its early check, or names `wrap-catch` as the who; no address; `""` printed empty;
+  the method, the path or the address written raw; DEL kept; line feeds alone made
+  spaces. The every-character row holds the rule at all 128 ASCII characters, U+0085 and
+  U+00E9, in each of the three fields;
+- **the examples suite's 504 row** now times the wait by curl's own clock,
+  `time_starttransfer` less `time_pretransfer`, at 998 ms or more, the log row's floor.
+  Its old clock started before curl was spawned, so it passed with the example's timeout
+  at 990 ms (PR #15's mutant). That mutant now fails it: curl waited 994.6 ms;
+- **the gate passes.** G5 reads 380–388 and 333–335 with a park, as before. G8 own reads
+  340, from about 290. Two mutants of the gate's run split it: reading the address and
+  printing `-` reads 340, not reading it 288, so the copy in the server's
+  `request-remote-address` is the whole rise (Open);
+- **the docs:** every program whose output changed was rerun in the container over
+  loopback, and the pages show what it printed: Middleware's four, Quickstart's middleware
+  program, and Testing's `wrap-log` line, `-` for a test request;
+- **the slug item, corrected:** the Open list said `check-site`'s GitHub-anchor invariant
+  used the same `slugify`, so it couldn't catch a heading where they differ. It has its
+  own `github-slug`, and a heading `## a_b` fails `make check-site` (probed). Filed as
+  chez-http-server#255, with three anchors read from GitHub's own pages;
+- **no agents ran for this PR.** The router and the housekeeping went to two Opus agents
+  in worktrees, for PRs of their own.
 
 ### 2026-10-30: v0.1.2 tagged, released and published, recorded in PR #25
 
