@@ -115,8 +115,13 @@ close-out under **Close-outs**, newest first.
 - **The docs site's heading anchors are GitHub's**, from chez-http-server's fix, squashed
   from [PR #32](https://github.com/Kiyomi-Computation-Systems/circuit/pull/32) on
   2026-10-31, which closes the owner's #30; its close-out is below.
-- **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
-  Open list below.
+- **Slice 9 is designed** in [2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md),
+  approved by the owner on 2026-10-31, squashed from
+  [PR #33](https://github.com/Kiyomi-Computation-Systems/circuit/pull/33) on 2026-10-31;
+  its close-out is below. The owner's answers are design §15.30: 9a CORS and security
+  headers, 9b params, 9c cookies, then a design of sessions' own.
+- **Next:** slice 9a, CORS and security headers: `(circuit middleware cors)` and
+  `(circuit middleware headers)` (the slice 9 design §3 and §4).
 
 ## Open
 
@@ -176,6 +181,39 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: slice 9's design, in PR #33
+
+On the owner's "lets plan some work around common middleware patterns", after a
+discussion of Ring's `ring-core` middleware. Commits on `open/slice-9-design`: the design
+and its records in the circuit design (0630359), this close-out (487f4f2), and its CI run
+named here. CI passed on the PR (run 41217973299, 4m23s), on amd64, arm64 and the site
+job.
+
+- **the design:** three PRs in the owner's order, 9a CORS and security headers, 9b
+  params, 9c cookies, each a core library that `check-imports` holds unchanged.
+  Sessions follow in a design of their own, with cryptography discussed first. Ring's
+  `content-type` waits, on the owner's word; its `content-length` and `head` aren't
+  needed, as the server sends the length and the router hands a HEAD to the GET;
+- **checked against the specs**, read on 2026-10-31. The rules came from:
+  - Fetch: `Vary: Origin` on every response for an origin list, `*` on every response
+    and no `Vary` for any origin, `Authorization` outside the `*`, the six methods it
+    upper-cases;
+  - WHATWG URL §5.1 and §5.2;
+  - RFC 6265bis-22: quotes kept as part of a value, 4096 bytes for a name and value,
+    1024 for an attribute, prefixes matched in any case, no 0 in `Max-Age`'s grammar,
+    `SameSite=None` dropped without `Secure`;
+  - RFC 6797 §7.2.
+
+  Reading 6265bis changed one rule: the draft had stripped a value's quotes, as Ring and
+  Go do;
+- **probed:** Chez's `utf8->string` reads malformed UTF-8 differently from WHATWG's
+  decoder. An overlong pair gives one U+FFFD (WHATWG: two), a surrogate one (three), and
+  a BOM is dropped, which WHATWG keeps. So 9b decodes UTF-8 itself. The probe is in
+  `build/probe-utf8/`, git-ignored;
+- **the owner's answers:** all six in the design's §8 as proposed, design §15.30. The
+  owner approved the design on the PR, recorded on the branch before the merge;
+- **agents:** none.
 
 ### 2026-10-31: the docs site's heading anchors are GitHub's, in PR #32
 

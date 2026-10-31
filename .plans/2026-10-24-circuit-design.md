@@ -1621,6 +1621,33 @@ The owner's answer to the ledger's Open list (2026-10-31):
     rather than when the app answers and a file that shrinks while it
     streams, no unit test would catch under any of them.
 
+The owner's answers on slice 9's design
+([2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md)), its §8 (2026-10-31), with
+the design approved the same day:
+
+30. **Slice 9 is three PRs, building towards sessions:** 9a CORS and
+    security headers, 9b params, 9c cookies. Sessions get a design of their
+    own after 9c, with cryptography discussed first. Ring's `content-type`
+    is left out for now; its `content-length` and `head` aren't needed,
+    since the server and the router already do their work.
+    - **Four core libraries, split by kind:** `(circuit middleware cors)`
+      and `(circuit middleware headers)` for the two middlewares,
+      `(circuit params)` and `(circuit cookies)` for the readers and
+      helpers. Weighed: all four under `(circuit middleware ...)`, as Ring
+      names its own; and `(circuit middleware security)`, to keep the name
+      apart from `(circuit headers)`.
+    - **A param that doesn't decode never fails:** WHATWG's urlencoded
+      parser, as browsers use it. Weighed: a 400, as the router answers a
+      capture, which a reader could give only through a raise.
+    - **`security-headers` holds three fields:** `nosniff`, `SAMEORIGIN`
+      frame options and `strict-origin-when-cross-origin`. Weighed: a
+      content security policy and `cross-origin-opener-policy` as well, as
+      helmet sends.
+    - **A preflight whose origin doesn't match goes to the handler,** as
+      ring-cors does. Weighed: wrap-cors answering it `403`.
+    - **`null` is never an allowed origin.** Weighed: allowed when listed.
+    - **`wrap-form-params` requires its cap.** Weighed: 1 MiB unless given.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a
@@ -1676,3 +1703,6 @@ The owner's answer to the ledger's Open list (2026-10-31):
    `res-tapped-body-` accessors for the adapter and the tests. Built and
    closed out in
    [PR #10](https://github.com/Kiyomi-Computation-Systems/circuit/pull/10).
+9. CORS and security headers, params, and cookies, each its own library:
+   designed in [2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md)
+   as 9a, 9b and 9c (§15.30). Sessions follow, in a design of their own.
