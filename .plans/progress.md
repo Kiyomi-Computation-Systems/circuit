@@ -109,6 +109,9 @@ close-out under **Close-outs**, newest first.
   shows how to test a wrap across pieces**, squashed from
   [PR #29](https://github.com/Kiyomi-Computation-Systems/circuit/pull/29) on 2026-10-31;
   its close-out is below. The owner's answer is design §15.29.
+- **AGENTS.md's comment rule names its one exception, the reference suite's doc check**,
+  squashed from [PR #31](https://github.com/Kiyomi-Computation-Systems/circuit/pull/31)
+  on 2026-10-31; its close-out is below.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
   Open list below.
 
@@ -128,10 +131,6 @@ close-out under **Close-outs**, newest first.
   if a new library path variable is added.
 - **`make libdirs` prints relative paths,** so what it prints works only from the
   checkout. Absolute ones, by `abspath`, would be the owner's call.
-- **AGENTS.md says "Do not write tests that rely on reading code comments"**, while
-  `tests/test-reference.sps` holds signature comments to the reference, and since PR #28
-  re-export comments to the server's. The review suggested rewording the rule to allow
-  doc checks: the owner's call.
 - **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
   2026-10-26, with the docs fix; see PR #2's close-out. **chez-http-server is submitted
   to the Akku index and awaits review**: the owner submitted 0.8.0 on 2026-10-24, then
@@ -173,7 +172,10 @@ close-out under **Close-outs**, newest first.
   GitHub's rule, and refuses one where the two differ: no link breaks, but a page can't
   have such a heading. Filed as
   [chez-http-server#255](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/255):
-  the generator is the server's, and circuit's and chez-websocket's are copies.
+  the generator is the server's, and circuit's and chez-websocket's are copies. Fixed
+  there by chez-http-server#256; the owner opened
+  [#30](https://github.com/Kiyomi-Computation-Systems/circuit/issues/30) on 2026-10-31
+  for circuit to take the fix.
 - **Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
   returns** (slice 6b, reproduced; its close-out has the repro). Circuit's libraries
   return values only from direct calls. Not filed: the owner chose not to, on 2026-10-30.
@@ -182,6 +184,26 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: AGENTS.md's comment rule and its one exception, in PR #31
+
+On the owner's "reword agents", the Open list's item from PR #28's review. Commits on
+`open/comment-rule`: the rule (a5daa92), this close-out (904cb78), and its CI run named
+here. CI passed on the PR (run 41205346562, 4m33s), on amd64, arm64 and the site job.
+
+- **the rule** said "**Do not** write tests that rely on reading code comments", while
+  `tests/test-reference.sps` holds comments to the docs. It now says what it forbids, a
+  test asserting a comment in place of what the code does, and names the doc check as
+  its one exception, with each kind of comment that suite reads: a signature comment,
+  held to `docs/reference.md` and to its procedure's arity; a type alias comment; a
+  re-export's, held to the server's or chez-websocket's reference; and the Makefile's
+  comment on a pin, held to the pin's tag. Each is checked against the suite's header,
+  rows (d) and (g) and its rule for the page's shape. No other suite relies on what a
+  comment says: `check-imports` reads a comment only as text, refusing a `#!` in one;
+- **the worktrees** PR #27 and #28 were built in, `.claude/worktrees/router` and
+  `.claude/worktrees/housekeeping`, were already gone when the owner asked for them
+  cleaned up: `git worktree list` names `main` alone;
+- **agents:** none.
 
 ### 2026-10-31: `res-body->bytevector`'s pieces on Testing's page, in PR #29
 

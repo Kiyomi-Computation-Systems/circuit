@@ -102,7 +102,13 @@
 * A test is not finished when it passes. It is finished when you have watched
   it fail.
 * Prefer a check to a comment.
-* **Do not** write tests that rely on reading code comments
+* **Do not** write tests that rely on reading code comments: a test asserts
+  what the code does, never what a comment says. A doc check is the one
+  exception, holding comments to the docs: `tests/test-reference.sps` holds
+  each signature comment to `docs/reference.md` and its procedure's arity,
+  each type alias comment to the page's, each re-export's to the server's or
+  chez-websocket's reference, and the Makefile's comment on a pin to the
+  pin's tag.
 * Chez must be a threaded build: chez-http-server needs one, so circuit has
   no `--nothreads` lane.
 * `make test` runs every suite under GNU `timeout`, which kills a hung
