@@ -124,10 +124,16 @@ close-out under **Close-outs**, newest first.
   [PR #34](https://github.com/Kiyomi-Computation-Systems/circuit/pull/34) on 2026-10-31;
   its close-out is below. `(circuit middleware cors)` and `(circuit middleware headers)`
   make eight public libraries. The owner's answer in it is design §15.31.
-- **Next:** slice 9b, params: `(circuit params)` (the slice 9 design §5).
+- **Slice 9b, params, is merged**, squashed from
+  [PR #35](https://github.com/Kiyomi-Computation-Systems/circuit/pull/35) on 2026-10-31;
+  its close-out is below. `(circuit params)` makes nine public libraries.
+- **Next:** slice 9c, cookies: `(circuit cookies)` (the slice 9 design §6).
 
 ## Open
 
+- **`wrap-form-params` has no limit on pairs** (slice 9b): parsed, 1 MiB of `a&` is
+  524,288 pairs, 25,142,936 bytes. Express's body-parser refuses a form of more than
+  1,000 by default, `413`. A limit would be a new option: the owner's call.
 - **`scripts/require-chez`, left from PR #28:**
   - with no GNU `timeout` or `gtimeout` on PATH, as on a Mac without coreutils, its probe
     is unbounded: a `scheme` that never exits hangs every make target, `make help`
@@ -184,6 +190,77 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: slice 9b, params, in PR #35
+
+On the owner's "start slice 9b". Commits on `open/slice-9b`: the code, tests and docs
+(65a3094), this close-out, and its CI run named here. `make test` passes 21 suites, and
+`make check-site` passes.
+
+- **`(circuit params)`:** `req-query-params`, `wrap-form-params`, `req-form-params`,
+  `param-value`, `param-values`, `parse-params` and `params->string`, as the design's §5
+  has them. Both readers use WHATWG URL's urlencoded parser, and the UTF-8 decoder is
+  circuit's own, the Encoding standard's §8.1.1;
+- **beyond the design:**
+  - a request with two `content-type` fields is no form, as a doubled `Origin` is no
+    origin in 9a: which one a proxy read is unknown;
+  - the media type is compared in ASCII case, a token's (RFC 9110 §8.3.1). The reviewer
+    found no character `string-ci=?` would also take for this name, so no row can tell
+    them apart;
+  - `req-query-params` and `req-form-params` refuse what is no request under their own
+    names;
+- **found in the build and the review, and in the design now** (§5's pointers):
+  - the server answers a target holding a byte past ASCII `400` before any handler runs
+    (chez-httparse's URL grammar), so the design's "a raw UTF-8 `é`, as curl sends it,
+    reads as `é`" never reaches a handler: a character from 128 to 255 reaches a query
+    only through `req-with-query` or a test request. curl 8.20 does send a raw `é` as
+    given, and gets that `400`, logged `invalid-url`; with `--data-urlencode` it sends
+    the escapes, as a browser always does;
+  - `wrap-form-params` goes inside every cap: a `wrap-body-cap` inside it comes after the
+    port is made, `req-with-body-cap`'s assertion violation, a `500` for every form. The
+    page has a "Where it goes" section, with the router's group as the place;
+- **the oracles:**
+  - the web-platform-tests' urlencoded vectors and the Encoding standard's UTF-8 decoder
+    vectors, at WPT 458d0f3, ported as rows with WPT's BSD-3-Clause notice;
+  - a WHATWG parser in Python over Python's own UTF-8 decoder, which agreed with one
+    written from §8.1.1 on 200,000 random cases, agreed with `parse-params` on 100,000
+    random byte strings, half of them weighted to escapes (65,372 whole escapes). A
+    deliberately wrong oracle disagreed on 38,018 and 13,600 of them, so the comparison
+    can fail. The probes are in `build/oracle-9b/`, git-ignored;
+- **the rows:** `tests/test-params.sps`, 47 rows, the cap rows through the server's test
+  host, and `tests/test-params-properties.sps`, 3 properties from a fixed seed. A stub
+  library, every reader answering `'()` or `""`, failed 39 of the first 42 rows and all 3
+  properties; the 3 rows a pass-through middleware satisfies were watched failing by
+  mutants. 105 mutants, 4 of them the reviewer's, run against the final rows: 103
+  killed, every one of the 50 rows and properties watched failing at least once. Two
+  survivors are equivalent: `trail-mask-7F`, since a trail byte has passed its range check
+  and is 80 to BF, where masking with 7F is masking with 3F; and the reviewer's
+  `string-ci=?` for the media type, above. The mutants are in `build/m9b/`, git-ignored;
+- **traps:**
+  - every copy of a request shares its body's port, so a row that read one test request
+    through five stacks failed at the second: each case makes its own request;
+  - Chez's `call-with-output-file` refuses a file that exists, so a probe rerun writes a
+    new one;
+- **the docs:** a page, Query strings and forms, its programs run in the container over
+  loopback; the reference's section and `Params` alias; a bullet on Testing; the home
+  page, the site's page list and `AGENTS.md` count nine libraries;
+- **the review**, read-only on Opus, found seven things, each fixed:
+  - a cap inside `wrap-form-params` made every form a `500`, and nothing said so: the
+    page, the library's comment and the design now say where it goes, and two rows hold
+    it;
+  - the server refuses a raw byte past ASCII in a target, so "as curl sends it" was
+    wrong, in a row's name, comments, Testing's bullet and the design;
+  - a row read `ran` beside the call that set it, an order AGENTS.md forbids: it binds the
+    exchange first now;
+  - the query's 255 bound was held from one side: a row sweeps 0 to 255 now, and the
+    reviewer's two mutants of the bound are killed;
+  - a parsed form takes up to about 24 times its bytes, 1 MiB of `a&` 25,142,936 bytes:
+    the page says so, and Open asks about a limit on pairs;
+  - outside the router, a form for a path no route takes is read too: the page puts it
+    in the router's group;
+  - three wordings: "port made", not "body read"; six characters past 255, not five; and
+    the reference's "at most that many bytes";
+- **agents:** the reviewer, Opus, 217,252 tokens and 14.5 min. The build was mine.
 
 ### 2026-10-31: slice 9a, CORS and security headers, in PR #34
 
