@@ -1,6 +1,6 @@
 # API reference
 
-Every name the nine public libraries export, one entry each, library by
+Every name the ten public libraries export, one entry each, library by
 library. An entry gives the name's signature, says what it does, and links
 the guide page that explains it. A name `(circuit http-server)` re-exports
 from chez-http-server has no signature here: its entry links the server's
@@ -18,6 +18,7 @@ Body       = (U #f Bytevector String Producer BinaryInputPort
                 SizedBody WrappedBody TappedBody)
 Producer   = (-> (U Bytevector Eof))
 Params     = (Listof (Pair String String))
+Cookies    = (Listof (Pair String String))
 TakeOver   = (Transport Bytevector -> Answer)
 Env        = (String -> (U String #f))
 ```
@@ -34,6 +35,8 @@ Env        = (String -> (U String #f))
   stands for `(on-not-found handler)`.
 - `CorsOption` is what a `cors-` constructor makes, such as
   `cors-origins`, and `HstsOption` what `hsts-include-subdomains` makes.
+  `CookieOption` is what a `cookie-` constructor makes, such as
+  `cookie-path`.
 - `Request`, `Transport`, `Answer` and `Awaiting` are chez-http-server's.
   `WebSocket`, `HandshakeSettings` and `WebsocketLimits` are
   chez-websocket's.
@@ -1190,6 +1193,109 @@ params->string : Params -> String
 
 Pairs written urlencoded, a space as `+`, for a query or a test's form
 body. See [Query strings and forms](params.md).
+
+## `(circuit cookies)`
+
+The request's cookies, read as name and value pairs, and `set-cookie`
+fields written on the response.
+
+```scheme
+(import (rnrs) (circuit) (circuit cookies))
+```
+
+### `req-cookies`
+
+```text
+req-cookies : Req -> Cookies
+```
+
+Every cookie of every `cookie` field, in order, read each time it is
+asked; `'()` with none. A value's quotes are kept. See [Cookies](cookies.md).
+
+### `req-cookie`
+
+```text
+req-cookie : Req String -> (U String #f)
+```
+
+The value of the first cookie with that name, in its case, or `#f`. See
+[Cookies](cookies.md).
+
+### `res-add-cookie`
+
+```text
+res-add-cookie : Res String String CookieOption ... -> Res
+```
+
+The response with one `set-cookie` field added, its attributes in one
+order. A cookie a browser would drop is refused: a name that is no token,
+a value that isn't cookie-octets, over 4096 bytes, `SameSite=None` without
+`Secure`, or a prefix's rules broken. See [Cookies](cookies.md).
+
+### `res-expire-cookie`
+
+```text
+res-expire-cookie : Res String CookieOption ... -> Res
+```
+
+The response with one `set-cookie` field added that removes the cookie:
+no value, and `Expires` in 1970. It takes the options but
+`cookie-max-age`. See [Cookies](cookies.md).
+
+### `cookie-path`
+
+```text
+cookie-path : String -> CookieOption
+```
+
+`Path`: starts with `/`, at most 1024 bytes of ASCII, with no control and
+no `;`, and nothing a URL's path escapes: no space, `"`, `#`, `<`, `>`,
+`?`, `^`, `` ` ``, `{`, `}` or `\`. See [Cookies](cookies.md).
+
+### `cookie-domain`
+
+```text
+cookie-domain : String -> CookieOption
+```
+
+`Domain`: that host and its subdomains. Not empty nor `.`, at most 1024
+bytes of ASCII, with no control and no `;`, and nothing a host can't hold:
+no space, `#`, `%`, `/`, `:`, `<`, `>`, `?`, `@`, `[`, `\`, `]`, `^` or
+`|`. See [Cookies](cookies.md).
+
+### `cookie-max-age`
+
+```text
+cookie-max-age : Nat -> CookieOption
+```
+
+`Max-Age`: how many seconds the browser keeps the cookie, at least 1, and
+at most 1024 digits. See [Cookies](cookies.md).
+
+### `cookie-secure`
+
+```text
+cookie-secure : -> CookieOption
+```
+
+`Secure`: sent over `https` alone. See [Cookies](cookies.md).
+
+### `cookie-http-only`
+
+```text
+cookie-http-only : -> CookieOption
+```
+
+`HttpOnly`: no script on the page can read it. See [Cookies](cookies.md).
+
+### `cookie-same-site`
+
+```text
+cookie-same-site : Symbol -> CookieOption
+```
+
+`SameSite`: `'strict`, `'lax` or `'none`, which needs `cookie-secure`. See
+[Cookies](cookies.md).
 
 ## `(circuit websocket)`
 

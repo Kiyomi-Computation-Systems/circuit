@@ -55,6 +55,7 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 | `(circuit http-server)` | `run-server`, and the server's waits, such as `sleep-ms` |
 | `(circuit router)` | `make-router`: routes by the path, then the method |
 | `(circuit params)` | `req-query-params` and `wrap-form-params`: the query and a form, as pairs |
+| `(circuit cookies)` | `req-cookies` and `res-add-cookie`: read, set and remove cookies |
 | `(circuit middleware waits)` | `wrap-catch`, `wrap-timeout` and `wrap-log` |
 | `(circuit middleware cors)` | `wrap-cors`: lets a page on another origin call you |
 | `(circuit middleware headers)` | `wrap-default-headers` and `wrap-hsts`: safe headers on every response |
@@ -87,6 +88,8 @@ the [changelog](../CHANGELOG.md) says what each release has.
   sending one as it is made.
 - [Query strings and forms](params.md): reading the query and a form's
   fields.
+- [Cookies](cookies.md): reading the request's cookies, and setting and
+  removing them.
 - [Middleware](middleware.md): writing one, and the catch, timeout, log,
   CORS and headers that come with circuit.
 - [Routing](routing.md): routes, groups and mounts.
