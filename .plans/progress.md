@@ -195,9 +195,10 @@ close-out under **Close-outs**, newest first.
 On the owner's "start the open list items": the items that needed no decision of theirs.
 Commits on `open/housekeeping`: the work (755b198), the review's fixes (309e25a), the
 CHANGELOG lines (6312456), main merged in after #26 (ce7bd80) and after #27 (0aba42f),
-this close-out, and its CI run named here. `make test` passes 17 suites; `check-site`,
-`check-help`, `check-imports` and `check-suites` pass; on this host, `make test` refuses
-its Chez 10.4.0.
+this close-out (f9f2967), and its CI run named here. `make test` passes 17 suites;
+`check-site`, `check-help`, `check-imports` and `check-suites` pass; on this host, `make
+test` refuses its Chez 10.4.0. CI passed on the PR (run 41199350252, 4m09s), on amd64,
+arm64 and the site job.
 
 - **`check-chez`**, which `deps` runs first, so every target that runs Chez on circuit's
   libraries: `scripts/require-chez` runs CHEZ once on a one-line program that only Chez
@@ -240,7 +241,7 @@ its Chez 10.4.0.
   it does. Left: the two unverified gaps in rule (j) (Open);
 - **traps, from the builder:** under Chez's `system`, a child shell starts with SIGPIPE
   ignored, so a write after `head` closed the pipe prints `write error: Broken pipe`: the
-  probe's marker goes to `/dev/null`'s stderr;
+  probe's marker is written with its stderr sent to `/dev/null`;
 - **agents:** the builder, Opus, 390,465 tokens and 37.3 min, then 100,903 and 31.6 min
   for the review's fixes; the reviewer's share is in PR #27's close-out.
 
