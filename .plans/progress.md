@@ -97,9 +97,12 @@ close-out under **Close-outs**, newest first.
 - **`wrap-catch-with`, `wrap-log-with` and the client's address in `wrap-log`'s line are
   merged**, squashed from [PR #26](https://github.com/Kiyomi-Computation-Systems/circuit/pull/26)
   on 2026-10-30; its close-out is below. The owner's answers are design §15.27.
+- **The router's own 400 and 405 handlers, and a 400 for a raw character a path can't
+  hold, are merged**, squashed from
+  [PR #27](https://github.com/Kiyomi-Computation-Systems/circuit/pull/27) on 2026-10-31;
+  its close-out is below. The owner's answers are design §15.28.
 - **Next:** the design plans no slice past 8 (§17). The owner chose to work through the
-  Open list below. Two more PRs are under way: the router's own 400 and 405 handlers with a
-  400 for a raw character a path can't hold, and the list's housekeeping.
+  Open list below. One more PR is under way: the list's housekeeping.
 
 ## Open
 
@@ -164,20 +167,56 @@ close-out under **Close-outs**, newest first.
 - **Nothing prints the library path but `make run`,** which echoes its command line: the
   docs say to run that, from the checkout, to start a program without make. A target
   that prints it, or a deploying page, would serve a service or a container better.
-- **The router's 400 and 405 can't be customised:** only its not-found handler is the
-  app's (the slice 6 design §5). A middleware around the router can rewrite them.
 - **Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
   returns** (slice 6b, reproduced; its close-out has the repro). Circuit's libraries
-  return values only from direct calls. Not filed.
-- **The router takes a raw ASCII character that isn't legal in a path, such as a space,
-  into a capture as it is.** The server refuses one on the wire, so it reaches the router
-  only through `req-with-path` or a test request (the slice 6 design §5 refuses raw
-  characters past ASCII alone).
+  return values only from direct calls. Not filed: the owner chose not to, on 2026-10-30.
 - **The overview** ([circuit-ringlike-http-layer.md](circuit-ringlike-http-layer.md)) still
   uses Racket syntax (`#"..."`, `#:keywords`) and names `chez-web`, `chez-router` and
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: the router's own 400 and 405, and a 400 for a raw character, in PR #27
+
+On the owner's "start the open list items": of the Open list's router items they chose
+both changes, and option entries over positional handlers or none (design §15.28). The
+entries offered were `not-found`, `bad-request` and `method-not-allowed`; I renamed them
+`on-…` before building, since Chez refuses a program that defines a name it imports
+("multiple definitions for not-found in body", probed) and routing's page and
+`test-router` define two of them, and told the owner. Commits on `open/router-handlers`:
+the code, tests and docs (bbdc0f8), their records (8753384), the review's fixes (70da6e6)
+and theirs (558a1f7), main with #26 merged in (65d4899), this close-out, and its CI run
+named here. `make test` passes 16 suites, and `make check-site` passes.
+
+- **the options:** `make-router` takes `(on-not-found h)`, `h` bare, `(on-bad-request h)`
+  and `(on-method-not-allowed h)` after its table, in any order, refusing two for one
+  answer, anything else, and a constructor given bare, before any middleware is applied.
+  The 400 handler gets the request as it came to the router; the 405 handler gets the
+  route's match, one `req-set` on that path alone. When it answers a 405, the router sets
+  `allow` on it, replacing any the handler set; any other answer goes on untouched;
+- **the raw-character rule:** a capture holding a raw ASCII character outside pchar, `/`
+  aside in a catch-all, is the 400; the builder added `?`, which the brief's list left
+  out and RFC 3986 refuses. The server, probed at v0.10.0 with all 128 bytes in GET and
+  POST, origin-form and absolute-form, lets exactly pchar and `/` reach a handler; a raw
+  `|` in an origin-form GET gets a 301 to `%7C`. A mount's rest stays unchecked;
+- **the rows:** 24 new in `test-router`, each watched failing under a mutant of its own,
+  28 router mutants in all; the property suite models the options, its option handlers
+  drawn as leaves, wrapped handlers and routers, its 405 handlers answering 405, 404 or
+  200, a third with an `Allow` of their own. It passes at the default seed and five more;
+- **the gate:** G10's word, parameter and miss rows read 82–84, 163–165 and 2–6 B, before
+  and after; `test-router` holds a router with all three options to the bytes of one
+  without, at a word, a parameter, a catch-all and a mount;
+- **the review**, read-only on Opus, of #27 and #28 together, found three things in #27,
+  each fixed and its row watched failing: `allow` set on any status, so a 404 that hid a
+  route carried `allow: POST` where an unknown path's 404 had none (my brief's rule); a
+  bare `on-bad-request` taken as the not-found handler, so every unknown path raised; and
+  option handlers drawn only as leaves. Left as documented: a 405 handler runs outside
+  its route's group middleware and sees the match, as the default 405 always did;
+- **traps, from the builder:** a relative cost row can't see a cost both sides pay, so
+  the absolute 88 B row stays; `make-test-req` splits a target at its first `?`, so the
+  raw-`?` rows set the path with `req-with-path`;
+- **agents:** the builder, Opus, 372,978 tokens and 25.4 min, then 72,710 and 10.8 min for
+  the review's fixes; the reviewer, Opus, 268,829 tokens and 19.8 min, for #27 and #28.
 
 ### 2026-10-30: `wrap-catch-with`, `wrap-log-with` and the client's address, in PR #26
 
