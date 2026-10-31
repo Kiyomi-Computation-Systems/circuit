@@ -188,7 +188,8 @@ close-out under **Close-outs**, newest first.
 ### 2026-10-31: AGENTS.md's comment rule and its one exception, in PR #31
 
 On the owner's "reword agents", the Open list's item from PR #28's review. Commits on
-`open/comment-rule`: the rule (a5daa92), this close-out, and its CI run named here.
+`open/comment-rule`: the rule (a5daa92), this close-out (904cb78), and its CI run named
+here. CI passed on the PR (run 41205346562, 4m33s), on amd64, arm64 and the site job.
 
 - **the rule** said "**Do not** write tests that rely on reading code comments", while
   `tests/test-reference.sps` holds comments to the docs. It now says what it forbids, a
