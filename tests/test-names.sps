@@ -12,8 +12,8 @@
 ;;; library here exports is a clash too.
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
-;;; its list, so the (circuit) facade keeps the adapter's, the tests' and the
-;;; router's names out, that the adapter's re-exports are the server's own bindings,
+;;; its list, so the (circuit) facade keeps the adapter's, the tests', the
+;;; router's and the CORS and header middleware's names out, that the adapter's re-exports are the server's own bindings,
 ;;; compared through a prefixed import of each, and that the like-named
 ;;; bindings of the two make different things.
 (import (rnrs)
@@ -30,6 +30,8 @@
         (circuit headers)
         (circuit middleware)
         (circuit middleware waits)
+        (circuit middleware cors)
+        (circuit middleware headers)
         (circuit router)
         (circuit test)
         (circuit http-server)
@@ -117,9 +119,9 @@
 (test-begin "names")
 
 (test-equal "the server's libraries, chez-websocket's facade and circuit's are all loaded, side by side"
-  '(#t #t #t #t #t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t #t #t #t #t #t)
   (map procedure? (list serve make-test-host headers-ref make-res make-test-req wrap circuit->handler
-                        wrap-catch make-router websocket-res websocket-handshake)))
+                        wrap-catch wrap-cors wrap-hsts make-router websocket-res websocket-handshake)))
 
 (test-equal "(circuit request) exports its list exactly"
   (sorted request-names)
@@ -140,6 +142,21 @@
 (test-equal "(circuit middleware waits) exports its five exactly"
   '(wrap-catch wrap-catch-with wrap-log wrap-log-with wrap-timeout)
   (sorted-exports '(circuit middleware waits)))
+
+(test-equal "(circuit middleware cors) exports wrap-cors and its nine options exactly"
+  '(cors-any-header cors-any-origin cors-credentials cors-expose-headers cors-headers
+    cors-max-age cors-methods cors-origin-when cors-origins wrap-cors)
+  (sorted-exports '(circuit middleware cors)))
+
+(test-equal "(circuit middleware headers) exports its four exactly"
+  '(hsts-include-subdomains security-headers wrap-default-headers wrap-hsts)
+  (sorted-exports '(circuit middleware headers)))
+
+(test-equal "(circuit) exports none of the CORS and header middleware's names: an app imports their libraries beside it"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit))))
+          (append (library-exports '(circuit middleware cors))
+                  (library-exports '(circuit middleware headers)))))
 
 (test-equal "(circuit router) exports its list exactly"
   (sorted router-names)

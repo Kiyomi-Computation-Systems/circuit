@@ -55,6 +55,8 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 | `(circuit http-server)` | `run-server`, and the server's waits, such as `sleep-ms` |
 | `(circuit router)` | `make-router`: routes by the path, then the method |
 | `(circuit middleware waits)` | `wrap-catch`, `wrap-timeout` and `wrap-log` |
+| `(circuit middleware cors)` | `wrap-cors`: lets a page on another origin call you |
+| `(circuit middleware headers)` | `wrap-default-headers` and `wrap-hsts`: safe headers on every response |
 | `(circuit websocket)` | `websocket-res`, which answers a WebSocket handshake |
 | `(circuit test)` | `make-test-req`, to call a handler with no server |
 
@@ -82,8 +84,8 @@ the [changelog](../CHANGELOG.md) says what each release has.
   make a response.
 - [Bodies and streaming](bodies.md): reading a body, capping it, and
   sending one as it is made.
-- [Middleware](middleware.md): writing one, and the catch, timeout and log
-  that come with circuit.
+- [Middleware](middleware.md): writing one, and the catch, timeout, log,
+  CORS and headers that come with circuit.
 - [Routing](routing.md): routes, groups and mounts.
 - [Waiting](waiting.md): sleeping, deadlines, and waiting for another
   request.

@@ -1,7 +1,7 @@
 # Middleware
 
 A middleware takes a handler and returns a new one that does a little
-more. Here you write one, stack them, and use the three that come with
+more. Here you write one, stack them, and use the ones that come with
 circuit.
 
 ## Write a middleware
@@ -138,23 +138,20 @@ hello, guest
         (handler (req-with-scheme req 'https))
         (handler req))))
 
-;; wrap-hsts : Middleware — tells an https client to stay on https
-(define (wrap-hsts handler)
+;; wrap-no-store : Middleware — tells every cache not to keep the answer
+(define (wrap-no-store handler)
   (lambda (req)
-    (let ((res (handler req)))
-      (if (eq? (req-scheme req) 'https)
-          (res-set-header res "strict-transport-security" "max-age=31536000")
-          res))))
+    (res-set-header (handler req) "cache-control" "no-store")))
 
-(run-server (wrap app wrap-hsts wrap-proxy))
+(run-server (wrap app wrap-no-store wrap-proxy))
 ```
 
 ```text
 $ curl -i -H 'X-Forwarded-Proto: https' http://127.0.0.1:8080/
 HTTP/1.1 200 OK
-Date: Fri, 30 Oct 2026 10:56:57 GMT
+Date: Sat, 31 Oct 2026 16:53:21 GMT
 content-type: text/plain
-strict-transport-security: max-age=31536000
+cache-control: no-store
 Content-Length: 6
 
 https
@@ -167,7 +164,7 @@ http
 - On the way out, change what the handler answered: `res-set-header`,
   `res-with-status` and the rest. To change the body's bytes, use
   `res-wrap-body` ([Bodies and streaming](bodies.md)).
-- `wrap-proxy` is outside `wrap-hsts`, so `wrap-hsts` sees the scheme it
+- `wrap-proxy` is outermost, so every handler inside it sees the scheme it
   set.
 - A `101` from `make-upgrade-res` keeps its status and body:
   `res-with-status` and `res-with-body` refuse one. Tell one by
@@ -310,6 +307,194 @@ request GET /boom raised failed 0 127.0.0.1
   `(wrap-log-with clock)` makes a log that reads a clock of your own, in
   milliseconds.
 
+## Let other sites call you: `wrap-cors`
+
+A page's script can call another origin only when that origin's answers
+say it may: CORS. `(circuit middleware cors)` says so.
+
+```scheme
+(import (rnrs) (circuit) (circuit http-server) (circuit router)
+        (circuit middleware waits) (circuit middleware cors))
+
+(define (show-item req)
+  (make-res 200 '(("content-type" . "text/plain")) "item 7\n"))
+
+(define router
+  (make-router (list (route "/items/:id" (GET show-item) (PUT show-item)))))
+
+(run-server
+ (wrap router
+       wrap-catch
+       (wrap-cors (cors-origins "https://app.example")
+                  (cors-methods 'PUT 'DELETE)
+                  (cors-headers "content-type" "x-api-key")
+                  (cors-max-age 600))
+       wrap-log))
+```
+
+```text
+$ curl -i -X OPTIONS -H 'Origin: https://app.example' \
+       -H 'Access-Control-Request-Method: PUT' http://127.0.0.1:8080/items/7
+HTTP/1.1 204 No Content
+Date: Sat, 31 Oct 2026 16:53:10 GMT
+access-control-allow-origin: https://app.example
+access-control-allow-methods: PUT, DELETE
+access-control-allow-headers: content-type, x-api-key
+access-control-max-age: 600
+vary: origin
+
+$ curl -i -H 'Origin: https://app.example' http://127.0.0.1:8080/items/7
+HTTP/1.1 200 OK
+Date: Sat, 31 Oct 2026 16:53:10 GMT
+content-type: text/plain
+access-control-allow-origin: https://app.example
+vary: origin
+Content-Length: 7
+
+item 7
+$ curl -i -H 'Origin: https://evil.example' http://127.0.0.1:8080/items/7
+HTTP/1.1 200 OK
+Date: Sat, 31 Oct 2026 16:53:10 GMT
+content-type: text/plain
+vary: origin
+Content-Length: 7
+
+item 7
+```
+
+- Before a `PUT`, or a request with a header of its own, the browser asks
+  first: an `OPTIONS` with `Access-Control-Request-Method`, a
+  *preflight*. `wrap-cors` answers one from an allowed origin `204`
+  itself, and the router never sees it.
+- Every other request goes on to the handler. The response gets
+  `access-control-allow-origin` when the origin is allowed, and
+  `vary: origin` always, so a cache keeps one answer for each origin.
+- A script on `https://evil.example` can't read the last answer: it has
+  no `access-control-allow-origin`.
+- CORS decides which pages may read an answer, not which may send a
+  request. A `GET` or a form's `POST` from any page still reaches your
+  handler, with the user's cookies. It is no defence against CSRF.
+
+Its options, each given once:
+
+- One of `(cors-origins origin ...)`, `(cors-origin-when allowed?)` and
+  `(cors-any-origin)`, which sends `*`.
+- `(cors-methods 'PUT ...)` and `(cors-headers name ...)`, what a
+  preflight may ask for beyond what browsers always allow. Or
+  `(cors-any-header)`, which allows whatever headers the preflight asks
+  for.
+- `(cors-expose-headers name ...)`, the response's headers a script may
+  read, `(cors-credentials)`, which lets a script read the answer to a
+  request sent with cookies, and `(cors-max-age seconds)`, how long a
+  browser keeps a preflight's answer.
+
+Write an origin as a browser sends it: `https://app.example`, in lower
+case, with no `/` at the end and no `:443`. `wrap-cors` refuses
+`https://app.example/`, `https://App.example` and the like when it is
+made: no browser sends them, so they would never match. It refuses
+`"null"` too: any page can send `null`. To allow every origin, use
+`(cors-any-origin)`. A browser never lets a script read an answer to a
+request with cookies under `*`, so it refuses `(cors-credentials)`, and
+so does a `*` in `cors-methods`, `cors-headers` or `cors-expose-headers`
+beside it.
+
+A method is a symbol, matched with its case. A browser writes `delete`,
+`get`, `head`, `options`, `post` and `put` in capitals, but not `patch`:
+a script must send `PATCH` to match `'PATCH`.
+
+`(cors-origin-when allowed?)` asks `allowed?` about an origin of that shape
+alone, never one with a path. Check the scheme, since a page on plain
+`http` can be changed on the way, and a subdomain with its leading dot:
+`https://evilexample.com` ends in `example.com`.
+
+```scheme
+;; example-subdomain? : String -> Boolean — https://api.example.com, say
+(define (example-subdomain? origin)
+  (let ((n (string-length origin)))
+    (and (> n 20)
+         (string=? (substring origin 0 8) "https://")
+         (string=? (substring origin (- n 12) n) ".example.com"))))
+
+(wrap-cors (cors-origin-when example-subdomain?))
+```
+
+Where it goes:
+
+- Outside the router. A group's middleware sees only the requests its
+  routes take, and the router answers another route's preflight `405`.
+- Outside `wrap-catch` and `wrap-timeout`, so their `500` and `504` carry
+  its fields. Without them, the browser shows a CORS error, not the `500`.
+- Inside `wrap-log`, which then logs each preflight `wrap-cors` answers.
+- A WebSocket isn't CORS: check its origin in the handshake's settings
+  ([Upgrades and WebSockets](upgrades.md)).
+
+## Send safe headers: `wrap-default-headers` and `wrap-hsts`
+
+`(circuit middleware headers)` adds the fields every response should
+carry.
+
+```scheme
+(import (rnrs) (circuit) (circuit http-server) (circuit middleware headers))
+
+(define (app req)
+  (make-res 200 '(("content-type" . "text/plain")) "hello\n"))
+
+;; wrap-proxy : Middleware — believes the proxy on 127.0.0.1 about the scheme
+(define (wrap-proxy handler)
+  (lambda (req)
+    (if (and (equal? (req-remote-address req) "127.0.0.1")
+             (equal? (req-header req "x-forwarded-proto") "https"))
+        (handler (req-with-scheme req 'https))
+        (handler req))))
+
+(run-server
+ (wrap app
+       (wrap-default-headers security-headers)
+       (wrap-hsts 31536000)
+       wrap-proxy))
+```
+
+```text
+$ curl -i http://127.0.0.1:8080/
+HTTP/1.1 200 OK
+Date: Sat, 31 Oct 2026 16:53:19 GMT
+content-type: text/plain
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+referrer-policy: strict-origin-when-cross-origin
+Content-Length: 6
+
+hello
+$ curl -i -H 'X-Forwarded-Proto: https' http://127.0.0.1:8080/
+HTTP/1.1 200 OK
+Date: Sat, 31 Oct 2026 16:53:19 GMT
+content-type: text/plain
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+referrer-policy: strict-origin-when-cross-origin
+strict-transport-security: max-age=31536000
+Content-Length: 6
+
+hello
+```
+
+- `(wrap-default-headers fields)` adds each of the fields the response
+  lacks. A handler that sets its own, in any case, keeps it.
+- `security-headers` is three: `nosniff`, so a browser takes the declared
+  type and never guesses another; `SAMEORIGIN`, so no other site can frame
+  the page; and a referrer policy, so another site sees your origin, never
+  the path.
+- A content security policy depends on the app. Add one in a list of your
+  own, after this one:
+  `(wrap-default-headers '(("content-security-policy" . "default-src 'self'")))`.
+- `(wrap-hsts seconds)` tells a browser to come back over `https` alone,
+  for that long. It is sent on an `https` request alone, as RFC 6797 says.
+  Behind a proxy that ends TLS, a middleware outside it must believe the
+  proxy, as `wrap-proxy` does here.
+- `(wrap-hsts 31536000 (hsts-include-subdomains))` covers every subdomain
+  too. Start with a short time: a browser keeps the rule for as long as
+  you said.
+
 ## A stack to start from
 
 ```scheme
@@ -341,8 +526,15 @@ The server's terminal shows `request GET / 200 written 0 127.0.0.1`.
 [middleware.sps](../examples/middleware.sps) runs the last three, with a
 1 s timeout.
 
+Coming from Ring? circuit needs no `wrap-content-length` or `wrap-head`:
+the server writes `Content-Length`, and the router answers a `HEAD` with
+the route's `GET`, the server sending no body.
+
 See [`wrap-catch`](reference.md#wrap-catch),
 [`wrap-catch-with`](reference.md#wrap-catch-with),
 [`wrap-timeout`](reference.md#wrap-timeout),
-[`wrap-log`](reference.md#wrap-log) and
-[`wrap-log-with`](reference.md#wrap-log-with) for the signatures.
+[`wrap-log`](reference.md#wrap-log),
+[`wrap-log-with`](reference.md#wrap-log-with),
+[`wrap-cors`](reference.md#wrap-cors),
+[`wrap-default-headers`](reference.md#wrap-default-headers) and
+[`wrap-hsts`](reference.md#wrap-hsts) for the signatures.

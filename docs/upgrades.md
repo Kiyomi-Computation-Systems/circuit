@@ -213,6 +213,9 @@ speaking chat.v1
   host, and a string takes that origin. `'any`, in place of the list,
   takes every one.
 - A request with no `Origin` is no browser's, and is always taken.
+- `wrap-cors` doesn't cover a WebSocket: a browser sends the handshake's
+  `Origin` with no preflight, and reads no CORS field. These origins are
+  the check.
 
 ## Set a WebSocket's limits
 

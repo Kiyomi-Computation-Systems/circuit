@@ -9,6 +9,20 @@ release before 1.0.
 
 ### Added
 
+- **CORS: `(circuit middleware cors)`.** `wrap-cors` answers a browser's preflight from
+  an allowed origin itself, `204`. Every other request goes to the handler, and its
+  response gets the CORS fields when the origin is allowed, and `vary: origin` always
+  (`*` and no Vary under `cors-any-origin`). Its options: one of `cors-origins`, `cors-origin-when` and
+  `cors-any-origin`, then `cors-methods`, `cors-headers` or `cors-any-header`,
+  `cors-expose-headers`, `cors-credentials` and `cors-max-age`. An origin is written as a
+  browser sends it, and `null` is never allowed. Put it outside the router and
+  `wrap-catch`.
+- **Security headers: `(circuit middleware headers)`.**
+  `(wrap-default-headers security-headers)` adds `x-content-type-options: nosniff`,
+  `x-frame-options: SAMEORIGIN` and `referrer-policy: strict-origin-when-cross-origin`
+  to each response that lacks them. `(wrap-hsts seconds)` sets
+  `strict-transport-security` on an `https` request's response alone, with
+  `(hsts-include-subdomains)` for every subdomain.
 - **`wrap-catch-with` and `wrap-log-with`**, in `(circuit middleware waits)`.
   `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each make a middleware, so
   `wrap` takes them as it takes `(wrap-timeout ms)`:
