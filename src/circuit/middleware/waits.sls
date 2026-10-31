@@ -4,6 +4,7 @@
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit http-server) (circuit middleware waits))
 ;;;   (run-server (wrap app wrap-catch (wrap-timeout 5000) wrap-log))
+;;;   (run-server (wrap app (wrap-catch-with on-raise) (wrap-log-with clock)))
 ;;;
 ;;; wrap-catch, the catch helper, turns a raise into a res. &client-closed
 ;;; and &deadline-passed it raises again, from where they were raised, before
@@ -14,7 +15,8 @@
 ;;; where the raise happened, before anything unwinds, with the handler
 ;;; outside the catch current, so a raise from it goes there; its answer is
 ;;; the escape's. The default writes the line serve writes for a raise that
-;;; reaches it, and answers an empty 500.
+;;; reaches it, and answers an empty 500. wrap-catch-with takes an on-raise
+;;; and makes the middleware.
 ;;;
 ;;; wrap-timeout runs its handler inside the server's with-deadline, and
 ;;; answers 504 when &deadline-passed reaches it. The deadline covers the
@@ -24,10 +26,11 @@
 ;;;
 ;;; wrap-log writes a line for each request that reaches its handler, once
 ;;; its response is done, by req-on-done!: the method, the path, the status
-;;; the handler answered, how the response ended and how long it took, by a
-;;; clock of milliseconds. A request the server refuses before any handler
-;;; runs (a 400, a 408, a 413 for a declared length past the cap, a 431, a
-;;; 505) registers nothing: the server logs it, request-refused. The
+;;; the handler answered, how the response ended, how long it took, by a
+;;; clock of milliseconds, and the client's address. wrap-log-with takes a
+;;; clock and makes the middleware. A request the server refuses before any
+;;; handler runs (a 400, a 408, a 413 for a declared length past the cap, a
+;;; 431, a 505) registers nothing: the server logs it, request-refused. The
 ;;; status is the handler's, so where the server answers in its place, the
 ;;; line still shows it: 200 failed, say, for a res whose body is the
 ;;; request's own req-body, which the client gets as the server's 500.
@@ -49,10 +52,10 @@
 ;;; default clock, and display-condition, print-record and parameterize,
 ;;; which show a detail in the default line as the server's log does.
 (library (circuit middleware waits)
-  (export wrap-catch wrap-timeout wrap-log)
+  (export wrap-catch wrap-catch-with wrap-timeout wrap-log wrap-log-with)
   (import (rnrs)
           (only (chezscheme) real-time display-condition print-record parameterize)
-          (only (circuit request) req-method req-path req-on-done!)
+          (only (circuit request) req-method req-path req-remote-address req-on-done!)
           (only (circuit response) make-res res? res-status)
           (only (http-server)
                 with-deadline deadline-passed? client-closed? body-failed? body-failed-status))
@@ -74,15 +77,26 @@
   ;; ON-RAISE that is no procedure is an assertion violation, raised now.
   (define wrap-catch
     (case-lambda
-      ((handler) (make-catch handler log-raise))
-      ((handler on-raise) (make-catch handler on-raise))))
+      ((handler) (make-catch 'wrap-catch handler log-raise))
+      ((handler on-raise) (make-catch 'wrap-catch handler on-raise))))
 
-  (define (make-catch handler on-raise)
-    (unless (procedure? handler)
-      (assertion-violation 'wrap-catch "a handler is a procedure" handler))
+  ;; wrap-catch-with : (Req Any -> Res) -> Middleware
+  ;; A middleware that makes (wrap-catch handler ON-RAISE) of each handler it
+  ;; is applied to. An ON-RAISE that is no procedure is an assertion
+  ;; violation, raised now; so is a handler that is no procedure, when the
+  ;; middleware is applied.
+  (define (wrap-catch-with on-raise)
+    (check-on-raise 'wrap-catch-with on-raise)
+    (lambda (handler) (make-catch 'wrap-catch-with handler on-raise)))
+
+  (define (check-on-raise who on-raise)
     (unless (procedure? on-raise)
-      (assertion-violation 'wrap-catch "on-raise is a procedure of a req and what was raised"
-                           on-raise))
+      (assertion-violation who "on-raise is a procedure of a req and what was raised" on-raise)))
+
+  (define (make-catch who handler on-raise)
+    (unless (procedure? handler)
+      (assertion-violation who "a handler is a procedure" handler))
+    (check-on-raise who on-raise)
     (lambda (req)
       (call/cc
        (lambda (k)
@@ -133,8 +147,11 @@
   ;; each below U+0020, line feed and carriage return among them, and
   ;; delete.
   (define (one-line s)
-    (list->string (map (lambda (c) (if (or (char<? c #\space) (char=? c #\delete)) #\space c))
-                       (string->list s))))
+    (list->string (map line-char (string->list s))))
+
+  ;; line-char : Char -> Char — C, or a space for a control character.
+  (define (line-char c)
+    (if (or (char<? c #\space) (char=? c #\delete)) #\space c))
 
   ;; write-line : String -> Void
   ;; LINE on the current output port as it is now, flushed at once.
@@ -175,25 +192,41 @@
   ;; raised, the raise going on untouched. When told how the response ended,
   ;; the procedure reads CLOCK again and writes one line on the current
   ;; output port, as it is then, flushed at once:
-  ;;   request METHOD PATH STATUS ENDING MS
+  ;;   request METHOD PATH STATUS ENDING MS ADDRESS
   ;; each displayed: req-method, req-path with no query, the status, the
-  ;; ending (written, client-closed or failed), and the second reading less
-  ;; the first. The status is HANDLER's answer's: failed can mean the client
-  ;; got the server's own status in its place, such as a 500 for an answer
-  ;; the adapter refuses. CLOCK reads milliseconds; Chez's real-time by
-  ;; default, which counts from the process's start. A HANDLER or CLOCK that
-  ;; is no procedure is an assertion violation, raised now.
+  ;; ending (written, client-closed or failed), the second reading less
+  ;; the first, and req-remote-address, or - for none. In the method, the
+  ;; path and the address, each control character is a space, as in the
+  ;; server's lines. The status is HANDLER's answer's: failed can mean the
+  ;; client got the server's own status in its place, such as a 500 for an
+  ;; answer the adapter refuses. The request is the one wrap-log is called
+  ;; with, so an address a middleware inside it sets isn't seen. CLOCK
+  ;; reads milliseconds; Chez's real-time by default, which counts from the
+  ;; process's start. A HANDLER or CLOCK that is no procedure is an
+  ;; assertion violation, raised now.
   (define wrap-log
     (case-lambda
-      ((handler) (make-log handler real-time))
-      ((handler clock) (make-log handler clock))))
+      ((handler) (make-log 'wrap-log handler real-time))
+      ((handler clock) (make-log 'wrap-log handler clock))))
 
-  (define (make-log handler clock)
-    (unless (procedure? handler)
-      (assertion-violation 'wrap-log "a handler is a procedure" handler))
+  ;; wrap-log-with : (-> Nat) -> Middleware
+  ;; A middleware that makes (wrap-log handler CLOCK) of each handler it is
+  ;; applied to. A CLOCK that is no procedure is an assertion violation,
+  ;; raised now; so is a handler that is no procedure, when the middleware
+  ;; is applied.
+  (define (wrap-log-with clock)
+    (check-clock 'wrap-log-with clock)
+    (lambda (handler) (make-log 'wrap-log-with handler clock)))
+
+  (define (check-clock who clock)
     (unless (procedure? clock)
-      (assertion-violation 'wrap-log "a clock is a procedure of no arguments that reads milliseconds"
-                           clock))
+      (assertion-violation who "a clock is a procedure of no arguments that reads milliseconds"
+                           clock)))
+
+  (define (make-log who handler clock)
+    (unless (procedure? handler)
+      (assertion-violation who "a handler is a procedure" handler))
+    (check-clock who clock)
     (lambda (req)
       (let ((start (clock))
             (status 'raised))
@@ -207,23 +240,38 @@
 
   ;; log-request : Req (U Integer Symbol) Symbol Integer -> Void
   ;; The request line on the current output port as it is now: request,
-  ;; then each detail displayed after a space, a line feed, and one flush.
-  ;; The details are read first, then written straight to the port, with no
-  ;; string port between: nothing waits while they are written, so no other
-  ;; line comes between them.
+  ;; then each detail after a space, a line feed, and one flush. The method,
+  ;; the path and the address go a character at a time, each control
+  ;; character a space; an address that is #f or empty is -. The details
+  ;; are read first, then written straight to the port, with no string port
+  ;; between: nothing waits while they are written, so no other line comes
+  ;; between them.
   (define (log-request req status ending ms)
     (let ((method (req-method req))
           (path (req-path req))
+          (address (req-remote-address req))
           (out (current-output-port)))
       (put-string out "request ")
-      (display method out)
+      (put-field out (symbol->string method))
       (put-char out #\space)
-      (display path out)
+      (put-field out path)
       (put-char out #\space)
       (display status out)
       (put-char out #\space)
       (display ending out)
       (put-char out #\space)
       (display ms out)
+      (put-char out #\space)
+      (if (and address (> (string-length address) 0))
+          (put-field out address)
+          (put-char out #\-))
       (put-char out #\newline)
-      (flush-output-port out))))
+      (flush-output-port out)))
+
+  ;; put-field : OutputPort String -> Void — S, each character by line-char.
+  (define (put-field out s)
+    (let ((n (string-length s)))
+      (let loop ((i 0))
+        (when (< i n)
+          (put-char out (line-char (string-ref s i)))
+          (loop (+ i 1)))))))

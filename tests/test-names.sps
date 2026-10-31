@@ -136,8 +136,8 @@
   '(wrap wrap-body-cap)
   (sorted-exports '(circuit middleware)))
 
-(test-equal "(circuit middleware waits) exports its three exactly"
-  '(wrap-catch wrap-log wrap-timeout)
+(test-equal "(circuit middleware waits) exports its five exactly"
+  '(wrap-catch wrap-catch-with wrap-log wrap-log-with wrap-timeout)
   (sorted-exports '(circuit middleware waits)))
 
 (test-equal "(circuit router) exports its list exactly"
