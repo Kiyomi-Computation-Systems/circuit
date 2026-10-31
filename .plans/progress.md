@@ -131,15 +131,15 @@ close-out under **Close-outs**, newest first.
   [PR #36](https://github.com/Kiyomi-Computation-Systems/circuit/pull/36) on 2026-10-31;
   its close-out is below. `(circuit cookies)` makes ten public libraries, and slice 9 is
   done.
+- **A second `set-cookie` of one name is refused**, squashed from
+  [PR #37](https://github.com/Kiyomi-Computation-Systems/circuit/pull/37) on 2026-10-31;
+  its close-out is below. The owner's answer is design §15.32, which sessions must meet: a
+  middleware can't write a cookie the handler wrote.
 - **Next:** sessions, a design of their own (the slice 9 design §7), after the owner's
   discussion of it, cryptography above all. A release after 9c is the owner's call (§1).
 
 ## Open
 
-- **`res-add-cookie` doesn't stop a second `set-cookie` of one name** (slice 9c): RFC
-  6265bis §4.1.1 says a server MUST NOT send two in a response. A browser takes both, the
-  later replacing the earlier when their paths and domains match, so it drops nothing.
-  Refusing a second would be a new refusal: the owner's call.
 - **`wrap-form-params` has no limit on pairs** (slice 9b): parsed, 1 MiB of `a&` is
   524,288 pairs, 25,142,936 bytes. Express's body-parser refuses a form of more than
   1,000 by default, `413`. A limit would be a new option: the owner's call.
@@ -199,6 +199,56 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: a second `set-cookie` of one name refused, in PR #37
+
+On the owner's "lets refuse it as a bug", after 9c's merge: the Open list's question,
+answered as design §15.32. Commits on `open/cookie-once`: the code, tests and docs
+(1542cee), this close-out, and its CI run named here. `make test` passes 23 suites, and
+`make check-site` passes.
+
+- **`res-add-cookie` and `res-expire-cookie`** refuse a name that a `set-cookie` field of
+  the response sets already, whatever its path or domain. The check comes last, after the
+  cookie and its options. A field the response holds, from either one or from
+  `res-add-header`, sets the name that comes before its first `=`, less spaces and tabs:
+  a browser's reading wherever that is a token (§5.6). A response can't remove a cookie
+  at two paths now;
+- **the oracles:** RFC 6265bis §4.1.1's rule and §5.6's reading of a name, as rows; and
+  P2's rules, written apart from the library, which read a held field's name as §5.6
+  does, in the piece before the first `;`, where the library reads before the first `=`;
+- **the rows:** `tests/test-cookies.sps`, 57 rows, five of them new:
+  - a second field refused, from either writer, whichever wrote the first, whatever their
+    paths, with fields between;
+  - another name taken: a longer one, a shorter one, another case;
+  - a held field's name: texts refused and taken, and `set-cookie` named in any case
+    beside fields of other names;
+  - each byte, and six characters past 255, before and after a held name: a space and a
+    tab are trimmed, and an `=` after the name starts the value;
+  - the check last: ten writes, each with a second name and another fault.
+
+  One row changed: the row keeping the response's fields held `a=0`, then added and
+  expired `a`. It uses three names now.
+  - `tests/test-cookies-properties.sps`: P2 draws the response's own fields beside the
+    name. They are none, other names, the name where it sets no cookie, or the name in
+    another case. Wild, they are fields that set it: spaced, in a field named in any
+    case, after others. The rules refuse 278 of P2's 5000 cases for this alone. P1's
+    responses hold fields too, most of other names;
+  - a copy of the library without the check failed three of the new rows, and P2 in 278
+    cases. The other two, another name taken and the check last, passed on it, as they
+    must; mutants watched them fail;
+  - 206 mutants run against the final rows. 179 are 9c's, one of them remade, as its
+    text held the import line that changed. 27 are the check's own: where it runs, the
+    comparison, the fields it reads, and the name's reading. 203 were killed, each by a
+    failing row, and every one of the 60 rows and properties was watched failing at
+    least once. The three survivors are 9c's equivalents. The mutants are in
+    `build/m-once/`, git-ignored;
+- **trap:** a row helper named `fields` clashed with `define-record-type`'s `fields`,
+  which `(rnrs)` exports. The suite didn't load ("multiple definitions for fields"),
+  caught on the first run; it is `returned-fields`;
+- **the docs:** the page says a response sets each name once, and its refusals list and
+  program show it, the program's output reproduced; the reference's two entries; the
+  CHANGELOG's Unreleased cookies entry; the slice 9 design §6's note, and design §15.32;
+- **agents:** none. The build was mine.
 
 ### 2026-10-31: slice 9c, cookies, in PR #36
 
