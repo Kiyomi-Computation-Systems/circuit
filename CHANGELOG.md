@@ -63,6 +63,15 @@ release before 1.0.
   does with `CIRCUIT_PORT_PIECE_BYTES` unset: it reads a port in 64 KiB pieces whatever
   the app's setting, so a wrap or a tap can see other pieces than in production. The page
   now says so, and shows how to test a wrap across pieces.
+- **A heading's anchor on the docs site is GitHub's**, as it is on chez-http-server's
+  site. The site dropped `_`, made each run of spaces and hyphens one hyphen, trimmed
+  hyphens from both ends and kept circled digits such as `①`. GitHub does none of these,
+  so `make check-site` refused a heading such as `CHEZ_HTTP_PORT` or
+  `[0.1.2] - 2026-10-30`. The site now uses GitHub's rule: lower case; keep letters, marks,
+  decimal digits, connector punctuation, hyphens and spaces; each space becomes a hyphen.
+  A repeated heading is numbered as GitHub numbers it, so headings `echo`, `echo`,
+  `echo 1` are `echo`, `echo-1`, `echo-1-1`, where the site gave `echo-1` twice. No
+  anchor in `docs/` changes.
 
 ## [0.1.2] - 2026-10-30
 

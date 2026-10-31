@@ -75,29 +75,81 @@
                   '("README.md" . "Home") '("bodies.md" . "Bodies and streaming")))
 (define doc-html (sxml->html doc-out))
 
+;; (heading . anchor) rows, each anchor the one GitHub gave that heading on a
+;; page it rendered: the server's docs and repositories, circuit's, a Hindi
+;; README, and github-slugger's fixtures, which it made from GitHub's
+;; rendering. No two rows share a slug, so each stands as if alone on its
+;; page.
+(define github-anchors
+  '(("Bodies and streaming" . "bodies-and-streaming")
+    ("Keep strings, not the request" . "keep-strings-not-the-request")
+    ("A file server, like Python's" . "a-file-server-like-pythons")
+    ("Testing: (http-server testing)" . "testing-http-server-testing")
+    ("&http-server-error, http-server-error?"
+     . "http-server-error-http-server-error")
+    ("1. Answer every request" . "1-answer-every-request")
+    ("0.10.0 - 2026-10-30" . "0100---2026-10-30")
+    ("Is the abandoned iteration's UV_EOF lost, or merely deferred?"
+     . "is-the-abandoned-iterations-uv_eof-lost-or-merely-deferred")
+    ("Q1 — THE GATE: C→Scheme re-entry from inside a blocking uv_run, under GC pressure"
+     . "q1--the-gate-cscheme-re-entry-from-inside-a-blocking-uv_run-under-gc-pressure")
+    ("8.1 Read side (peer → handler)" . "81-read-side-peer--handler")
+    ("§4 — reentrancy-test.sps" . "4--reentrancy-testsps")
+    ("① (uri query)" . "-uri-query")
+    ("Decisions to record (Slice ⓪)" . "decisions-to-record-slice-")
+    ("स\x94D;थ\x93E;पन\x93E; करन\x93E;"
+     . "स\x94D;थ\x93E;पन\x93E;-करन\x93E;")
+    ("heading with an _ underscore" . "heading-with-an-_-underscore")
+    ("I ♥ unicode" . "i--unicode")
+    ("Привет non-latin 你好" . "привет-non-latin-你好")
+    ("a_ ‿ ⁀ ⁔ ︳ ︴ ﹍ ﹎ ﹏ ＿b" . "a_-‿-⁀-⁔-︳-︴-﹍-﹎-﹏-＿b")
+    ("a\x488; \x489; \x1ABE; \x20DD; \x20DE; \x20DF; \x20E0; \x20E2; \x20E3; \x20E4; \xA670; \xA671; \xA672;b"
+     . "a\x488;-\x489;-\x1ABE;-\x20DD;-\x20DE;-\x20DF;-\x20E0;-\x20E2;-\x20E3;-\x20E4;-\xA670;-\xA671;-\xA672;b")
+    ;; circuit's docs/reference.md, as GitHub rendered it on 2026-10-31
+    ("circuit->handler" . "circuit-handler")
+    ("req-on-done!" . "req-on-done")))
+
+;; github-slugger's fixture rows on repeated headings, in their page order;
+;; the headings between them on that page share none of these slugs.
+(define github-repeats
+  '(("echo" . "echo") ("echo" . "echo-1") ("echo 1" . "echo-1-1")
+    ("echo-1" . "echo-1-2") ("echo" . "echo-2")
+    ("foxtrot-1" . "foxtrot-1") ("foxtrot" . "foxtrot") ("foxtrot" . "foxtrot-2")
+    (" a " . "-a-") ("-a-" . "-a--1")))
+
+;; slug-each : (String -> String) (Listof String) -> (Listof String)
+;; Calls slug on each heading in order, as a page meets them.
+(define (slug-each slug headings)
+  (let loop ((hs headings) (out '()))
+    (if (null? hs)
+        (reverse out)
+        (loop (cdr hs) (cons (slug (car hs)) out)))))
+
 (define runner (test-runner-simple))
 (test-runner-current runner)
 (test-begin "site-unit")
 
 ;; --- slugify ---------------------------------------------------------
-(test-equal "spaces to single hyphen, lowercased"
-  "bodies-and-streaming" (slugify "Bodies and streaming"))
-(test-equal "commas dropped, 'and' kept"
-  "caddy-nginx-and-a-supervisor" (slugify "Caddy, nginx, and a supervisor"))
+(for-each (lambda (row) (test-equal (car row) (cdr row) (slugify (car row))))
+          github-anchors)
+;; GitHub keeps a spacing mark that is not a letter. github-slugger's
+;; Spacing_Mark row shows it, but also holds code points newer than some
+;; Chez's Unicode tables; GitHub's rule goes a character at a time, so
+;; four of that row's marks stand here alone.
+(test-equal "spacing marks that are not letters are kept"
+  "a\xF3E;-\xF3F;-\x1B44;-\xA9C0;b" (slugify "a\xF3E; \xF3F; \x1B44; \xA9C0;b"))
 (test-equal "backtick code in a heading is stripped to its text"
   "What make build does" (heading-text '(h2 "What " (code "make build") " does")))
 (test-equal "the whole heading-to-slug path"
   "what-make-build-does"
   (slugify (heading-text '(h2 "What " (code "make build") " does"))))
-(test-equal "runs of spaces collapse"
-  "wrap-width" (slugify "Wrap  width"))
-(test-equal "leading and trailing punctuation trimmed"
-  "supported-versions" (slugify "  Supported versions.  "))
 
 ;; --- make-slugger ----------------------------------------------------
 (test-equal "duplicate headings get -1, -2 suffixes"
   '("options" "options-1" "options-2")
   (let ((s (make-slugger))) (list (s "Options") (s "Options") (s "Options"))))
+(test-equal "a taken slug moves on to the next number, as GitHub numbers it"
+  (map cdr github-repeats) (slug-each (make-slugger) (map car github-repeats)))
 (test-equal "heading-text skips the ^ attr node and inline tags"
   "Some text" (heading-text '(h2 (^ (id "foo")) "Some " (code "text"))))
 
