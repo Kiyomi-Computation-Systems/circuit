@@ -7,6 +7,33 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`make check-chez`**, run first by every target that runs Chez on circuit's libraries.
+  It refuses a Chez below 10.4.1, one without threads, or a `CHEZ` that is missing or
+  empty, saying what it found. The docs site's targets take a threaded Chez of any
+  version. It runs Chez once, for at most `REQUIRE_CHEZ_SECONDS` (10) under GNU
+  `timeout`, and reads at most 4 KiB of its answer.
+- **`make libdirs`** prints the library path a program needs, for running it without
+  make.
+
+### Changed
+
+- **The default `CHEZ`** is the first of `scheme` and `chez` on `PATH` that is Chez
+  Scheme 10.4.1 or later, threaded; failing that, the first that is Chez Scheme. On a
+  Mac, another Scheme may own `scheme`.
+- **`make check-imports` also refuses a `(circuit ...)` library on the library path
+  outside `src/`**: a `circuit` directory or `circuit.*` file, in any case. It names a
+  directory it can't list.
+
+### Fixed
+
+- **`(circuit http-server)`'s comment for `awaiting`** gives the server's signature,
+  `(-> Answer) -> Awaiting`, and the reference suite holds every re-exported procedure's
+  comment to the server's reference.
+- **The tests no longer depend on Chez's exact read-error wording**, and the adapter
+  suite opens its FIFO as POSIX defines.
+
 ## [0.1.2] - 2026-10-30
 
 The third release, a patch: the pins move to chez-http-server v0.10.0 and chez-websocket
