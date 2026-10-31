@@ -204,8 +204,9 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "lets refuse it as a bug", after 9c's merge: the Open list's question,
 answered as design §15.32. Commits on `open/cookie-once`: the code, tests and docs
-(1542cee), this close-out, and its CI run named here. `make test` passes 23 suites, and
-`make check-site` passes.
+(1542cee), this close-out (6b858d9), and its CI run named here. `make test` passes 23
+suites, and `make check-site` passes. CI passed on the PR (run 41252988477, 4m49s), on
+amd64, arm64 and the site job.
 
 - **`res-add-cookie` and `res-expire-cookie`** refuse a name that a `set-cookie` field of
   the response sets already, whatever its path or domain. The check comes last, after the
