@@ -181,8 +181,10 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "pick up issue 30", which asked circuit to take
 Kiyomi-Computation-Systems/chez-http-server#256, squashed there as ff8fd6d. Commits on
-`open/slug-fix`: the fix (2cf63e9), this close-out, and its CI run named here.
-`make check-site` passes, with site-unit's 78 expected passes.
+`open/slug-fix`: the fix (2cf63e9), this close-out (2c90a3f), and its CI run named
+here. `make check-site` passes, with site-unit's 78 expected passes. CI passed on the PR
+(run 41206366322, 4m15s), on amd64, arm64 and the site job, whose site-unit ran its 78 on
+apt's Chez 9.5.8.
 
 - **the files:** `site/slug.sls` and `tests/site-check.sps` were byte for byte the
   server's before the fix (compared with `git show ff8fd6d^:`), and are now byte for byte
