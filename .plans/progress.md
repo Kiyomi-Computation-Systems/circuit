@@ -188,8 +188,9 @@ close-out under **Close-outs**, newest first.
 ### 2026-10-31: slice 9a, CORS and security headers, in PR #34
 
 On the owner's "start slice 9a". Commits on `open/slice-9a`: the code, tests and docs
-(e8a24ba), the owner's reading of `null` under `*` (c618209), this close-out, and its CI
-run named here. `make test` passes 19 suites, and `make check-site` passes.
+(e8a24ba), the owner's reading of `null` under `*` (c618209), this close-out (76a84d1),
+and its CI run named here. `make test` passes 19 suites, and `make check-site` passes.
+CI passed on the PR (run 41225144866, 5m01s), on amd64, arm64 and the site job.
 
 - **`(circuit middleware cors)`:** `wrap-cors` and nine options, each made by a
   constructor and given once, checked when given. A preflight from an allowed origin is
