@@ -9,6 +9,11 @@ release before 1.0.
 
 ### Added
 
+- **`wrap-catch-with` and `wrap-log-with`**, in `(circuit middleware waits)`.
+  `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each make a middleware, so
+  `wrap` takes them as it takes `(wrap-timeout ms)`:
+  `(wrap app (wrap-catch-with on-raise) (wrap-log-with clock))`.
+  `(wrap-catch handler on-raise)` and `(wrap-log handler clock)` work as before.
 - **`make check-chez`**, run first by every target that runs Chez on circuit's libraries.
   It refuses a Chez below 10.4.1, one without threads, or a `CHEZ` that is missing or
   empty, saying what it found. The docs site's targets take a threaded Chez of any
@@ -19,6 +24,14 @@ release before 1.0.
 
 ### Changed
 
+- **`wrap-log`'s line ends with the client's address**, `req-remote-address`, or `-` for
+  none, as the server's `request-refused` line does:
+  `request GET /users 200 written 0 127.0.0.1`. A program that reads the milliseconds as
+  the line's last field must take the one before it. A middleware that sets the address,
+  such as one that believes a proxy, goes after `wrap-log`.
+- **`wrap-log` writes each control character in the method, the path and the address as
+  a space**, so a request is always one line, even when a middleware set the address
+  from a client's header.
 - **The default `CHEZ`** is the first of `scheme` and `chez` on `PATH` that is Chez
   Scheme 10.4.1 or later, threaded; failing that, the first that is Chez Scheme. On a
   Mac, another Scheme may own `scheme`.

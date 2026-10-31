@@ -11,13 +11,14 @@
 ;;;   anything else  404, with a hint
 ;;;
 ;;; Once a response is done, the log writes a line on standard output: the
-;;; method, the path, the status, how the response ended and how many ms it
-;;; took. For /boom the catch writes first the line the server would have:
+;;; method, the path, the status, how the response ended, how many ms it
+;;; took and the client's address. For /boom the catch writes first the
+;;; line the server would have:
 ;;;
-;;;   request GET / 200 written 0
+;;;   request GET / 200 written 0 127.0.0.1
 ;;;   handler-failed Exception in app: boom
-;;;   request GET /boom 500 written 1
-;;;   request GET /slow 504 written 1001
+;;;   request GET /boom 500 written 1 127.0.0.1
+;;;   request GET /slow 504 written 1001 127.0.0.1
 ;;;
 ;;;   make run PROGRAM=examples/middleware.sps
 ;;;   curl -i 'http://127.0.0.1:8080/slow?ms=1500'

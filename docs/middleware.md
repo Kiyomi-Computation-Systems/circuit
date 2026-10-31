@@ -192,7 +192,7 @@ The three middlewares that know the server's waits are in
   (display (string-append "failed " (req-path req) "\n"))
   (make-res 500 '(("content-type" . "text/plain")) "sorry, that broke\n"))
 
-(run-server (wrap app (lambda (handler) (wrap-catch handler on-raise))))
+(run-server (wrap app (wrap-catch-with on-raise)))
 ```
 
 ```text
@@ -210,9 +210,10 @@ The server's terminal shows `failed /boom`.
 - `(wrap app wrap-catch)` turns a raise into an empty `500`, and writes the
   `handler-failed` line the server would have
   ([Quickstart](quickstart.md)).
-- `(wrap-catch handler on-raise)` answers what `(on-raise req raised)`
-  answers instead. A raise from `on-raise` goes on to the middleware
-  outside.
+- `(wrap-catch-with on-raise)` makes a catch that answers what
+  `(on-raise req raised)` answers instead. A raise from `on-raise` goes on
+  to the middleware outside. `(wrap-catch handler on-raise)` makes the same
+  catch around one handler.
 - A `&body-failed` is answered with its own status, such as `413` for a
   body past its cap.
 - `&client-closed` and `&deadline-passed` go on, untouched. Do the same in
@@ -255,7 +256,7 @@ Content-Length: 0
 
 ```
 
-The server's terminal shows `request GET / 504 written 1005`.
+The server's terminal shows `request GET / 504 written 1003 127.0.0.1`.
 
 - `(wrap-timeout ms)` runs the handler under a deadline, and answers an
   empty `504` once `ms` milliseconds pass.
@@ -283,26 +284,31 @@ Ask for `/users?id=7`, then `/boom`, and the server's terminal shows:
 
 ```text
 listening 127.0.0.1 8080
-request GET /users 200 written 1
+request GET /users 200 written 0 127.0.0.1
 handler-failed Exception in app: boom
-request GET /boom raised failed 0
+request GET /boom raised failed 0 127.0.0.1
 ```
 
 - Once a response is done, `wrap-log` writes a line on standard output:
   `request`, the method, the path without its query, the status, how the
-  response ended, and how many milliseconds it took.
+  response ended, how many milliseconds it took, and the client's address,
+  or `-` for none. A control character in the method, the path or the
+  address is written as a space, so a request is always one line.
 - The status is the handler's: `raised` when it raised, and `-` for an
   answer that is no response. The ending `failed` means the server ended
   it, perhaps with a status of its own: here, its `500`.
 - Put it last, outside `wrap-catch` and `wrap-timeout`, so it logs the
-  `500`, `504` and `413` they answer.
+  `500`, `504` and `413` they answer. A middleware that sets the address,
+  such as one that believes a proxy, goes after it: `wrap-log` logs the
+  request it was handed.
 - A request the server refuses before any handler runs never reaches
   `wrap-log`: a malformed one, or a declared body past
   `CHEZ_HTTP_MAX_BODY_BYTES`. The server logs it itself, with its status,
   why it refused, and the client's address:
   `request-refused 400 invalid-host 127.0.0.1`.
 - A line has no timestamp: what collects standard output adds one.
-  `(wrap-log handler clock)` reads a clock of your own, in milliseconds.
+  `(wrap-log-with clock)` makes a log that reads a clock of your own, in
+  milliseconds.
 
 ## A stack to start from
 
@@ -325,7 +331,7 @@ $ curl http://127.0.0.1:8080/
 hello
 ```
 
-The server's terminal shows `request GET / 200 written 0`.
+The server's terminal shows `request GET / 200 written 0 127.0.0.1`.
 
 - Each body is capped at 1 MiB, a raise answers `500`, a handler still
   waiting after 30 seconds `504`, and `wrap-log`, last, logs every answer.
@@ -336,5 +342,7 @@ The server's terminal shows `request GET / 200 written 0`.
 1 s timeout.
 
 See [`wrap-catch`](reference.md#wrap-catch),
-[`wrap-timeout`](reference.md#wrap-timeout) and
-[`wrap-log`](reference.md#wrap-log) for the signatures.
+[`wrap-catch-with`](reference.md#wrap-catch-with),
+[`wrap-timeout`](reference.md#wrap-timeout),
+[`wrap-log`](reference.md#wrap-log) and
+[`wrap-log-with`](reference.md#wrap-log-with) for the signatures.

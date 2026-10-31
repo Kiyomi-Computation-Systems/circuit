@@ -150,9 +150,9 @@ The server's terminal shows:
 
 ```text
 listening 127.0.0.1 8080
-request GET / 200 written 0
+request GET / 200 written 0 127.0.0.1
 handler-failed Exception in boom: something broke
-request GET /boom 500 written 0
+request GET /boom 500 written 0 127.0.0.1
 ```
 
 The `500` has no `server` field: `wrap-server-header` is inside

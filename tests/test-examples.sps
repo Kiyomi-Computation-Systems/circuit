@@ -280,13 +280,15 @@
        (for-all (lambda (c) (char<=? #\0 c #\9)) (string->list s))))
 
 ;; blank-ms : String -> (Pair String (U Nat #f))
-;; A request line, `request ... MS` with MS in digits, as `request ... N`,
-;; and MS; any other line as it is, and #f.
+;; A request line, `request ... MS ADDRESS` with MS in digits, as
+;; `request ... N ADDRESS`, and MS; any other line as it is, and #f.
 (define (blank-ms line)
   (let* ((words (split line " "))
-         (last-word (car (reverse words))))
-    (if (and (pair? (cdr words)) (string=? (car words) "request") (digits? last-word))
-        (cons (join " " (reverse (cons "N" (cdr (reverse words))))) (string->number last-word 10))
+         (backwards (reverse words)))
+    (if (and (string=? (car words) "request") (pair? (cdr backwards)) (pair? (cddr backwards))
+             (digits? (cadr backwards)))
+        (cons (join " " (reverse (cons (car backwards) (cons "N" (cddr backwards)))))
+              (string->number (cadr backwards) 10))
         (cons line #f))))
 
 ;; with-program : String String (Listof String)
@@ -363,6 +365,23 @@
          (status (car r)))
     (if (= status 0)
         (list (parse-answer (cadr r)) (string->number (caddr r)))
+        (list (list 'curl-failed status (caddr r)) #f))))
+
+;; fetch-waited : Nat String -> (List (U Answer Any) (U Real #f))
+;; As fetch, with how long curl waited from just before it sent the request
+;; to the first byte back, in ms, by curl's own clock: its time_starttransfer
+;; less its time_pretransfer. #f when curl fails or says otherwise.
+(define (fetch-waited port target)
+  (let* ((r (capture-command
+             (list "curl" "-sS" "-i" "--max-time" curl-seconds
+                   "--write-out" "%{stderr}%{time_pretransfer} %{time_starttransfer}"
+                   (url port target))))
+         (status (car r)))
+    (if (= status 0)
+        (let ((times (map (lambda (s) (string->number s 10)) (split (caddr r) " "))))
+          (list (parse-answer (cadr r))
+                (and (= (length times) 2) (for-all real? times)
+                     (* 1000 (- (cadr times) (car times))))))
         (list (list 'curl-failed status (caddr r)) #f))))
 
 ;; answer : Fetched -> (U Answer Any)
@@ -873,12 +892,14 @@
                       (text-answer "HTTP/1.1 200 OK" "waited 0 ms\n")
                       (answer (fetch port "/slow?ms=0")))
           (until-lines dir 5)
-          (test-equal "middleware: GET /slow?ms=1500 is cut short by the timeout: an empty 504, no sooner than 1000 ms"
+          ;; By curl's own clock, so curl's start-up counts for nothing. The
+          ;; deadline counts 1000 ms of the loop's clock, which can trail by
+          ;; a millisecond as it is armed (the 504s' ms row, below): 998.
+          (test-equal "middleware: GET /slow?ms=1500 is cut short by the timeout: an empty 504, no sooner than 998 ms after curl sent it, by curl's clock"
                       (list (empty-answer "HTTP/1.1 504 Gateway Timeout") 'not-before-the-timeout)
-                      (let* ((start (now-ms))
-                             (f (fetch port "/slow?ms=1500"))
-                             (took (- (now-ms) start)))
-                        (list (answer f) (if (>= took 1000) 'not-before-the-timeout (list 'took-ms took)))))
+                      (let* ((f (fetch-waited port "/slow?ms=1500"))
+                             (waited (cadr f)))
+                        (list (car f) (if (and waited (>= waited 998)) 'not-before-the-timeout (list 'waited-ms waited)))))
           (until-lines dir 6)
           (test-equal "middleware: GET /slow?ms=1001, a millisecond past the timeout, is an empty 504 too"
                       (empty-answer "HTTP/1.1 504 Gateway Timeout")
@@ -890,13 +911,13 @@
           (let ((lines (map blank-ms (until-lines dir 8))))
             (test-equal "middleware: its standard output, each line whole and in order, a request line's ms aside: the catch's line before its request's"
                         (list (string-append "listening 127.0.0.1 " (number->string port))
-                              "request GET / 200 written N"
+                              "request GET / 200 written N 127.0.0.1"
                               "handler-failed Exception in app: boom"
-                              "request GET /boom 500 written N"
-                              "request GET /slow 200 written N"
-                              "request GET /slow 504 written N"
-                              "request GET /slow 504 written N"
-                              "request GET /nope 404 written N")
+                              "request GET /boom 500 written N 127.0.0.1"
+                              "request GET /slow 200 written N 127.0.0.1"
+                              "request GET /slow 504 written N 127.0.0.1"
+                              "request GET /slow 504 written N 127.0.0.1"
+                              "request GET /nope 404 written N 127.0.0.1")
                         (map car lines))
             ;; The deadline counts 1000 ms of the loop's clock, and the log
             ;; counts its ms on Chez's real-time, each in whole milliseconds.
@@ -909,7 +930,7 @@
                         (map (lambda (line)
                                (let ((ms (cdr line)))
                                  (if (and ms (<= 998 ms) (< ms 1500)) 'from-998-to-under-1500 (list 'ms ms))))
-                             (filter (lambda (line) (string=? (car line) "request GET /slow 504 written N"))
+                             (filter (lambda (line) (string=? (car line) "request GET /slow 504 written N 127.0.0.1"))
                                      lines))))))
 
       (with-server "loopback" "tests/loopback-app.sps"
@@ -989,7 +1010,7 @@
                              (list caught circuit-line))))
              raises (counting (length raises)))
             (test-equal "loopback, its log: a client that leaves mid-stream, with no write due for 29 s, is heard within 5 s: wrap-log's line ends client-closed"
-                        (list 28 "1\n" "request GET /stream 200 client-closed N")
+                        (list 28 "1\n" "request GET /stream 200 client-closed N 127.0.0.1")
                         (let* ((r (capture-command (list "curl" "-sS" "-N" "--max-time" "1" (url port "/stream"))))
                                (n (+ 2 (* 2 (length raises))))
                                (lines (until-lines dir n)))
@@ -997,7 +1018,7 @@
             (test-equal "loopback, its log: its standard output, each line whole and in order, a request line's ms aside"
                         (append (list (string-append "listening 127.0.0.1 " (number->string port)))
                                 (apply append (map (lambda (r) (list (cdr r) (cdr r))) raises))
-                                (list "request GET /stream 200 client-closed N"))
+                                (list "request GET /stream 200 client-closed N 127.0.0.1"))
                         (map car (map blank-ms (lines-in dir)))))))
 
       (with-server "loopback, CHEZ_WS_MAX_MESSAGE_BYTES=4" "tests/loopback-app.sps"
