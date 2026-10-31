@@ -112,6 +112,9 @@ close-out under **Close-outs**, newest first.
 - **AGENTS.md's comment rule names its one exception, the reference suite's doc check**,
   squashed from [PR #31](https://github.com/Kiyomi-Computation-Systems/circuit/pull/31)
   on 2026-10-31; its close-out is below.
+- **The docs site's heading anchors are GitHub's**, from chez-http-server's fix, squashed
+  from [PR #32](https://github.com/Kiyomi-Computation-Systems/circuit/pull/32) on
+  2026-10-31, which closes the owner's #30; its close-out is below.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
   Open list below.
 
@@ -165,17 +168,6 @@ close-out under **Close-outs**, newest first.
   `request-remote-address` copies its string each time (its `view.sls:133`). So
   `wrap-log`'s own share, G8 own, reads 340 B from about 290 since PR #26, under its 384 B
   bound.
-- **`(site slug)` isn't GitHub's:** `slugify` drops `_`, merges runs of spaces and hyphens,
-  and trims hyphens, where GitHub keeps `_` and makes each space a hyphen. Checked against
-  GitHub's own anchors: `uv_eof` against `uveof`, `012---2026-10-30` against
-  `012-2026-10-30`. `check-site` holds each heading to its own `github-slug`, which states
-  GitHub's rule, and refuses one where the two differ: no link breaks, but a page can't
-  have such a heading. Filed as
-  [chez-http-server#255](https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/255):
-  the generator is the server's, and circuit's and chez-websocket's are copies. Fixed
-  there by chez-http-server#256; the owner opened
-  [#30](https://github.com/Kiyomi-Computation-Systems/circuit/issues/30) on 2026-10-31
-  for circuit to take the fix.
 - **Chez 10.4.1's cp0 miscompiles multiple values returned through a closure a procedure
   returns** (slice 6b, reproduced; its close-out has the repro). Circuit's libraries
   return values only from direct calls. Not filed: the owner chose not to, on 2026-10-30.
@@ -184,6 +176,33 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: the docs site's heading anchors are GitHub's, in PR #32
+
+On the owner's "pick up issue 30", which asked circuit to take
+Kiyomi-Computation-Systems/chez-http-server#256, squashed there as ff8fd6d. Commits on
+`open/slug-fix`: the fix (2cf63e9), this close-out, and its CI run named here.
+`make check-site` passes, with site-unit's 78 expected passes.
+
+- **the files:** `site/slug.sls` and `tests/site-check.sps` were byte for byte the
+  server's before the fix (compared with `git show ff8fd6d^:`), and are now byte for byte
+  its fix. `slugify` is GitHub's rule, and `make-slugger` numbers a repeat as GitHub
+  does. `check-site` drops its second copy of the rule, `github-slug`, and with it the
+  invariant that refused a heading on which the two differed;
+- **site-unit**, which isn't the server's (circuit's runs plain SRFI-64 on
+  `(circuit-testing)`), takes the fix's rows by hand: `github-anchors`, `github-repeats`,
+  `slug-each` and the spacing-mark check, in place of the two rows that held the old
+  rule. It adds two of circuit's own reference headings, read from GitHub's rendering:
+  `circuit->handler` and `req-on-done!`, the only ASCII `>` and `!` among the rows;
+- **watched to fail:** under the old `slug.sls`, 14 rows fail and the suite exits 1; a
+  mutant `slugify` keeping `!` and `>` fails circuit's two rows alone;
+- **measured:** the 204 headings under `docs/` on `main`, read from GitHub's rendering
+  (`gh api .../contents/PATH -H "Accept: application/vnd.github.html"`, each id after its
+  `heading-element`), get GitHub's id from the new `make-slugger`, page by page, and from
+  the old: #30 counted 203, before #29 added one. `make site` renders byte for byte as
+  before;
+- **chez-websocket's copy** is the old rule still; chez-websocket#109 tracks it there;
+- **agents:** none.
 
 ### 2026-10-31: AGENTS.md's comment rule and its one exception, in PR #31
 
