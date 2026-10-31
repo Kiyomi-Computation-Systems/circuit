@@ -34,7 +34,8 @@
 ;;;   (g) a (circuit ...) library is imported only when a library under the
 ;;;       directory defines it. Chez would load any other from elsewhere on its
 ;;;       library path, and the suites' path holds tests/, which this check
-;;;       does not read;
+;;;       does not read. Rule (j) closes the rest: no other directory on the
+;;;       path holds one Chez could load in place of the directory's own;
 ;;;   (h) every .sls file begins with the line #!r6rs, and holds #! nowhere
 ;;;       else. Chez reads a file with no directive, or after #!chezscheme,
 ;;;       with its own syntax ('#3(0), '#vfx(1 2)), which R6RS lacks and the
@@ -50,15 +51,28 @@
 ;;;       so no library imports (circuit websocket), as none imports an
 ;;;       impure one; and (circuit websocket) imports neither (chezscheme)
 ;;;       nor an (http-server ...) library, as a core library doesn't
-;;;       (ADR-0006).
+;;;       (ADR-0006);
+;;;   (j) each LIBDIR named after the directory, a directory on a library
+;;;       path, holds nothing named circuit or circuit.<anything>: a
+;;;       directory Chez would look in for a (circuit ...) library, or a file
+;;;       it would load as (circuit). Chez takes a library from the first
+;;;       directory on its path that has it, so one there could stand in for
+;;;       the directory's own, unread, wherever the path puts it. make passes
+;;;       every directory of the library paths it builds for circuit's
+;;;       libraries; the directory itself, and a LIBDIR that does not exist,
+;;;       which holds nothing, are passed over. A name such as
+;;;       circuit-testing is another library's, and tests/fixtures/, where
+;;;       this check's own fixtures hold (circuit ...) libraries, is no
+;;;       directory on a path.
 ;;;
 ;;; The lists are allowlists: a library that is not on one is refused, so a
 ;;; route nobody thought of is closed until a reviewer opens it. Exports are
 ;;; not read: a library cannot import by exporting.
 ;;;
 ;;; On a pass it prints one line to stdout, naming how many libraries it
-;;; checked. It exits 0 or 1, never a count. tests/test-check-imports.sps runs
-;;; it on a tree for each rule.
+;;; checked, and, when it was named LIBDIRs, a second, naming how many of
+;;; them it looked in. It exits 0 or 1, never a count.
+;;; tests/test-check-imports.sps runs it on a tree for each rule.
 (import (rnrs)
         (circuit-testing)
         (only (chezscheme) directory-list file-directory? parameterize print-graph))
@@ -444,11 +458,40 @@
                            (list (string-append path ": it cannot be read as data: " (cadr found))))
                    0)))))))
 
+;; circuit-entry? : String -> Boolean
+;; Whether NAME, an entry of a directory on a library path, is one Chez could
+;; take a (circuit ...) library from: circuit, the directory of every
+;; (circuit NAME ...), or circuit.<extension>, the file of (circuit) itself
+;; under any of Chez's library extensions, compiled ones among them.
+(define (circuit-entry? name)
+  (or (string=? name "circuit")
+      (and (> (string-length name) (string-length "circuit."))
+           (string=? (substring name 0 (string-length "circuit.")) "circuit."))))
+
+;; path-dirs : String (Listof String) -> (Listof String)
+;; The LIBDIRS rule (j) looks in, each without the slashes it ends with: not
+;; ROOT, and not one that is no directory, in the order named.
+(define (path-dirs root libdirs)
+  (filter (lambda (dir) (and (not (string=? dir root)) (file-directory? dir)))
+          (map without-slashes libdirs)))
+
+;; path-complaints : String (Listof String) -> (Listof String)
+;; Rule (j): each entry of each of DIRS that circuit-entry? takes, sorted.
+(define (path-complaints root dirs)
+  (apply append
+         (map (lambda (dir)
+                (map (lambda (name)
+                       (string-append dir "/" name ": its directory is on the library path beside " root
+                                      ", so Chez could load a (circuit ...) library from it in place of "
+                                      root "'s, which this check reads; only " root " may hold one"))
+                     (list-sort string<? (filter circuit-entry? (directory-list dir)))))
+              dirs)))
+
 ;; main : (Listof String) -> Unit
 (define (main args)
   (cond
-    ((not (= (length args) 1))
-     (say (current-error-port) "usage: scheme --program tests/check-imports.sps DIR")
+    ((null? args)
+     (say (current-error-port) "usage: scheme --program tests/check-imports.sps DIR [LIBDIR ...]")
      (exit 1))
     ((not (file-directory? (car args)))
      (say (current-error-port) (string-append (car args) ": not a directory"))
@@ -463,14 +506,20 @@
             (defined (defined-libraries reads))
             (results (map (lambda (entry) (entry-result entry root reads defined)) entries))
             (checked (apply + (map cdr results)))
+            (dirs (path-dirs root (cdr args)))
             (complaints (append (apply append (map car results))
                                 (if (= checked 0)
                                     (list (string-append "no library under " root))
-                                    '()))))
+                                    '())
+                                (path-complaints root dirs))))
        (cond
          ((null? complaints)
           (say (current-output-port)
                (string-append "ok, libraries checked: " (number->string checked)))
+          (unless (null? (cdr args))
+            (say (current-output-port)
+                 (string-append "ok, no other directory on the library path holds circuit: "
+                                (number->string (length dirs)) " looked in")))
           (exit 0))
          (else
           (for-each (lambda (c) (say (current-error-port) c)) complaints)

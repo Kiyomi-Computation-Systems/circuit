@@ -69,6 +69,21 @@
                  " before the last datum would end the suite before its verdict;"
                  " only (exit 1) may exit early"))
 
+;; read-error : String -> String
+;; What Chez's reader raises on the file at PATH, read as the program reads
+;; it, port and all, and shown as the program shows it, by describe: the
+;; running Chez's own words, which another Chez may put otherwise. A file
+;; that reads without a raise answers words no complaint holds, so its row
+;; fails.
+(define (read-error path)
+  (guard (e (#t (describe e)))
+    (call-with-port (open-file-input-port path (file-options) (buffer-mode block)
+                                          (make-transcoder (utf-8-codec)))
+      (lambda (port)
+        (let loop ()
+          (unless (eof-object? (read port)) (loop)))))
+    "<the file was read whole, with no raise>"))
+
 ;; cases : (Listof (List String (Listof String) Expected))
 (define cases
   (list
@@ -94,11 +109,10 @@
    (list "an empty file holds no datum"
          '("empty.sps")
          (refused (string-append (at "empty.sps") ": it holds no datum, so it cannot end with " form)))
-   (list "a file that cannot be read is named, with Chez's reason"
+   (list "a file that cannot be read is named, with the running Chez's own words for it"
          '("unreadable.sps")
-         (refused (string-append (at "unreadable.sps")
-                                 ": it cannot be read as data: Exception in read: unexpected end-of-file reading list before file-position 36 of #<input port "
-                                 (at "unreadable.sps") ">; the character position might differ")))
+         (refused (string-append (at "unreadable.sps") ": it cannot be read as data: "
+                                 (read-error (at "unreadable.sps")))))
    (list "every bad suite of several is named, in the order given, and the good ones are not"
          '("good.sps" "no-exit.sps" "early-one.sps" "early-zero.sps")
          (refused (last-datum "no-exit.sps" "(display \"no exit form\")")

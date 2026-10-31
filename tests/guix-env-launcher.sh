@@ -305,16 +305,16 @@ check "M1 make check-guix without guix: names the goal" \
   grep -Fxq "make check-guix: guix not found." "$tmp/err"
 check "M1 make check-guix without guix: runs no test" [ ! -s "$started" ]
 
-# M2: `make test` with no Chez stops at its first prerequisite, deps, whose
-# require-tools hint names `test`, the goal the user typed, not `deps`:
-# GOAL's $(MAKECMDGOALS) branch, reached through a prerequisite. It runs in
-# a copy of the tree, with the real PATH, so deps' require-tools is what
-# stops it, before chez-libuv's build or any suite runs. The copy has no
-# .git, no build/ and no vendor/: deps stops before it looks for the
-# submodules, and in a worktree .git points outside the one directory the
-# container shares. Only the hint's first line is compared: the line after
-# it depends on whether the host has guix. make's own "***" line carries a
-# Makefile line number.
+# M2: `make test` with no Chez stops at check-chez, deps' prerequisite,
+# whose require-tools hint names `test`, the goal the user typed, not
+# `check-chez`: GOAL's $(MAKECMDGOALS) branch, reached through a
+# prerequisite. It runs in a copy of the tree, with the real PATH, so
+# check-chez's require-tools is what stops it, before chez-libuv's build or
+# any suite runs. The copy has no .git, no build/ and no vendor/: it stops
+# before deps looks for the submodules, and in a worktree .git points
+# outside the one directory the container shares. Only the hint's first
+# line is compared: the line after it depends on whether the host has guix.
+# make's own "***" line carries a Makefile line number.
 copy=$tmp/tree
 mkdir "$copy"
 for entry in "$root"/* "$root"/.[!.]* "$root"/..?*; do

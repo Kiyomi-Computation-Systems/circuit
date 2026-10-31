@@ -98,12 +98,13 @@
   ;;   types, each an &error
   ;; The server's own, re-exported: see its docs/waiting.md.
 
-  ;; awaiting : (-> Any) -> Awaiting
+  ;; awaiting : (-> Answer) -> Awaiting
   ;; The server's own, re-exported, for a take-over that waits: it answers
   ;; (awaiting thunk), and the server runs THUNK on a coroutine, where it
-  ;; may wait; what THUNK returns is dropped. A handler never answers it:
-  ;; the adapter answers awaiting for every request, and an app answers a
-  ;; res. See the server's docs/upgrades.md.
+  ;; may wait. Answer is the server's, what its handler answers; what a
+  ;; take-over's THUNK returns is dropped. A handler never answers it: the
+  ;; adapter answers awaiting for every request, and an app answers a res.
+  ;; See the server's docs/upgrades.md and docs/reference.md.
 
   ;; transport? : Any -> Boolean
   ;; transport-write! : Transport Bytevector [Nat Nat] [(U #f ((U #f Symbol) -> Any))] -> Any

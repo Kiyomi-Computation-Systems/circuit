@@ -7,7 +7,8 @@ build one small C library, and run your program from the checkout.
 
 - **Linux or macOS**, on x86-64 or arm64.
 - **Chez Scheme 10.4.1 or newer, threaded.** Threaded is Chez's default
-  build. Homebrew installs it as `chez`, and `make` finds either name.
+  build. Homebrew installs it as `chez`, and `make` finds either name. It
+  refuses an older Chez, or one without threads, saying which it found.
 - **libuv 1.48 or newer**, where `pkg-config` can see it: `brew install libuv`
   on macOS, `apt install libuv1-dev` on Ubuntu 24.04 or newer. An older one,
   such as Debian 12's 1.44, won't do.
@@ -65,8 +66,14 @@ path, then runs the program. Yours can live anywhere:
 the checkout, as the container sees nothing else.
 
 `make dev` starts a REPL with the same library path. To run a program
-without make, in a service or a container, `make run` prints the command
-it runs: run that from the checkout.
+without make, in a service or a container, `make libdirs` prints that path
+on one line. Run it from the checkout, as `make run` does:
+
+```sh
+scheme --libdirs "$(make libdirs)" --program examples/hello.sps
+```
+
+Homebrew's Chez is `chez`, not `scheme`.
 
 Each file under `examples/` is one small server, and
 [examples/README.md](../examples/README.md) says what each one shows.

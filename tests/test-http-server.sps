@@ -53,7 +53,7 @@
 (import (rnrs)
         (rnrs mutable-strings)
         (srfi :64)
-        (only (chezscheme) port-closed? putenv)
+        (only (chezscheme) port-closed? putenv system)
         (circuit-testing)
         (http-server)
         (http-server testing)
@@ -817,22 +817,34 @@
           (append (list (list (response "200 OK" (list (length-field 10)) "abcdefghij")) #f) rest)))
   (list (rewritten "abcde" #f) (rewritten "ABCDEFGHIJKLMNOPQRST" #f)))
 
+;; sh-word : String -> String
+;; S as one POSIX shell word: in single quotes, each ' written as '\''.
+(define (sh-word s)
+  (call-with-string-output-port
+   (lambda (p)
+     (put-char p #\')
+     (string-for-each (lambda (c) (if (char=? c #\') (put-string p "'\\''") (put-char p c))) s)
+     (put-char p #\'))))
+
+;; The FIFO's writer is a child's, started in the background: its open for
+;; writing waits for a reader, and this process's open for reading waits for
+;; it, as POSIX defines both. Neither end is opened for reading and writing,
+;; which POSIX leaves undefined. The child writes two bytes and exits, so a
+;; read of the FIFO, which the adapter never makes, would end at eof rather
+;; than wait for a writer; a write that comes after the reader is closed
+;; fails quietly. The reader is opened only once the child is started, so a
+;; failed start fails the row rather than hanging it.
 (test-equal "a measure that raises, a FIFO's position, answers 500 with the port closed"
-  (list 0 (list server-error) #t '(handler-failed) 'port-position #t)
+  (list 0 0 (list server-error) #t '(handler-failed) 'port-position #t)
   (call-with-temp-directory
    (lambda (dir)
      (let* ((path (string-append dir "/fifo"))
             (made (capture-command (list "mkfifo" path)))
-            (writer (open-file-input/output-port path (file-options no-create no-truncate)))
-            (reader (open-file-input-port path)))
-       ;; The writer closes once its bytes are in, so a read of the FIFO
-       ;; ends at eof rather than waiting for a writer.
-       (put-bytevector writer (b "hi"))
-       (flush-output-port writer)
-       (close-port writer)
+            (started (system (string-append "printf hi 2>/dev/null >" (sh-word path) " &")))
+            (reader (and (= started 0) (open-file-input-port path))))
        (let* ((result (exchange (lambda (r) (make-res 200 '() reader)) (get "/fifo")))
               (log (caddr result)))
-         (list (car made) (car result) (cadr result) (map car log)
+         (list (car made) started (car result) (cadr result) (map car log)
                (cadr (cadr (car log))) (port-closed? reader)))))))
 
 ;;; --- sized bodies -------------------------------------------------------------
