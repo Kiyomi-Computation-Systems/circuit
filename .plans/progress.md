@@ -185,8 +185,9 @@ On the owner's "start the open list items": they chose, among the options offere
 makers over a breaking change or none, and the address at the end of the line, as the
 server's `request-refused` line has it, over first, as the Common Log Format has it
 (design §15.27). Commits on `open/waits-makers`: the code, tests and docs (4dae195), this
-close-out, and its CI run named here. `make test` passes 16 suites, and `make check-site`
-passes.
+close-out (3ec4245), and its CI run named here. `make test` passes 16 suites, and `make
+check-site` passes. CI passed on the PR (run 41152317541, 3m43s), on amd64, arm64 and the
+site job.
 
 - **the makers:** `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each check
   their setting when called, and the handler, with their own name as the who, when
