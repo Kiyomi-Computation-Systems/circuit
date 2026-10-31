@@ -16,6 +16,10 @@
 ;;;   - res-add-cookie and res-expire-cookie: the RFC's and the design's
 ;;;     examples, whole fields; one attribute order for every order of the
 ;;;     options; the response's own fields kept;
+;;;   - one set-cookie field a name: a second refused, by either writer,
+;;;     whatever its path; a held field's name read before its first =,
+;;;     less spaces and tabs, every character tried at each end of it;
+;;;     another name, in another case too, taken; the check last;
 ;;;   - the allowlists against their whole complements: each of the 256
 ;;;     bytes and six characters past 255 alone in a value, bare and
 ;;;     quoted, against cookie-octet; in a name against token; in a path
@@ -82,6 +86,8 @@
 (define (refused who message . irritants) (list 'refused who message irritants))
 
 (define (iota n) (let loop ((i (- n 1)) (out '())) (if (< i 0) out (loop (- i 1) (cons i out)))))
+
+(define (text-of n c) (make-string n c))
 
 ;; map-in-order : (a -> b) (Listof a) -> (Listof b)
 ;; map, calling F on each element in turn: map's order is unspecified.
@@ -174,6 +180,7 @@
 (define bare "an option's constructor, given bare: call it")
 (define no-option "an option is what a cookie- constructor makes")
 (define no-max-age "res-expire-cookie takes no max-age: its date in the past expires the cookie")
+(define name-once "a response sets each cookie name once: it holds a set-cookie field of this name already")
 
 ;;; ------------------------------------------------------------------------
 ;;; req-cookies and req-cookie
@@ -316,18 +323,122 @@
 
 (test-equal "res-add-cookie appends one field, keeping the response's status, body and fields, set-cookie among them"
   (list 201 "hi"
-        `(("Set-Cookie" . "a=0") ("content-type" . "text/plain") ("set-cookie" . "a=1")
-          ("set-cookie" . "b=2; Secure") ("set-cookie" . ,(string-append "a=; " epoch))))
-  (let* ((r0 (make-res 201 '(("Set-Cookie" . "a=0") ("content-type" . "text/plain")) "hi"))
+        `(("Set-Cookie" . "z=0") ("content-type" . "text/plain") ("set-cookie" . "a=1")
+          ("set-cookie" . "b=2; Secure") ("set-cookie" . ,(string-append "c=; " epoch))))
+  (let* ((r0 (make-res 201 '(("Set-Cookie" . "z=0") ("content-type" . "text/plain")) "hi"))
          (r1 (res-add-cookie r0 "a" "1"))
          (r2 (res-add-cookie r1 "b" "2" (cookie-secure)))
-         (r3 (res-expire-cookie r2 "a")))
+         (r3 (res-expire-cookie r2 "c")))
     (list (res-status r3) (res-body r3) (res-headers r3))))
 
 (test-equal "an empty value, and a quoted one, are written as given"
   (list (one "a=") (one "a=\"\"") (one "a=\"x=y\"") (one "a=x=y"))
   (map-in-order (lambda (v) (written (lambda () (res-add-cookie base "a" v))))
                 '("" "\"\"" "\"x=y\"" "x=y")))
+
+;;; ------------------------------------------------------------------------
+;;; One set-cookie field a name
+
+;; with-fields : String ... -> Res — a response holding a set-cookie field each.
+(define (with-fields . fields)
+  (make-res 200 (map (lambda (f) (cons "set-cookie" f)) fields) "hi"))
+
+;; returned-fields : String ... -> Any — what written answers for those fields.
+(define (returned-fields . texts) (list 'returned texts))
+
+(test-equal "a second set-cookie field of one name is refused, by res-add-cookie and res-expire-cookie, whichever wrote the first, whatever their paths and the fields between"
+  (list (refused 'res-add-cookie name-once "a")
+        (refused 'res-expire-cookie name-once "a")
+        (refused 'res-add-cookie name-once "a")
+        (refused 'res-expire-cookie name-once "a")
+        (refused 'res-add-cookie name-once "a")
+        (refused 'res-expire-cookie name-once "a")
+        (refused 'res-add-cookie name-once "__Host-id")
+        (refused 'res-add-cookie name-once "a")
+        (refused 'res-expire-cookie name-once "a"))
+  (list (written (lambda () (res-add-cookie (res-add-cookie base "a" "1") "a" "2")))
+        (written (lambda () (res-expire-cookie (res-add-cookie base "a" "1") "a")))
+        (written (lambda () (res-add-cookie (res-expire-cookie base "a") "a" "1")))
+        (written (lambda () (res-expire-cookie (res-expire-cookie base "a") "a")))
+        (written (lambda () (res-add-cookie (res-add-cookie base "a" "1" (cookie-path "/x"))
+                                            "a" "2" (cookie-path "/y") (cookie-domain "site.example"))))
+        (written (lambda () (res-expire-cookie (res-expire-cookie base "a" (cookie-path "/x")) "a" (cookie-path "/"))))
+        (written (lambda () (res-add-cookie (res-add-cookie base "__Host-id" "1" (cookie-path "/") (cookie-secure))
+                                            "__Host-id" "2" (cookie-path "/") (cookie-secure))))
+        (written (lambda () (res-add-cookie (with-fields "z=0" "a=0" "y=0") "a" "2")))
+        (written (lambda () (res-expire-cookie (res-add-cookie (res-add-cookie base "a" "1") "b" "2") "a")))))
+
+(test-equal "another name is taken: a longer one, a shorter one, or one in another case"
+  (list (returned-fields "ab=1" "a=2") (returned-fields "ab=1" "abc=2") (returned-fields "ab=1" "b=2")
+        (returned-fields "ab=1" "AB=2") (returned-fields "ab=1" "Ab=2")
+        (returned-fields "ab=1" (string-append "aB=; " epoch)))
+  (list (written (lambda () (res-add-cookie (with-fields "ab=1") "a" "2")))
+        (written (lambda () (res-add-cookie (with-fields "ab=1") "abc" "2")))
+        (written (lambda () (res-add-cookie (with-fields "ab=1") "b" "2")))
+        (written (lambda () (res-add-cookie (with-fields "ab=1") "AB" "2")))
+        (written (lambda () (res-add-cookie (with-fields "ab=1") "Ab" "2")))
+        (written (lambda () (res-expire-cookie (with-fields "ab=1") "aB")))))
+
+(test-equal "a field the response holds sets the name before its first =, less spaces and tabs, in a set-cookie field named in any case"
+  (append (map (lambda (f) (refused 'res-add-cookie name-once "a"))
+               '("a=0" "a=" "a=0; Path=/x; Secure" " a=0" "a =0" "\ta\t=0" " \t a \t = 0 ; Secure" "a==0" "a=b=c"))
+          (map (lambda (f) (returned-fields f "a=2"))
+               '("a" "a; Path=/" "z=0; a=1" "z=a" "za=0" "az=0" "A=0" "a b=0" "=a" " =a" "x;a=0" ";a=0" "a;=0"
+                 "\xB;a=0" "a\xC;=0" "\xA0;a=0" "a\xA0;=0"))
+          (list (refused 'res-add-cookie name-once "a") (refused 'res-add-cookie name-once "a")
+                (list 'returned '("a=2")) (list 'returned '("a=2")) (list 'returned '("a=2"))))
+  (append (map-in-order (lambda (f) (written (lambda () (res-add-cookie (with-fields f) "a" "2"))))
+                        '("a=0" "a=" "a=0; Path=/x; Secure" " a=0" "a =0" "\ta\t=0" " \t a \t = 0 ; Secure" "a==0"
+                          "a=b=c"))
+          (map-in-order (lambda (f) (written (lambda () (res-add-cookie (with-fields f) "a" "2"))))
+                        '("a" "a; Path=/" "z=0; a=1" "z=a" "za=0" "az=0" "A=0" "a b=0" "=a" " =a" "x;a=0" ";a=0"
+                          "a;=0" "\xB;a=0" "a\xC;=0" "\xA0;a=0" "a\xA0;=0"))
+          (map-in-order (lambda (field)
+                          (written (lambda () (res-add-cookie (make-res 200 (list field) "hi") "a" "2"))))
+                        '(("Set-Cookie" . "a=0") ("SET-COOKIE" . "a=0") ("x-set-cookie" . "a=0")
+                          ("set-cookie2" . "a=0") ("cookie" . "a=0")))))
+
+(test-equal "each byte, and six characters past 255, before and after a held field's name: a space and a tab alone are trimmed, and an = after it starts its value"
+  (append (map (lambda (c)
+                 (if (memv c '(9 32))
+                     (refused 'res-add-cookie name-once "a")
+                     (returned-fields (string-append (char-string c) "a=0") "a=2")))
+               every-char)
+          (map (lambda (c)
+                 (if (memv c '(9 32 61))
+                     (refused 'res-add-cookie name-once "a")
+                     (returned-fields (string-append "a" (char-string c) "=0") "a=2")))
+               every-char))
+  (append (map-in-order (lambda (c)
+                          (written (lambda ()
+                                     (res-add-cookie (with-fields (string-append (char-string c) "a=0")) "a" "2"))))
+                        every-char)
+          (map-in-order (lambda (c)
+                          (written (lambda ()
+                                     (res-add-cookie (with-fields (string-append "a" (char-string c) "=0")) "a" "2"))))
+                        every-char)))
+
+(test-equal "a second field of one name is checked last: any other fault is refused first"
+  (list (refused 'res-add-cookie name-token "a b")
+        (refused 'res-add-cookie value-octets " ")
+        (refused 'res-add-cookie too-big 4097)
+        (refused 'res-add-cookie bare 'cookie-secure)
+        (refused 'res-add-cookie none-secure "a")
+        (refused 'res-add-cookie host-prefix "__Host-a")
+        (refused 'res-expire-cookie too-big 4097)
+        (refused 'res-expire-cookie once 'cookie-secure)
+        (refused 'res-expire-cookie no-max-age 'cookie-max-age)
+        (refused 'res-expire-cookie secure-prefix "__Secure-a"))
+  (list (written (lambda () (res-add-cookie (with-fields "a b=0") "a b" "1")))
+        (written (lambda () (res-add-cookie (with-fields "a=0") "a" " ")))
+        (written (lambda () (res-add-cookie (with-fields "a=0") "a" (text-of 4096 #\v))))
+        (written (lambda () (res-add-cookie (with-fields "a=0") "a" "1" cookie-secure)))
+        (written (lambda () (res-add-cookie (with-fields "a=0") "a" "1" (cookie-same-site 'none))))
+        (written (lambda () (res-add-cookie (with-fields "__Host-a=0") "__Host-a" "1")))
+        (written (lambda () (res-expire-cookie (with-fields (string-append (text-of 4097 #\n) "=")) (text-of 4097 #\n))))
+        (written (lambda () (res-expire-cookie (with-fields "a=0") "a" (cookie-secure) (cookie-secure))))
+        (written (lambda () (res-expire-cookie (with-fields "a=0") "a" (cookie-max-age 1))))
+        (written (lambda () (res-expire-cookie (with-fields "__Secure-a=0") "__Secure-a")))))
 
 ;;; ------------------------------------------------------------------------
 ;;; The allowlists, against their whole complements
@@ -442,8 +553,6 @@
 
 ;;; ------------------------------------------------------------------------
 ;;; The limits, from both sides
-
-(define (text-of n c) (make-string n c))
 
 (test-equal "a name and value of 4096 bytes together are taken, and of 4097 refused, whichever holds them"
   (list (one (string-append "n=" (text-of 4095 #\v)))

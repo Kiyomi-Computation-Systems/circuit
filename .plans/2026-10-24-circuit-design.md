@@ -1658,6 +1658,17 @@ The owner's answer in slice 9a (2026-10-31), on a reading of the slice 9 design'
     `null`'s preflight under `*` too, which only an uncredentialed preflighted request
     from a sandboxed or `file:` page would notice.
 
+The owner's answer after slice 9c (2026-10-31), on the Open list's second `set-cookie` of
+one name:
+
+32. **A second `set-cookie` field of one name in a response is refused, as a bug.**
+    `res-add-cookie` and `res-expire-cookie` refuse a name that a field of the response
+    sets already, whatever its path or domain: RFC 6265bis §4.1.1 says a server MUST NOT
+    send two. A browser drops neither. At one path and domain the later replaces the
+    earlier; at two, both are sent, in no order a server may rely on. The bug it catches
+    is two parts of an app writing one cookie, one losing without a word. Weighed:
+    taking a second, as 9c did, the page saying to write a name once.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a

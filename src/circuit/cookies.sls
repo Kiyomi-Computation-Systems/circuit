@@ -28,13 +28,20 @@
 ;;; whatever the order of the options: Path, Domain, Max-Age or Expires,
 ;;; Secure, HttpOnly, SameSite. A browser matches the __Secure- and __Host-
 ;;; prefixes in any case (§5.4), so they do here.
+;;;
+;;; Checked last, a second field of one name in a response is an assertion
+;;; violation too, whatever its path: RFC 6265bis §4.1.1 lets a server
+;;; send one, and a second is a bug, two parts of an app writing one
+;;; cookie. A field the response holds sets the name before its first =,
+;;; less spaces and tabs at either end, as a browser reads it (§5.6).
 (library (circuit cookies)
   (export req-cookies req-cookie res-add-cookie res-expire-cookie
           cookie-path cookie-domain cookie-max-age cookie-secure cookie-http-only
           cookie-same-site)
   (import (rnrs)
           (only (circuit request) req? req-header-values)
-          (only (circuit response) res? res-add-header))
+          (only (circuit headers) header-values)
+          (only (circuit response) res? res-headers res-add-header))
 
   ;; Cookies = (Listof (Pair String String))
   ;; CookieOption = what a cookie- constructor makes
@@ -217,7 +224,8 @@
   ;; __Host- name without Secure and Path=/ or with a Domain, each in any
   ;; case, is an assertion violation. So is what is no response, and what
   ;; no constructor made, a constructor given bare, or an option given
-  ;; twice.
+  ;; twice; and, checked last, a response that sets a cookie of NAME
+  ;; already, whatever its path or domain.
   (define (res-add-cookie res name value . options)
     (check-res 'res-add-cookie res)
     (check-name 'res-add-cookie name)
@@ -231,6 +239,7 @@
                            value))
     (check-size 'res-add-cookie name value)
     (let ((by-slot (settings 'res-add-cookie name options)))
+      (check-once 'res-add-cookie res name)
       (res-add-header res "set-cookie"
                       (field name value by-slot
                              (let ((o (assq 'max-age by-slot)))
@@ -241,12 +250,14 @@
   ;; no value, and Expires at the epoch in Max-Age's place, a fixed date
   ;; that needs no clock. A browser removes the cookie only when the path
   ;; and domain match the ones it was set with. It takes the options but
-  ;; cookie-max-age, and refuses what res-add-cookie refuses.
+  ;; cookie-max-age, and refuses what res-add-cookie refuses, a second
+  ;; field of NAME among it.
   (define (res-expire-cookie res name . options)
     (check-res 'res-expire-cookie res)
     (check-name 'res-expire-cookie name)
     (check-size 'res-expire-cookie name "")
     (let ((by-slot (settings 'res-expire-cookie name options)))
+      (check-once 'res-expire-cookie res name)
       (res-add-header res "set-cookie"
                       (field name "" by-slot "; Expires=Thu, 01 Jan 1970 00:00:00 GMT"))))
 
@@ -332,6 +343,25 @@
     (unless (and (> (string-length name) 0) (for-all-chars tchar? name))
       (assertion-violation who "a cookie name is a token: letters, digits and !#$%&'*+-.^_`|~, at least one"
                            name)))
+
+  ;; check-once : Symbol Res String -> Void
+  ;; A set-cookie field of RES that sets the cookie NAME is an assertion
+  ;; violation.
+  (define (check-once who res name)
+    (when (exists (lambda (field) (string=? (field-name field) name))
+                  (header-values (res-headers res) "set-cookie"))
+      (assertion-violation who "a response sets each cookie name once: it holds a set-cookie field of this name already"
+                           name)))
+
+  ;; field-name : String -> String
+  ;; The name a set-cookie field sets: before its first =, less spaces and
+  ;; tabs at either end, or "" with no =. A browser reads it in the piece
+  ;; before the first ;, which differs only where this holds a ;, and so is
+  ;; no token.
+  (define (field-name field)
+    (let* ((end (string-length field))
+           (eq (index-of field #\= 0 end)))
+      (if (= eq end) "" (trimmed field 0 eq))))
 
   ;; check-size : Symbol String String -> Void
   ;; NAME and VALUE, ASCII by now, over 4096 bytes together are an

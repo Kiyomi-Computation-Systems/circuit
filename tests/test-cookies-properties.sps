@@ -16,14 +16,18 @@
 ;;;     two, reads back by req-cookies and req-cookie; one res-expire-cookie
 ;;;     takes, a browser reads as an Expires at the epoch for that name,
 ;;;     path and domain. A case draws one to four cookies, mostly ones the
-;;;     library takes, prefixed names among them;
+;;;     library takes, prefixed names among them, each written on a
+;;;     response of its own, holding set-cookie fields, most of other names;
 ;;;   - P2 res-add-cookie and res-expire-cookie take exactly what the rules
 ;;;     take, writing the field they write, and refuse the rest with the
 ;;;     rules' assertion violation, its who, message and irritants: names,
 ;;;     values and options drawn from every kind the interface takes, bad
 ;;;     characters, the empty string, what is no string, sizes at 4096 and
 ;;;     1024 and a step past, constructors given bare, what no constructor
-;;;     made, an option twice, and what is no response;
+;;;     made, an option twice, and what is no response; and responses that
+;;;     hold a set-cookie field of the name already, as res-add-cookie
+;;;     writes one or as a hand might, spaced, in a field named in any case,
+;;;     beside ones that hold the name where it sets no cookie;
 ;;;   - P3 req-cookies reads any cookie fields as the design's rules do, and
 ;;;     req-cookie answers the first of each name: fields drawn from ;, =,
 ;;;     spaces, tabs, quotes, letters, controls, Latin-1 and characters
@@ -382,8 +386,44 @@
                                                     (cons (list 'junk x) s))))))
         '()))))
 
-;; A spec: (KIND RES NAME VALUE OPTIONS), KIND add or expire, RES response
-;; or not-a-response, OPTIONS a list of options as data.
+;; g-held : Any Boolean -> Gen (Pair Symbol Headers)
+;; The response's own fields beside the cookie NAME, and their kind:
+;; set-cookie fields of other names, and NAME where a field sets no cookie
+;; of it; with WILD, fields that set NAME too.
+(define (g-held name wild)
+  (if (or (not (string? name)) (string=? name ""))
+      (g-tagged 'held-base (g-pick (list base-headers)))
+      (let ((one (lambda (text) (list (cons "set-cookie" text))))
+            (n (string-length name)))
+        (g-choose
+         (append
+          (list (cons 4 (g-tagged 'held-base (g-pick (list base-headers))))
+                (cons 1 (g-tagged 'held-none (g-pick '(()))))
+                (cons 3 (g-tagged 'held-other
+                                  (g-pick (list (one (string-append name "x=0")) (one (string-append "x" name "=0"))
+                                                (one (if (> n 1) (string-append (substring name 0 (- n 1)) "=0") "y=0"))
+                                                (one (string-append "z=0; " name "=1")) (one (string-append "z=" name))
+                                                (one name) (one (string-append name "; Path=/"))
+                                                (one (string-append "x;" name "=0")) (one (string-append name ";=0"))
+                                                (list (cons "x-set-cookie" (string-append name "=0")))
+                                                (list (cons "cookie" (string-append name "=0")))))))
+                (cons 1 (g-tagged 'held-cased (lambda (s) (draw* s ((cased (g-cased name)))
+                                                            (cons (one (string-append cased "=0")) s))))))
+          (if wild
+              (list (cons 4 (g-tagged 'held-same
+                                      (lambda (s)
+                                        (draw* s ((before (g-pick '("" " " "\t" " \t"))) (after (g-pick '("" " " "\t" " \t")))
+                                                  (field (g-pick '("set-cookie" "Set-Cookie" "SET-COOKIE")))
+                                                  (rest (g-pick '("0" "" "0; Path=/x; Secure" " 0 ")))
+                                                  (later (g-int 2)))
+                                          (cons (append (if (= later 0) '() base-headers)
+                                                        (list (cons field (string-append before name after "=" rest))))
+                                                s))))))
+              '()))))))
+
+;; A spec: (KIND RES NAME VALUE OPTIONS), KIND add or expire, RES the
+;; response's own fields or not-a-response, OPTIONS a list of options as
+;; data.
 (define (spec-kind spec) (list-ref spec 0))
 (define (spec-res spec) (list-ref spec 1))
 (define (spec-name spec) (list-ref spec 2))
@@ -396,18 +436,20 @@
 ;; needs, so most specs are taken.
 (define (g-spec wild)
   (lambda (s)
-    (draw* s ((expire (g-int 4)) (not-res (g-int 40)) (name (g-name wild)) (value (g-value wild))
+    (draw* s ((expire (g-int 4)) (not-res (g-int 40)) (name (g-name wild)) (held (g-held (cdr name) wild))
+              (value (g-value wild))
               (sized (g-int 12)) (total (g-range 4095 4097))
               (n (g-weighted '((2 . 0) (3 . 1) (3 . 2) (2 . 3) (1 . 4) (1 . 5)))) (options (g-list n (g-option wild)))
               (fix (g-int 10)))
       (let* ((kind (if (= expire 0) 'expire 'add))
-             (res (if (and wild (= not-res 0)) 'not-a-response 'response))
+             (res (if (and wild (= not-res 0)) 'not-a-response (cdr held)))
              (sized? (and (= sized 0) (string? (cdr name)) (>= total (string-length (cdr name)))))
              (value-text (if sized? (make-string (- total (string-length (cdr name))) #\v) (cdr value)))
              (descs (map cdr options))
              (descs (if wild descs (once-each descs)))
              (descs (if (or wild (< fix 3)) descs (needs (cdr name) descs)))
-             (tags (append (list kind (car name)) (if sized? '(sized) (list (car value))) (map car options))))
+             (tags (append (list kind (car name) (car held)) (if sized? '(sized) (list (car value)))
+                           (map car options))))
         (cons (cons tags (list kind res (cdr name) value-text descs)) s)))))
 
 ;; once-each : (Listof Option) -> (Listof Option) — the first option of each constructor.
@@ -432,7 +474,6 @@
 ;; --- running a spec ------------------------------------------------------------------
 
 (define base-headers '(("set-cookie" . "x=0") ("content-type" . "text/plain")))
-(define base (make-res 200 base-headers "hi"))
 
 (define (constructor name)
   (case name
@@ -468,7 +509,7 @@
 (define (run-spec spec)
   (raised (lambda ()
             (let* ((options (build-options (spec-options spec)))
-                   (res (if (eq? (spec-res spec) 'response) base 'not-a-response)))
+                   (res (if (list? (spec-res spec)) (make-res 200 (spec-res spec) "hi") 'not-a-response)))
               (res-headers
                (if (eq? (spec-kind spec) 'add)
                    (apply res-add-cookie res (spec-name spec) (spec-value spec) options)
@@ -626,7 +667,8 @@
     (once . "each option once")
     (bare . "an option's constructor, given bare: call it")
     (no-option . "an option is what a cookie- constructor makes")
-    (no-max-age . "res-expire-cookie takes no max-age: its date in the past expires the cookie")))
+    (no-max-age . "res-expire-cookie takes no max-age: its date in the past expires the cookie")
+    (name-once . "a response sets each cookie name once: it holds a set-cookie field of this name already")))
 
 (define (message key) (cdr (assq key messages)))
 
@@ -673,7 +715,7 @@
          (name (spec-name spec))
          (value (if add? (spec-value spec) "")))
     (or (exists option-refusal descs)
-        (cond ((not (eq? (spec-res spec) 'response)) (refusal who (message 'not-a-response) 'not-a-response))
+        (cond ((not (list? (spec-res spec))) (refusal who (message 'not-a-response) 'not-a-response))
               ((not (string? name)) (refusal who (message 'name-string) name))
               ((not (and (> (string-length name) 0) (all? tchar? name))) (refusal who (message 'name-token) name))
               ((not (string? value)) (refusal who (message 'value-string) value))
@@ -702,8 +744,22 @@
                                                 (not (assq 'cookie-domain descs)))))
                                  (refusal who (message 'host-prefix) name))
                                 (else #f)))
-                        (list 'returned (append base-headers
+                        (and (exists (lambda (f) (and (string=? (lower (car f)) "set-cookie")
+                                                      (string=? (held-name (cdr f)) name)))
+                                     (spec-res spec))
+                             (refusal who (message 'name-once) name))
+                        (list 'returned (append (spec-res spec)
                                                 (list (cons "set-cookie" (rules-field name value descs add?)))))))))))
+
+;; held-name : String -> String
+;; The name a set-cookie field TEXT sets, as §5.6 reads it: in the piece
+;; before the first ;, before its first =, less spaces and tabs; "" when
+;; that piece holds no =.
+(define (held-name text)
+  (let* ((semi (first-index text #\;))
+         (pair (substring text 0 (or semi (string-length text))))
+         (eq (first-index pair #\=)))
+    (if eq (trim-wsp (substring pair 0 eq)) "")))
 
 ;; rules-field : String String (Listof Option) Boolean -> String
 (define (rules-field name value descs add?)
@@ -723,11 +779,14 @@
 
 ;; --- shrinks -----------------------------------------------------------------------------
 
-;; spec-shrinks : Spec -> (Listof Spec) — SPEC less an option, or with a
-;; name or value a character shorter.
+;; spec-shrinks : Spec -> (Listof Spec) — SPEC less an option or a field
+;; of its response, or with a name or value a character shorter.
 (define (spec-shrinks spec)
   (let ((with (lambda (i x) (replace-at spec i x))))
     (append (map (lambda (i) (with 4 (remove-at (spec-options spec) i))) (iota (length (spec-options spec))))
+            (if (list? (spec-res spec))
+                (map (lambda (i) (with 1 (remove-at (spec-res spec) i))) (iota (length (spec-res spec))))
+                '())
             (if (string? (spec-name spec)) (map (lambda (n) (with 2 n)) (string-shrinks (spec-name spec))) '())
             (if (string? (spec-value spec)) (map (lambda (v) (with 3 v)) (string-shrinks (spec-value spec))) '()))))
 
@@ -770,7 +829,7 @@
                  (lambda (so)
                    (let* ((headers (cadr (cdr so)))
                           (field (cdr (list-ref headers (- (length headers) 1)))))
-                     (not (and (equal? (list-head headers (- (length headers) 1)) base-headers)
+                     (not (and (equal? (list-head headers (- (length headers) 1)) (spec-res (car so)))
                                (equal? (stored field) (meant (car so)))))))
                  taken))
          (cookies (map (lambda (so) (cons (spec-name (car so)) (spec-value (car so))))
@@ -805,7 +864,10 @@
 (define (p2-case i)
   (let ((drawn (car ((g-spec #t) (case-state 2 i)))))
     (for-each (lambda (tag) (tally! p2-tally tag)) (car drawn))
-    (tally! p2-tally (if (eq? (car (rules (cdr drawn))) 'returned) 'rules-take 'rules-refuse))
+    (tally! p2-tally (let ((expected (rules (cdr drawn))))
+                       (cond ((eq? (car expected) 'returned) 'rules-take)
+                             ((equal? (caddr expected) (message 'name-once)) 'rules-refuse-once)
+                             (else 'rules-refuse))))
     (cdr drawn)))
 
 (define (p2-check spec)
