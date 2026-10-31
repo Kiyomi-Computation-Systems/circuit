@@ -1016,6 +1016,8 @@ Ends a test request's response with that ending, calling what
 res-body->bytevector : Res [Req] -> Bytevector
 ```
 
-A response's body, read as the adapter sends it. Given the request, a body
+A response's body, read as the adapter sends it by default: a port in
+pieces of 65,536 bytes, whatever the app's `CIRCUIT_PORT_PIECE_BYTES`, so a
+wrap or a tap sees those pieces. Given the request, a body
 that holds its body port is an assertion violation, as the adapter refuses
 it, and so is an upgrade response. See [Testing handlers](testing.md).

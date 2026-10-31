@@ -96,7 +96,7 @@ close-out under **Close-outs**, newest first.
   2026-10-30; its close-out is below.
 - **`wrap-catch-with`, `wrap-log-with` and the client's address in `wrap-log`'s line are
   merged**, squashed from [PR #26](https://github.com/Kiyomi-Computation-Systems/circuit/pull/26)
-  on 2026-10-30; its close-out is below. The owner's answers are design §15.27.
+  on 2026-10-31; its close-out is below. The owner's answers are design §15.27.
 - **The router's own 400 and 405 handlers, and a 400 for a raw character a path can't
   hold, are merged**, squashed from
   [PR #27](https://github.com/Kiyomi-Computation-Systems/circuit/pull/27) on 2026-10-31;
@@ -105,9 +105,12 @@ close-out under **Close-outs**, newest first.
   merged**, squashed from
   [PR #28](https://github.com/Kiyomi-Computation-Systems/circuit/pull/28) on 2026-10-31;
   its close-out is below.
+- **Testing's page says `res-body->bytevector` reads a port in the default pieces, and
+  shows how to test a wrap across pieces**, squashed from
+  [PR #29](https://github.com/Kiyomi-Computation-Systems/circuit/pull/29) on 2026-10-31;
+  its close-out is below. The owner's answer is design §15.29.
 - **Next:** the design plans no slice past 8 (§17). What follows is the owner's call: the
-  Open list below, where `res-body->bytevector`'s pieces await a choice among four
-  options.
+  Open list below.
 
 ## Open
 
@@ -147,16 +150,6 @@ close-out under **Close-outs**, newest first.
     0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
     measured 0 as unknown would stream it, at the cost of an empty file's
     `Content-Length: 0`;
-  - `res-body->bytevector` reads a port whole at 64 KiB whatever the app's
-    `CIRCUIT_PORT_PIECE_BYTES`, so for a smaller setting a file that shrinks after it is
-    measured passes its test and ends short in production. It also measures when it is
-    called, where the adapter measures when the app answers, and its pieces differ, so a
-    wrap's `f` or a tap's `on-piece` can see others. `(circuit test)` is core, so it can't
-    read the environment (ADR-0006). The options, the owner's call (PR #28's findings):
-    (a) a test passes the piece size; (b) a test passes an `Env`, the adapter's parsing
-    moved into the core; (c) a `test-handler` that does what the adapter does when the
-    app answers; (d) keep it, and say in Testing's page that the setting is tested through
-    the server's test host with `circuit->handler app env`;
   - `examples/long-poll.sps` may wake a waiter whose deadline fired in the same instant,
     answering "woke 1" and logging `late-resume`, as the server's example would.
     Unverified.
@@ -189,6 +182,32 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-10-31: `res-body->bytevector`'s pieces on Testing's page, in PR #29
+
+On the owner's "do d", the last of the four options the Open list held for
+`res-body->bytevector`'s pieces (design §15.29). Commits on `open/test-pieces`: the work
+(0203f84), this close-out (00092a2), and its CI run named here. `make test` passes 17
+suites; `make site` and `check-site` pass. CI passed on the PR (run 41202409607, 4m16s),
+on amd64, arm64 and the site job.
+
+- **the gap, probed first:** a 20,000-byte port under a wrap whose `f` writes each piece's
+  length reads `[20000]` through `res-body->bytevector` at every setting, and through the
+  test host `[20000]` unset, `[16384][3616]` at 16384 and `[8192][8192][3616]` at 8192.
+  The parity row in `test-http-server` holds bytes alone, through `upcased`, which no
+  split changes, so it never saw this;
+- **Testing's page:** `res-body->bytevector` reads as the server sends by default, a port
+  in 64 KiB pieces whatever the setting. A new section, "Test a wrap across pieces",
+  gives Bodies' `wrap-shout` a producer split inside `é`, and it prints `"CAFÉ"` whole
+  and `"CAF��"` split: a producer's pieces go out as they are, so a test chooses its
+  splits. To read a port in the app's own pieces, the test host takes an `env` with the
+  setting. The program was run by hand, and the page's block is the file that ran (no
+  test runs the docs' code; Open);
+- **the reference entry, `(circuit test)`'s comment and the design** (§11's passage, and
+  §15.29 with what was weighed) say the same. No code changed, so no row: the 64 KiB
+  pieces were already held by `test-test`'s two piece rows;
+- **the ledger:** #26's Now and close-out dated it 2026-10-30; it merged on 2026-10-31;
+- **agents:** none.
 
 ### 2026-10-31: a Chez floor outside the container, and six housekeeping items, in PR #28
 
@@ -288,7 +307,7 @@ passed on the PR (run 41197577950, 3m58s), on amd64, arm64 and the site job.
 - **agents:** the builder, Opus, 372,978 tokens and 25.4 min, then 72,710 and 10.8 min for
   the review's fixes; the reviewer, Opus, 268,829 tokens and 19.8 min, for #27 and #28.
 
-### 2026-10-30: `wrap-catch-with`, `wrap-log-with` and the client's address, in PR #26
+### 2026-10-31: `wrap-catch-with`, `wrap-log-with` and the client's address, in PR #26
 
 On the owner's "start the open list items": they chose, among the options offered, the
 makers over a breaking change or none, and the address at the end of the line, as the

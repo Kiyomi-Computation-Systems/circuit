@@ -37,9 +37,13 @@ hello, you
   UTF-8 bytes, or `#f` for none.
 - A test request is HTTP/1.1, and has no addresses: `req-remote-address`
   and the other three read `#f`.
-- `(res-body->bytevector res)` reads any body as the server would send it:
-  a string, a port, a producer, a sized or a wrapped body. One that ends
-  short of its length, or runs past it, is an assertion violation.
+- `(res-body->bytevector res)` reads any body as the server would send it
+  by default: a string, a port, a producer, a sized or a wrapped body. One
+  that ends short of its length, or runs past it, is an assertion
+  violation.
+- It reads a port in pieces of 65,536 bytes, the default, whatever your
+  app's `CIRCUIT_PORT_PIECE_BYTES`. A wrap or a tap sees those pieces
+  ([below](#test-a-wrap-across-pieces)).
 - A test request reads its body whatever its cap. The server holds caps,
   so test one in the server's test host
   ([below](#test-a-handler-that-waits)).
@@ -122,6 +126,58 @@ It prints the statuses the client has read, at 999 ms and at 1000 ms:
 - The server's
   [Testing handlers](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.10.0/docs/testing.md)
   has the rest: a body in pieces, a client that leaves, the server's log.
+
+## Test a wrap across pieces
+
+A wrap's `f` gets the body a piece at a time. `res-body->bytevector`
+reads a port of 64 KiB or less as one piece, so a test on a small file
+never splits it. Give the handler a producer instead: its pieces go out as
+they are, so you choose where they split.
+
+```scheme
+(import (rnrs) (circuit) (circuit test))
+
+;; wrap-shout : Middleware — upper-cases each piece of ASCII text, as in Bodies
+(define (wrap-shout handler)
+  (lambda (req)
+    (res-wrap-body (handler req)
+                   (lambda (produce)
+                     (lambda ()
+                       (let ((piece (produce)))
+                         (if (eof-object? piece)
+                             piece
+                             (string->utf8 (string-upcase (utf8->string piece))))))))))
+
+;; pieces : Bytevector ... -> Producer — each bytevector a piece, then eof
+(define (pieces . all)
+  (lambda ()
+    (if (null? all)
+        (eof-object)
+        (let ((piece (car all)))
+          (set! all (cdr all))
+          piece))))
+
+;; shouted : Bytevector ... -> String — what wrap-shout sends for a body in these pieces
+(define (shouted . all)
+  (let ((app (lambda (req) (make-res 200 '() (apply pieces all)))))
+    (utf8->string (res-body->bytevector ((wrap-shout app) (make-test-req 'GET "/"))))))
+
+(write (shouted (string->utf8 "café"))) (newline)
+(write (shouted #vu8(99 97 102 195) #vu8(169))) (newline)
+```
+
+It prints `café` in one piece, then split inside the `é`:
+
+```text
+"CAFÉ"
+"CAF��"
+```
+
+- `wrap-shout` reads each piece as text, and half a character isn't
+  text. Pieces that split every character find it.
+- To read a port in your app's own pieces, run the app in the test host
+  ([above](#test-a-handler-that-waits)), with an `env` that gives
+  `CIRCUIT_PORT_PIECE_BYTES`.
 
 ## A small suite
 
