@@ -108,7 +108,54 @@ no such page
 - The path picks the route first, then the method: `DELETE /users/new` is
   `/users/new`'s 405, even beside a `/users/:id` that takes DELETE.
 - A path no route takes gets an empty 404, or what your not-found handler
-  answers, the second argument to `make-router`.
+  answers: a handler after the table, as here.
+
+## Answer 404, 400 and 405 yourself
+
+```scheme
+(define (bad-request req) (text 400 "bad path\n"))
+(define (not-allowed req)
+  (text 405 (string-append "no " (symbol->string (req-method req))
+                           " on " (req-route req) "\n")))
+
+(make-router
+ (list (route "/users" (GET list-users) (POST create-user))
+       (route "/users/:id" (GET show-user)))
+ (on-method-not-allowed not-allowed)
+ (on-bad-request bad-request)
+ (on-not-found not-found))
+```
+
+```text
+$ curl -i -X DELETE http://127.0.0.1:8080/users/7
+HTTP/1.1 405 Method Not Allowed
+Date: Sat, 31 Oct 2026 00:40:17 GMT
+content-type: text/plain
+allow: GET, HEAD
+Content-Length: 24
+
+no DELETE on /users/:id
+$ curl http://127.0.0.1:8080/users/%FF
+bad path
+$ curl http://127.0.0.1:8080/nowhere
+no such page
+```
+
+- After the table, `make-router` takes options, in any order, one for
+  each answer:
+  - `(on-not-found h)`, or `h` alone, for a path no route takes;
+  - `(on-bad-request h)` for a capture that doesn't decode (see below);
+  - `(on-method-not-allowed h)` for a method the route doesn't take.
+- The 404 and 400 handlers get the request as it came to the router. The
+  405 handler gets it with the route's match: `req-route` and
+  `req-path-params` work.
+- When the 405 handler answers a 405, the router sets `allow` on it,
+  replacing any it set: HTTP requires it on a 405. Any other answer goes
+  out as it is, so the handler can answer a 404 to hide the route.
+- A group's middleware runs for none of them. Middleware around the router
+  runs for all of them.
+- Two options for one answer raise, and so does a constructor without its
+  handler, such as `on-bad-request` alone.
 
 ## Write a template
 
@@ -276,8 +323,17 @@ Content-Length: 0
   percent-decoded, as UTF-8.
 - `%2F` stays inside its segment while matching, and is a `/` in the
   value. `+` stays `+`.
-- A capture that doesn't decode, such as `%FF`, which is no UTF-8, gets an
-  empty 400, and no handler runs.
+- A capture that doesn't decode gets an empty 400, or your 400 handler's
+  answer, and no route's handler runs. That is a bad escape, such as `%4`;
+  bytes that aren't UTF-8, such as `%FF`; or a raw character a path can't
+  hold, such as a space, `"` or `<`.
+- A path holds raw only letters, digits,
+  `- . _ ~ ! $ & ' ( ) * + , ; = : @`, and `/` between segments (RFC
+  3986). The server lets no other raw character into a path, so the router
+  meets one only in a path a middleware set with `req-with-path`, or a
+  test's.
+- A mount's rest is no capture: the router leaves it unchecked, and the
+  mounted handler sees it as it came.
 - `req-path` itself stays as the client sent it.
 
 ⚠️ **A decoded value is the client's.** It can hold `/` (from `%2F`), `..`,

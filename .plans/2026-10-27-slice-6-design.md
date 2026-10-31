@@ -180,7 +180,10 @@ The exports. Slice 6b settled the names and a constructor for other methods. The
 owner added `req-mount-path` at the review (design §15.20):
 
 ```text
-make-router : (Listof Route) [Handler] -> Handler      the optional not-found handler
+make-router : (Listof Route) RouterOption ... -> Handler   who answers 404, 400 and 405
+on-not-found          : Handler -> RouterOption
+on-bad-request        : Handler -> RouterOption
+on-method-not-allowed : Handler -> RouterOption
 route       : String [Symbol] MethodEntry ... -> Route  the symbol names the route
 GET POST PUT PATCH DELETE OPTIONS ANY : Handler -> MethodEntry
 METHOD      : Symbol Handler -> MethodEntry            any other method, and HEAD
@@ -193,6 +196,18 @@ req-mount-path  : Req -> String                         the part the mounts took
 ```
 
 - **The names suite holds them apart from the server's** (ADR-0005).
+- **`make-router`'s options** (the owner, 2026-10-30, design §15.28):
+  - Each is optional, and they come in any order. A bare procedure stands for
+    `(on-not-found it)`, as the second argument did before.
+  - Two for one answer, a bare one and an `on-not-found` among them, are refused by
+    `make-router` among its table checks, before any middleware is applied. So is an option
+    that is neither.
+  - Each constructor checks its handler, with its own name as the who.
+  - The names are `on-…` because a program can't define a name it imports, and the docs
+    and tests define `not-found` and `bad-request` themselves.
+  - An option's constructor given bare among the options, such as `on-bad-request` with no
+    handler, is refused among the option checks, with a message that says to call it with
+    a handler (the review of PR #27: it had been taken as the not-found handler).
 - **`(circuit router)` isn't in the `(circuit)` facade:** an app imports it beside it.
 - **`METHOD`:**
   - Its symbol is an RFC 9110 token in upper case, as the server takes a method.
@@ -253,14 +268,21 @@ req-mount-path  : Req -> String                         the part the mounts took
   - The match backtracks. For `/users/new/edit`, `/users/:id/edit` wins over
     `/users/new`, which takes the first two segments but not the third.
 - **Then the captures are percent-decoded, strictly, as UTF-8.**
-  - These answer an empty 400, and no handler runs:
+  - These go to the router's 400, and no route's handler runs:
     - a malformed escape, anywhere in a value;
     - bytes that aren't UTF-8: an overlong form, a surrogate, past U+10FFFF, cut short,
       or a stray continuation byte;
-    - a raw character past ASCII.
-  - The server refuses raw non-ASCII and malformed escapes itself, before any handler
-    runs. They reach the router only through `req-with-path` or a test request. Bytes that
-    aren't UTF-8, such as `%FF`, do come from the wire.
+    - a raw character past ASCII;
+    - a raw ASCII character RFC 3986's path grammar refuses (design §15.28): a control,
+      space, DEL, `"`, `#`, `<`, `>`, `?`, `[`, `\`, `]`, `^`, a backtick, `{`, `|` or `}`.
+      `/` is raw only in a catch-all's value, and `%` only in a valid escape.
+  - The server lets none of these into a path but bytes that aren't UTF-8, such as
+    `%FF`, which do come from the wire. It judges by uriparse's
+    `validate-component 'path`, which takes exactly pchar and `/` (probed at v0.10.0,
+    all 128 bytes, GET and POST, origin-form and absolute-form). A raw `?` begins the
+    query, and a raw `|` in a GET's origin-form path gets a 301 to `%7C`. So the rest reach
+    the router only through `req-with-path` or a test request.
+  - A mount's rest is no capture: it isn't checked.
   - `+` stays `+`.
   - `%2F` stays inside its segment for matching, and decodes to `/` in the value. So
     `/users/%6Eew` is `/users/:id` with id `new`, not the word `new`.
@@ -274,11 +296,23 @@ req-mount-path  : Req -> String                         the part the mounts took
   - **No route takes the path:** the not-found handler runs. By default it answers an
     empty 404. It gets the request as it came to the router: under a mount, the mount's
     match and the rest of the path; reached through a route, that route's match.
-  - **The route has no handler for the method:** an empty 405, with `allow` listing the
-    route's methods.
+  - **A capture doesn't decode:** the 400 handler runs, by default the empty 400. It gets
+    the request as the not-found handler does, with no match from this router.
+  - **The route has no handler for the method:** the 405 handler runs, by default an
+    empty 405, with `allow` listing the route's methods. The handler gets the request
+    with the route's match on it, one `req-set` on this path only. When it answers a res
+    whose status is 405, the router sets `allow` on it with `res-set-header`, to the value
+    the default 405 carries, replacing any `allow` the handler set: RFC 9110 §15.5.6
+    requires the header in a 405. Any other answer goes on untouched, an `allow` the
+    handler set itself included. So a 405 handler can answer a 404 that hides the route,
+    and that 404 carries no `allow` an unknown path's 404 lacks (the review of PR #27).
     - The methods come in the order the route lists them, joined by `", "`.
     - HEAD comes right after GET when the route has a GET and no HEAD of its own.
     - RFC 9110 §15.5.6 requires the header.
+  - **The answers left to the router are made once:** the empty 404 and 400 at load, and
+    each route's 405 when the router is made. The options change no hit path:
+    `tests/test-router.sps` holds a router with all three to the bytes of one without, for
+    a word, a parameter, a catch-all and a mount.
 
 ### The request
 

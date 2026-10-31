@@ -14,6 +14,14 @@ release before 1.0.
   `wrap` takes them as it takes `(wrap-timeout ms)`:
   `(wrap app (wrap-catch-with on-raise) (wrap-log-with clock))`.
   `(wrap-catch handler on-raise)` and `(wrap-log handler clock)` work as before.
+- **The app can answer the router's 400 and 405 itself.** `make-router` takes options
+  after its table, in any order: `(on-not-found h)`, or `h` alone as before,
+  `(on-bad-request h)` and `(on-method-not-allowed h)`. The 400's handler gets the request
+  as it came to the router. The 405's gets it with the route's match, and when it answers
+  a 405 the router sets `allow` on it; any other status goes out as it is, so a 404 can
+  hide the route. Two options for one answer raise, and so does a constructor given
+  without its handler. A program that defines one of the three names itself must rename
+  it.
 - **`make check-chez`**, run first by every target that runs Chez on circuit's libraries.
   It refuses a Chez below 10.4.1, one without threads, or a `CHEZ` that is missing or
   empty, saying what it found. The docs site's targets take a threaded Chez of any
@@ -32,6 +40,11 @@ release before 1.0.
 - **`wrap-log` writes each control character in the method, the path and the address as
   a space**, so a request is always one line, even when a middleware set the address
   from a client's header.
+- **A capture holding a raw character a path can't hold is a 400**, as one that doesn't
+  decode as UTF-8 already was: a control character, a space, DEL, `"`, `#`, `<`, `>`, `?`,
+  `[`, `\`, `]`, `^`, a backtick, `{`, `|` or `}`. The server lets none of them into a
+  path, so only a path set with `req-with-path`, or a test's, can hold one. A mount's rest
+  is still unchecked.
 - **The default `CHEZ`** is the first of `scheme` and `chez` on `PATH` that is Chez
   Scheme 10.4.1 or later, threaded; failing that, the first that is Chez Scheme. On a
   Mac, another Scheme may own `scheme`.

@@ -21,10 +21,25 @@
 ;;; a template that ends where the path does beats a mount taking nothing.
 ;;; So the order of the table never matters, and make-router refuses two
 ;;; templates of one shape. The captures are then percent-decoded as
-;;; UTF-8, and one that doesn't decode is a 400. Then the method picks the
-;;; handler: HEAD goes to the route's own HEAD, else its GET, else its ANY,
-;;; and a method the route can't take is a 405 with its Allow. No route for
-;;; the path runs the not-found handler.
+;;; UTF-8, and one that doesn't decode is a 400: a malformed escape, bytes
+;;; that aren't UTF-8, or a raw character a path can't hold, past ASCII or
+;;; outside RFC 3986's pchar (and / in a catch-all). A mount's rest is no
+;;; capture, and isn't checked. Then the method picks the handler: HEAD
+;;; goes to the route's own HEAD, else its GET, else its ANY, and a method
+;;; the route can't take is a 405 with its Allow. No route for the path
+;;; runs the not-found handler.
+;;;
+;;; The app may answer the 404, the 400 and the 405 itself, through
+;;; make-router's options, in any order: (on-not-found h), or h bare,
+;;; (on-bad-request h) and (on-method-not-allowed h). The 404's and the
+;;; 400's handler gets the request as it came to the router; the 405's gets
+;;; it with the route's match on it, and when it answers a 405 the router
+;;; sets Allow on it, as RFC 9110 requires. Any other answer goes on as it
+;;; is, so a 405 handler may answer a 404 that hides the route. A
+;;; constructor given bare among the options, such as on-bad-request with
+;;; no handler, is refused. An answer left to the router is made once,
+;;; not at each request: the empty 404 and 400 here, each route's empty 405
+;;; when the router is made.
 ;;;
 ;;; The match goes on the request with one req-set, under this library's
 ;;; key: the template, the params, and the nearest mount the request is
@@ -63,18 +78,21 @@
 ;;;
 ;;; It is not in the (circuit) facade: an app imports it beside (circuit).
 (library (circuit router)
-  (export make-router route GET POST PUT PATCH DELETE OPTIONS ANY METHOD group mount
+  (export make-router on-not-found on-bad-request on-method-not-allowed
+          route GET POST PUT PATCH DELETE OPTIONS ANY METHOD group mount
           req-path-param req-path-params req-route req-mount-path)
   (import (rnrs) (rnrs mutable-strings)
           (only (circuit request)
                 req? req-method req-path req-ref req-set req-with-path make-req-key)
-          (only (circuit response) make-res)
+          (only (circuit response) make-res res? res-status res-set-header)
           (only (circuit middleware) wrap))
 
   ;; Handler = Req -> Res
   ;; Middleware = Handler -> Handler
   ;; Route = what route, group and mount make
   ;; MethodEntry = what GET, POST, PUT, PATCH, DELETE, OPTIONS, ANY and METHOD make
+  ;; RouterOption = what on-not-found, on-bad-request and on-method-not-allowed make,
+  ;;   or a Handler, which stands for (on-not-found it)
   ;; Params = (Listof (Pair String String))
 
   ;; --- the table's parts ------------------------------------------------------
@@ -119,11 +137,28 @@
 
   ;; --- templates --------------------------------------------------------------
 
+  ;; pchars : Bytevector
+  ;; 1 at each ASCII code RFC 3986's pchar holds unescaped, but pct-encoded:
+  ;; unreserved, sub-delims, : and @. What a path carries as it is.
+  (define pchars
+    (let ((table (make-bytevector 128 0)))
+      (for-each (lambda (c) (bytevector-u8-set! table (char->integer c) 1))
+                (string->list (string-append "abcdefghijklmnopqrstuvwxyz"
+                                             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                             "0123456789-._~!$&'()*+,;=:@")))
+      table))
+
   ;; word-char? : Char -> Boolean
   ;; RFC 3986's pchar, but pct-encoded: what a path carries unescaped.
   (define (word-char? c)
-    (or (char<=? #\a c #\z) (char<=? #\A c #\Z) (char<=? #\0 c #\9)
-        (memv c '(#\- #\. #\_ #\~ #\! #\$ #\& #\' #\( #\) #\* #\+ #\, #\; #\= #\: #\@))))
+    (let ((b (char->integer c)))
+      (and (< b 128) (= (bytevector-u8-ref pchars b) 1))))
+
+  ;; raw-char? : Char -> Boolean
+  ;; What a capture holds as it is: a word's character, or the / a
+  ;; catch-all's rest keeps. A parameter's segment holds no /.
+  (define (raw-char? c)
+    (or (word-char? c) (char=? c #\/)))
 
   ;; name-char? : Char -> Boolean
   ;; What a parameter's or a catch-all's name holds: ASCII letters, digits,
@@ -271,7 +306,84 @@
         (assertion-violation 'mount "a handler is a procedure" handler))
       (make-mount-item template segments handler)))
 
+  ;; An option of make-router's: the answer its handler gives, by the name
+  ;; of the constructor that made it, and the handler.
+  (define-record-type (option make-option option?)
+    (fields answer handler)
+    (sealed #t)
+    (opaque #t))
+
+  ;; on-not-found : Handler -> RouterOption
+  ;; HANDLER for a path no route takes, handed the request as it came to
+  ;; the router. A HANDLER that is no procedure is an assertion violation.
+  (define (on-not-found handler) (router-option 'on-not-found handler))
+
+  ;; on-bad-request : Handler -> RouterOption
+  ;; HANDLER for a capture that doesn't decode, the router's 400, handed
+  ;; the request as it came to the router. A HANDLER that is no procedure
+  ;; is an assertion violation.
+  (define (on-bad-request handler) (router-option 'on-bad-request handler))
+
+  ;; on-method-not-allowed : Handler -> RouterOption
+  ;; HANDLER for a method its route doesn't take, the router's 405, handed
+  ;; the request with the route's match on it. When it answers a 405, the
+  ;; router sets Allow on it, replacing any it set; any other answer goes on
+  ;; as it is. A HANDLER that is no procedure is an assertion violation.
+  (define (on-method-not-allowed handler) (router-option 'on-method-not-allowed handler))
+
+  (define (router-option who handler)
+    (unless (procedure? handler)
+      (assertion-violation who "a handler is a procedure" handler))
+    (make-option who handler))
+
   ;; --- make-router: the checks ----------------------------------------------
+
+  ;; option-handlers : (Listof Any) -> (List (U Handler #f) (U Handler #f) (U Handler #f))
+  ;; The not-found, 400 and 405 handlers the options give, #f where none does.
+  ;; A procedure stands for (on-not-found it), but one of the option
+  ;; constructors themselves, given bare where its option was meant. That,
+  ;; what is neither an option nor a procedure, or two options for one
+  ;; answer, is an assertion violation.
+  (define (option-handlers options)
+    (let loop ((options options) (not-found #f) (bad-request #f) (not-allowed #f))
+      (if (null? options)
+          (list not-found bad-request not-allowed)
+          (let* ((x (car options))
+                 (answer (cond ((option? x) (option-answer x))
+                               ((constructor-name x)
+                                => (lambda (name)
+                                     (assertion-violation
+                                      'make-router
+                                      (string-append "an option's constructor is no handler: call it"
+                                                     " with one, as (" (symbol->string name)
+                                                     " handler)")
+                                      name)))
+                               ((procedure? x) 'on-not-found)
+                               (else (assertion-violation
+                                      'make-router
+                                      (string-append "an option is what on-not-found, on-bad-request"
+                                                     " or on-method-not-allowed makes, or a not-found"
+                                                     " handler")
+                                      x))))
+                 (handler (if (option? x) (option-handler x) x))
+                 (given (case answer
+                          ((on-not-found) not-found)
+                          ((on-bad-request) bad-request)
+                          (else not-allowed))))
+            (when given
+              (assertion-violation 'make-router "one option for each answer" answer))
+            (case answer
+              ((on-not-found) (loop (cdr options) handler bad-request not-allowed))
+              ((on-bad-request) (loop (cdr options) not-found handler not-allowed))
+              (else (loop (cdr options) not-found bad-request handler)))))))
+
+  ;; constructor-name : Any -> (U Symbol #f)
+  ;; The name of the option constructor X is, or #f.
+  (define (constructor-name x)
+    (cond ((eq? x on-not-found) 'on-not-found)
+          ((eq? x on-bad-request) 'on-bad-request)
+          ((eq? x on-method-not-allowed) 'on-method-not-allowed)
+          (else #f)))
 
   ;; One route or mount of the table: its template and segments, joined with
   ;; its groups', and its groups' middleware lists, innermost first.
@@ -410,9 +522,10 @@
   ;; them, a word as itself, a parameter as param, a catch-all as rest; its
   ;; names, left to right; its match, made once when it captures nothing;
   ;; its methods and their handlers, wrapped, as listed; the handler HEAD
-  ;; gets; ANY's; its 405, #f with ANY; and its name.
+  ;; gets; ANY's; its Allow and its empty 405 with it, each #f with ANY; and
+  ;; its name.
   (define-record-type (leaf make-leaf leaf?)
-    (fields template captures names match entries head any refusal name)
+    (fields template captures names match entries head any allow refusal name)
     (sealed #t))
 
   ;; A mount as matched: its joined template; its segments as capture reads
@@ -505,42 +618,44 @@
                  (any (cond ((assq 'ANY entries) => cdr) (else #f)))
                  (head (cond ((assq 'HEAD entries) => cdr)
                              ((assq 'GET entries) => cdr)
-                             (else any))))
+                             (else any)))
+                 (allowed (and (not any) (allow (map car entries)))))
             (make-leaf template (captures-of f) names
                        (and (null? names) (make-match template '() #f))
-                       entries head any
-                       (and (not any)
-                            (make-res 405 (list (cons "allow" (allow (map car entries)))) #f))
+                       entries head any allowed
+                       (and allowed (make-res 405 (list (cons "allow" allowed)) #f))
                        (route-item-name item))))))
 
   (define not-found-res (make-res 404 '() #f))
   (define bad-request-res (make-res 400 '() #f))
   (define (default-not-found req) not-found-res)
 
-  ;; make-router : (Listof Route) [Handler] -> Handler
+  ;; make-router : (Listof Route) RouterOption ... -> Handler
   ;; A handler for ROUTES, compiled once, here: each route's handlers and
   ;; each mount's wrapped in their groups' middlewares. A request no route
-  ;; takes goes to NOT-FOUND, by default an empty 404. Routes that are no
-  ;; list of routes, a NOT-FOUND that is no procedure, a joined template
-  ;; that breaks a template's rules, two templates of one shape, or two
-  ;; routes of one name are each an assertion violation, checked before any
-  ;; middleware is applied.
-  (define make-router
-    (case-lambda
-      ((items) (compile-router items default-not-found))
-      ((items not-found) (compile-router items not-found))))
-
-  (define (compile-router items not-found)
+  ;; takes goes to the not-found handler, by default an empty 404; a
+  ;; capture that doesn't decode to the 400 handler, by default an empty
+  ;; 400; a method its route doesn't take to the 405 handler, by default an
+  ;; empty 405, and Allow on any 405. The options after ROUTES give those
+  ;; handlers, in any order. Routes that are no list of routes, an option
+  ;; that is no option nor procedure, an option constructor given bare,
+  ;; two options for one answer, a joined template that breaks a
+  ;; template's rules, two templates of one shape, or two routes of one
+  ;; name are each an assertion violation, checked before any middleware is
+  ;; applied.
+  (define (make-router items . options)
     (unless (list? items)
       (assertion-violation 'make-router "routes are a list" items))
     (for-each (lambda (x)
                 (unless (item? x)
                   (assertion-violation 'make-router "not a route, a group or a mount" x)))
               items)
-    (unless (procedure? not-found)
-      (assertion-violation 'make-router "a not-found handler is a procedure" not-found))
-    (let ((flats (reverse (flatten items "" '() '() '())))
-          (root (make-node)))
+    (let* ((handlers (option-handlers options))
+           (not-found (or (car handlers) default-not-found))
+           (bad-request (cadr handlers))
+           (not-allowed (caddr handlers))
+           (flats (reverse (flatten items "" '() '() '())))
+           (root (make-node)))
       (for-each check-joined flats)
       (check-shapes flats)
       (check-names flats)
@@ -551,8 +666,8 @@
                (found (and (> n 0) (char=? (string-ref path 0) #\/)
                            (walk root path n 1))))
           (cond ((not found) (not-found req))
-                ((leaf? found) (serve-route found req path n))
-                (else (serve-mount found req path n)))))))
+                ((leaf? found) (serve-route found req path n bad-request not-allowed))
+                (else (serve-mount found req path n bad-request)))))))
 
   ;; --- a request ---------------------------------------------------------------
 
@@ -590,21 +705,31 @@
                  (and (char=? (string-ref word k) (string-ref path (+ i k)))
                       (loop (+ k 1))))))))
 
-  ;; serve-route : Leaf Req String Nat -> Res
-  (define (serve-route leaf req path n)
+  ;; serve-route : Leaf Req String Nat (U Handler #f) (U Handler #f) -> Res
+  ;; The route's handler for REQ's method, handed REQ with the route's
+  ;; match. A capture that doesn't decode is BAD-REQUEST's, handed REQ as
+  ;; it came, or the empty 400; a method the route doesn't take is
+  ;; NOT-ALLOWED's, handed REQ with the match, its answer given the route's
+  ;; Allow when it is a 405 and left as it is otherwise, or the route's
+  ;; empty 405.
+  (define (serve-route leaf req path n bad-request not-allowed)
     (let ((params (if (null? (leaf-names leaf))
                       '()
                       (capture (leaf-captures leaf) (leaf-names leaf) path n 1))))
       (if (not params)
-          bad-request-res
+          (if bad-request (bad-request req) bad-request-res)
           (let ((handler (let ((method (req-method req)))
                            (if (eq? method 'HEAD)
                                (leaf-head leaf)
                                (cond ((assq method (leaf-entries leaf)) => cdr)
                                      (else (leaf-any leaf)))))))
-            (if handler
-                (handler (req-set req match-key (route-match req leaf params)))
-                (leaf-refusal leaf))))))
+            (cond (handler (handler (req-set req match-key (route-match req leaf params))))
+                  (not-allowed
+                   (let ((answer (not-allowed (req-set req match-key (route-match req leaf params)))))
+                     (if (and (res? answer) (= (res-status answer) 405))
+                         (res-set-header answer "allow" (leaf-allow leaf))
+                         answer)))
+                  (else (leaf-refusal leaf)))))))
 
   ;; route-match : Req Leaf Params -> Match
   ;; LEAF's match, joined onto the nearest mount REQ is under, else its
@@ -617,16 +742,18 @@
             ((leaf-match leaf) => (lambda (prebuilt) prebuilt))
             (else (make-match (leaf-template leaf) params #f)))))
 
-  ;; serve-mount : MountLeaf Req String Nat -> Res
+  ;; serve-mount : MountLeaf Req String Nat (U Handler #f) -> Res
   ;; The mount's handler, its group's middleware around it, handed REQ
   ;; with the mount's match, the path it matched and where its rest begins:
-  ;; behind a marker, when middleware wraps the mount.
-  (define (serve-mount leaf req path n)
+  ;; behind a marker, when middleware wraps the mount. A capture that
+  ;; doesn't decode is BAD-REQUEST's, handed REQ as it came, or the empty
+  ;; 400.
+  (define (serve-mount leaf req path n bad-request)
     (let ((params (if (null? (mount-leaf-names leaf))
                       '()
                       (capture (mount-leaf-captures leaf) (mount-leaf-names leaf) path n 1))))
       (if (not params)
-          bad-request-res
+          (if bad-request (bad-request req) bad-request-res)
           (let ((under (mount-of (req-ref req match-key #f)))
                 (cut (- (skip path n 1 (mount-leaf-depth leaf)) 1)))
             (let ((m (make-mount-match (if under
@@ -704,11 +831,12 @@
 
   ;; decoded : String Nat Nat -> (U String #f)
   ;; PATH from I to E, percent-decoded as UTF-8; #f when an escape is
-  ;; malformed, a character is past ASCII, or the bytes are no UTF-8:
-  ;; overlong, a surrogate, past U+10FFFF, or cut short. The server refuses
-  ;; a malformed escape and a raw byte past ASCII in a target before any
-  ;; handler runs, so those come only from req-with-path or a test request;
-  ;; bytes that aren't UTF-8, %FF among them, come from the wire.
+  ;; malformed, a raw character is one a capture can't hold (past ASCII, or
+  ;; outside RFC 3986's pchar and /), or the bytes are no UTF-8: overlong,
+  ;; a surrogate, past U+10FFFF, or cut short. The server lets neither a
+  ;; malformed escape nor a raw byte a path can't hold into a path, so
+  ;; those come only from req-with-path or a test request; bytes that
+  ;; aren't UTF-8, %FF among them, come from the wire.
   (define (decoded path i e)
     (if (plain? path i e)
         (substring path i e)
@@ -718,11 +846,11 @@
                  (utf-8 path i e s)
                  s)))))
 
-  ;; plain? : String Nat Nat -> Boolean — ASCII from I to E, and no %.
+  ;; plain? : String Nat Nat -> Boolean
+  ;; Only what a capture holds raw from I to E: no %, nothing past ASCII.
   (define (plain? path i e)
     (or (= i e)
-        (let ((c (string-ref path i)))
-          (and (char<? c #\x80) (not (char=? c #\%)) (plain? path (+ i 1) e)))))
+        (and (raw-char? (string-ref path i)) (plain? path (+ i 1) e))))
 
   ;; utf-8 : String Nat Nat (U String #f) -> (U Nat #f)
   ;; How many characters the bytes of PATH from I to E decode to, each put
@@ -765,15 +893,15 @@
 
   ;; byte-at : String Nat Nat -> Integer
   ;; The byte PATH holds at K, an escape or a character, before E; -1 for a
-  ;; malformed escape or a character past ASCII.
+  ;; malformed escape or a character a capture can't hold raw.
   (define (byte-at path k e)
     (let ((c (string-ref path k)))
-      (if (char=? c #\%)
-          (let ((high (and (< (+ k 2) e) (hex (string-ref path (+ k 1)))))
-                (low (and (< (+ k 2) e) (hex (string-ref path (+ k 2))))))
-            (if (and high low) (+ (* 16 high) low) -1))
-          (let ((b (char->integer c)))
-            (if (< b #x80) b -1)))))
+      (cond ((char=? c #\%)
+             (let ((high (and (< (+ k 2) e) (hex (string-ref path (+ k 1)))))
+                   (low (and (< (+ k 2) e) (hex (string-ref path (+ k 2))))))
+               (if (and high low) (+ (* 16 high) low) -1)))
+            ((raw-char? c) (char->integer c))
+            (else -1))))
 
   ;; width : String Nat -> Nat — how many characters PATH's byte at K takes.
   (define (width path k) (if (char=? (string-ref path k) #\%) 3 1))
