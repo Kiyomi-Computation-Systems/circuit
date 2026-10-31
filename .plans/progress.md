@@ -185,8 +185,9 @@ entries offered were `not-found`, `bad-request` and `method-not-allowed`; I rena
 ("multiple definitions for not-found in body", probed) and routing's page and
 `test-router` define two of them, and told the owner. Commits on `open/router-handlers`:
 the code, tests and docs (bbdc0f8), their records (8753384), the review's fixes (70da6e6)
-and theirs (558a1f7), main with #26 merged in (65d4899), this close-out, and its CI run
-named here. `make test` passes 16 suites, and `make check-site` passes.
+and theirs (558a1f7), main with #26 merged in (65d4899), this close-out (9a490de), and
+its CI run named here. `make test` passes 16 suites, and `make check-site` passes. CI
+passed on the PR (run 41197577950, 3m58s), on amd64, arm64 and the site job.
 
 - **the options:** `make-router` takes `(on-not-found h)`, `h` bare, `(on-bad-request h)`
   and `(on-method-not-allowed h)` after its table, in any order, refusing two for one
@@ -200,7 +201,7 @@ named here. `make test` passes 16 suites, and `make check-site` passes.
   POST, origin-form and absolute-form, lets exactly pchar and `/` reach a handler; a raw
   `|` in an origin-form GET gets a 301 to `%7C`. A mount's rest stays unchecked;
 - **the rows:** 24 new in `test-router`, each watched failing under a mutant of its own,
-  28 router mutants in all; the property suite models the options, its option handlers
+  29 router mutants in all; the property suite models the options, its option handlers
   drawn as leaves, wrapped handlers and routers, its 405 handlers answering 405, 404 or
   200, a third with an `Allow` of their own. It passes at the default seed and five more;
 - **the gate:** G10's word, parameter and miss rows read 82–84, 163–165 and 2–6 B, before
