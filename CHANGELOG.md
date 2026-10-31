@@ -14,17 +14,30 @@ release before 1.0.
   `wrap` takes them as it takes `(wrap-timeout ms)`:
   `(wrap app (wrap-catch-with on-raise) (wrap-log-with clock))`.
   `(wrap-catch handler on-raise)` and `(wrap-log handler clock)` work as before.
+- **The app can answer the router's 400 and 405 itself.** `make-router` takes options
+  after its table, in any order: `(on-not-found h)`, or `h` alone as before,
+  `(on-bad-request h)` and `(on-method-not-allowed h)`. The 400's handler gets the request
+  as it came to the router. The 405's gets it with the route's match, and when it answers
+  a 405 the router sets `allow` on it; any other status goes out as it is, so a 404 can
+  hide the route. Two options for one answer raise, and so does a constructor given
+  without its handler. A program that defines one of the three names itself must rename
+  it.
 
 ### Changed
 
 - **`wrap-log`'s line ends with the client's address**, `req-remote-address`, or `-` for
   none, as the server's `request-refused` line does:
   `request GET /users 200 written 0 127.0.0.1`. A program that reads the milliseconds as
-  the line's last field must take the one before it. A middleware that sets the address, such as one that believes a
-  proxy, goes after `wrap-log`.
+  the line's last field must take the one before it. A middleware that sets the address,
+  such as one that believes a proxy, goes after `wrap-log`.
 - **`wrap-log` writes each control character in the method, the path and the address as
   a space**, so a request is always one line, even when a middleware set the address
   from a client's header.
+- **A capture holding a raw character a path can't hold is a 400**, as one that doesn't
+  decode as UTF-8 already was: a control character, a space, DEL, `"`, `#`, `<`, `>`, `?`,
+  `[`, `\`, `]`, `^`, a backtick, `{`, `|` or `}`. The server lets none of them into a
+  path, so only a path set with `req-with-path`, or a test's, can hold one. A mount's rest
+  is still unchecked.
 
 ## [0.1.2] - 2026-10-30
 
