@@ -116,7 +116,7 @@ close-out under **Close-outs**, newest first.
   from [PR #32](https://github.com/Kiyomi-Computation-Systems/circuit/pull/32) on
   2026-10-31, which closes the owner's #30; its close-out is below.
 - **Slice 9 is designed** in [2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md),
-  squashed from [PR #33](https://github.com/Kiyomi-Computation-Systems/circuit/pull/33)
+  approved by the owner on 2026-10-31, squashed from [PR #33](https://github.com/Kiyomi-Computation-Systems/circuit/pull/33)
   on 2026-10-31; its close-out is below. The owner's answers are design §15.30: 9a CORS and
   security headers, 9b params, 9c cookies, then a design of sessions' own.
 - **Next:** slice 9a, CORS and security headers: `(circuit middleware cors)` and
@@ -210,7 +210,8 @@ job.
   decoder. An overlong pair gives one U+FFFD (WHATWG: two), a surrogate one (three), and
   a BOM is dropped, which WHATWG keeps. So 9b decodes UTF-8 itself. The probe is in
   `build/probe-utf8/`, git-ignored;
-- **the owner's answers:** all six in the design's §8 as proposed, design §15.30;
+- **the owner's answers:** all six in the design's §8 as proposed, design §15.30. The
+  owner approved the design on the PR, recorded on the branch before the merge;
 - **agents:** none.
 
 ### 2026-10-31: the docs site's heading anchors are GitHub's, in PR #32

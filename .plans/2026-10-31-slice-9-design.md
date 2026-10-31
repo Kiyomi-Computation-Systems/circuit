@@ -1,6 +1,7 @@
 # Slice 9 design: CORS and security headers, params, and cookies
 
-A draft for the owner's review, written 2026-10-31. It builds on the circuit design
+Approved by the owner on 2026-10-31; the circuit design's §15.30 records it. It builds
+on the circuit design
 ([2026-10-24-circuit-design.md](2026-10-24-circuit-design.md)): §3 for the request's
 keys, §5 for headers and bodies, §6 for middleware, §11 for the libraries, §17 for the
 slices. Sessions come after it, as a design of their own (§7). §8 records the owner's

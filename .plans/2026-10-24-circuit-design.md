@@ -1622,7 +1622,8 @@ The owner's answer to the ledger's Open list (2026-10-31):
     streams, no unit test would catch under any of them.
 
 The owner's answers on slice 9's design
-([2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md)), its §8 (2026-10-31):
+([2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md)), its §8 (2026-10-31), with
+the design approved the same day:
 
 30. **Slice 9 is three PRs, building towards sessions:** 9a CORS and
     security headers, 9b params, 9c cookies. Sessions get a design of their
