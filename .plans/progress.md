@@ -194,8 +194,9 @@ close-out under **Close-outs**, newest first.
 ### 2026-10-31: slice 9b, params, in PR #35
 
 On the owner's "start slice 9b". Commits on `open/slice-9b`: the code, tests and docs
-(65a3094), this close-out, and its CI run named here. `make test` passes 21 suites, and
-`make check-site` passes.
+(65a3094), this close-out (8938857), and its CI run named here. `make test` passes 21
+suites, and `make check-site` passes. CI passed on the PR (run 41230810833, 4m15s), on
+amd64, arm64 and the site job.
 
 - **`(circuit params)`:** `req-query-params`, `wrap-form-params`, `req-form-params`,
   `param-value`, `param-values`, `parse-params` and `params->string`, as the design's §5
