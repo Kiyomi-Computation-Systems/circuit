@@ -210,7 +210,8 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "lets design sessions", after the second `set-cookie` refusal's merge.
 Commits on `open/sessions-design`: the design, ADR-0008 and the records in the circuit
-design (3953020), this close-out, and its CI run named here.
+design (3953020), this close-out (93c6dfd), and its CI run named here. CI passed on the
+PR (run 41341334420, 4m04s), on amd64, arm64 and the site job.
 
 - **the design:** slice 10 as two PRs. 10a adds response keys to `(circuit response)`,
   as the request has. 10b adds `(circuit session)`, a signed cookie store: the session's
