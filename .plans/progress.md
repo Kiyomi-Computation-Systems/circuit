@@ -132,7 +132,7 @@ close-out under **Close-outs**, newest first.
   its close-out is below. `(circuit cookies)` makes ten public libraries, and slice 9 is
   done.
 - **A second `set-cookie` of one name is refused**, squashed from
-  [PR #37](https://github.com/Kiyomi-Computation-Systems/circuit/pull/37) on 2026-10-31;
+  [PR #37](https://github.com/Kiyomi-Computation-Systems/circuit/pull/37) on 2026-11-01;
   its close-out is below. The owner's answer is design §15.32, which sessions must meet: a
   middleware can't write a cookie the handler wrote.
 - **Next:** sessions, a design of their own (the slice 9 design §7), after the owner's
