@@ -1,7 +1,7 @@
 # ADR-0008: `hashing`, from Akku, is circuit's first runtime dependency
 
-- **Status:** Proposed (the owner chose `hashing` on 2026-11-01; how it comes in awaits
-  the sessions design's approval)
+- **Status:** Proposed (the owner chose `hashing` and approved the sessions design on
+  2026-11-01; accepted when slice 10b brings it in, the design §6)
 - **Date:** 2026-11-01
 - **Scope:** HMAC-SHA-256 for `(circuit session)`, and how a runtime dependency from Akku
   reaches the build, the container, CI and an app

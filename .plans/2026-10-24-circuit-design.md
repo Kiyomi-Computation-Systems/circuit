@@ -1671,7 +1671,8 @@ one name:
 
 The owner's answers on sessions (2026-11-01), after a survey of eight frameworks'
 sessions and of the cryptography R6RS can reach; the sessions design
-([2026-11-01-sessions-design.md](2026-11-01-sessions-design.md)) §8 has them in full:
+([2026-11-01-sessions-design.md](2026-11-01-sessions-design.md)) §8 has them in full,
+and the owner approved it the same day:
 
 33. **Sessions are a signed cookie, signed by `hashing`, from Akku:** circuit's first
     runtime dependency (ADR-0008), as circuit will be published on Akku once the server

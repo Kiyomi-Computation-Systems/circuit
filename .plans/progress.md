@@ -136,7 +136,8 @@ close-out under **Close-outs**, newest first.
   its close-out is below. The owner's answer is design §15.32, which sessions must meet: a
   middleware can't write a cookie the handler wrote.
 - **Slice 10, sessions, is designed** in
-  [2026-11-01-sessions-design.md](2026-11-01-sessions-design.md), squashed from
+  [2026-11-01-sessions-design.md](2026-11-01-sessions-design.md), approved by the owner
+  on 2026-11-01, squashed from
   [PR #38](https://github.com/Kiyomi-Computation-Systems/circuit/pull/38) on 2026-11-01;
   its close-out is below. The owner's answers are design §15.33: 10a response keys, then
   10b `(circuit session)`, a signed cookie store, with `hashing` from Akku (ADR-0008,
@@ -225,6 +226,7 @@ PR (run 41341334420, 4m04s), on amd64, arm64 and the site job.
   - then the API: response keys, string pairs, written only when handed back,
     `__Host-session` with `Secure` by default;
   - the review's five new choices, accepted with "commit and open";
+  - the design approved with "do ritual", recorded on the branch before the merge;
 - **the research, by two agents, spot-checked against their sources:**
   - eight frameworks' sessions at named versions: six of the claims checked in the
     sources the survey fetched, each sound;

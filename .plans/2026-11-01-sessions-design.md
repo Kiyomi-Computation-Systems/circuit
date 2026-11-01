@@ -1,6 +1,7 @@
 # Slice 10 design: sessions
 
-Proposed on 2026-11-01, for the owner's approval. It builds on the circuit design
+Approved by the owner on 2026-11-01, with "do ritual" on its PR; the circuit design's
+§15.33 records it. It builds on the circuit design
 ([2026-10-24-circuit-design.md](2026-10-24-circuit-design.md)): §3 for the request's
 keys, §5 for responses, §6 for middleware. It also builds on the slice 9 design
 ([2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md)): §2 for what its libraries
