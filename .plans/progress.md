@@ -135,8 +135,14 @@ close-out under **Close-outs**, newest first.
   [PR #37](https://github.com/Kiyomi-Computation-Systems/circuit/pull/37) on 2026-11-01;
   its close-out is below. The owner's answer is design §15.32, which sessions must meet: a
   middleware can't write a cookie the handler wrote.
-- **Next:** sessions, a design of their own (the slice 9 design §7), after the owner's
-  discussion of it, cryptography above all. A release after 9c is the owner's call (§1).
+- **Slice 10, sessions, is designed** in
+  [2026-11-01-sessions-design.md](2026-11-01-sessions-design.md), squashed from
+  [PR #38](https://github.com/Kiyomi-Computation-Systems/circuit/pull/38) on 2026-11-01;
+  its close-out is below. The owner's answers are design §15.33: 10a response keys, then
+  10b `(circuit session)`, a signed cookie store, with `hashing` from Akku (ADR-0008,
+  Proposed).
+- **Next:** slice 10a, response keys (the sessions design §3). A release after 9c is the
+  owner's call (the slice 9 design §1).
 
 ## Open
 
@@ -199,6 +205,60 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-01: the sessions design, in PR #38
+
+On the owner's "lets design sessions", after the second `set-cookie` refusal's merge.
+Commits on `open/sessions-design`: the design, ADR-0008 and the records in the circuit
+design (3953020), this close-out, and its CI run named here.
+
+- **the design:** slice 10 as two PRs. 10a adds response keys to `(circuit response)`,
+  as the request has. 10b adds `(circuit session)`, a signed cookie store: the session's
+  string pairs by `params->string`, a signed time checked against a max age by a clock
+  the app passes in, and an HMAC-SHA-256 of the cookie's name and value from weinholt's
+  `hashing` 1.4.0, from Akku, circuit's first runtime dependency (ADR-0008, Proposed);
+- **the owner's answers,** in two rounds, design §15.33:
+  - cryptography first: `hashing`, after the owner asked why I leaned to writing it in
+    circuit, as circuit will be published on Akku; signed, not encrypted; the cookie
+    store alone; a signed time, the clock passed in;
+  - then the API: response keys, string pairs, written only when handed back,
+    `__Host-session` with `Secure` by default;
+  - the review's five new choices, accepted with "commit and open";
+- **the research, by two agents, spot-checked against their sources:**
+  - eight frameworks' sessions at named versions: six of the claims checked in the
+    sources the survey fetched, each sound;
+  - the cryptography R6RS can reach, read only: `hashing` on Akku, industria (its AES
+    indexes tables by state bytes, checked in its source), no Chez binding to libsodium
+    or OpenSSL's crypto, no `uv_random` in chez-libuv and SRFI-27's 65,536 seeds (both
+    checked in the pinned vendor code);
+- **probed,** in `build/sessions-probe/` and `build/hashing-probe/`, git-ignored:
+  - plain R6RS reads 32 bytes of `/dev/urandom` in the container;
+  - `hashing` 1.4.0's archive, fetched by `scripts/fetch-akku-lock` with a scratch lock,
+    matched the index's sha256. Read in full, it ran on Chez 10.4.1: 80 of 80 HMAC
+    checks and 16 of 16 SHA-256, and RFC 4231's cases 1 and 2 by a probe of my own. An
+    HMAC over 4096 bytes takes about 0.2 ms and 1,200 B;
+  - a record of three fields is 32 B, of four 48 B; `current-time` is UTC; Chez's
+    `library-extensions` hold `.scm`;
+- **the review,** read-only, on Opus: one blocking flaw (ending a `__Host-session` with
+  its path alone, which `res-expire-cookie` refuses, so every logout raised), seven to
+  fix and twelve minor. I reran its probes and checked its claims in the code, each
+  sound, and the design takes each in (its §9). Accepted as unheld: whether the mac's
+  compare takes constant time, which no row can see;
+- **traps:**
+  - Chez's `number->string` in radix 16 writes upper case, so my first RFC 4231 probe
+    read `#f` against the RFC's lower-case values. `hashing`'s `sha-256->string` writes
+    lower case;
+  - a probe of `bytes-allocated` read 0 for records that didn't escape: the compiler
+    dropped them. Stored in a vector, they read 32 and 48;
+  - a program importing `(rnrs)` and all of `(chezscheme)` is refused, "multiple
+    definitions for with-output-to-file" (found in the review). `only` works;
+- **the classifier:** the first cryptography brief asked to download and run
+  `hashing`'s code, and was refused before it started. It was relaunched read-only; the
+  owner's choice of `hashing` is what ran it later;
+- **agents:**
+  - the survey on Sonnet, 168,710 tokens, 6m27s;
+  - the cryptography on Opus, 153,656 tokens, 17m38s;
+  - the review on Opus, 269,578 tokens, 18m25s.
 
 ### 2026-10-31: a second `set-cookie` of one name refused, in PR #37
 
