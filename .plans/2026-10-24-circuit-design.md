@@ -1669,6 +1669,31 @@ one name:
     is two parts of an app writing one cookie, one losing without a word. Weighed:
     taking a second, as 9c did, the page saying to write a name once.
 
+The owner's answers on sessions (2026-11-01), after a survey of eight frameworks'
+sessions and of the cryptography R6RS can reach; the sessions design
+([2026-11-01-sessions-design.md](2026-11-01-sessions-design.md)) §8 has them in full:
+
+33. **Sessions are a signed cookie, signed by `hashing`, from Akku:** circuit's first
+    runtime dependency (ADR-0008), as circuit will be published on Akku once the server
+    is. Weighed: HMAC-SHA-256 written in circuit, which needs no dependency.
+    - **Signed, not encrypted.** Weighed: encrypted, which needs an AEAD that R6RS lacks.
+    - **The cookie is the store.** Weighed: a memory store for development.
+    - **A signed timestamp, checked against a max age by a clock the app passes in.**
+      Weighed: Chez's clock in the library, a third impure library; `Max-Age` alone.
+    - **A handler hands back its session on a response key,** `make-res-key`, `res-ref`
+      and `res-set`, a core change. Weighed: a mutable session on the request.
+    - **A session holds string pairs.** Weighed: Scheme data by `write` and `read`.
+    - **The cookie is written only when a session is handed back.** Weighed: every
+      response that came with one re-signed.
+    - **`__Host-session`, `Path=/`, `Secure`, `HttpOnly`, `SameSite=Lax` by default,**
+      and the app may name another cookie and attributes. Weighed: no defaults;
+      `session` without `Secure`.
+    - **After the design's review, accepted with "commit and open":** a signed time more
+      than 60 seconds ahead of the clock is refused; the attributes are the session's
+      own options, `HttpOnly` always on; a response that sets or expires the cookie gets
+      `cache-control: private`; the max age is at most 400 days; `hashing` is fetched
+      into `vendor/akku`, which `make clean` keeps (the sessions design §9).
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a
@@ -1727,3 +1752,7 @@ one name:
 9. CORS and security headers, params, and cookies, each its own library:
    designed in [2026-10-31-slice-9-design.md](2026-10-31-slice-9-design.md)
    as 9a, 9b and 9c (§15.30). Sessions follow, in a design of their own.
+10. Sessions: designed in
+    [2026-11-01-sessions-design.md](2026-11-01-sessions-design.md) as 10a, response keys
+    in `(circuit response)`, and 10b, `(circuit session)`, a signed cookie store, with
+    `hashing` from Akku (§15.33, ADR-0008).
