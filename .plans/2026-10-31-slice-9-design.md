@@ -438,8 +438,15 @@ judges. The owner chose it (§8.1).
   - RFC 6265bis §4.1.1: servers "MUST NOT include more than one Set-Cookie header field
     in the same response with the same cookie-name" (found in 9c). A browser takes both,
     the later replacing the earlier when their paths and domains match (§5.7), so it
-    drops nothing. `res-add-cookie` doesn't stop a second, and the page says to write a
-    name once.
+    drops nothing. 9c let a second through, and the page said to write a name once.
+  - **The owner's call, after 9c (circuit design §15.32): a second is refused, as a
+    bug,** two parts of an app writing one cookie, one losing without a word.
+    `res-add-cookie` and `res-expire-cookie` each refuse a name that a `set-cookie` field
+    of the response sets already, whatever its path or domain, as the RFC's rule has no
+    exception. A field written with `res-add-header` counts: its name is what comes
+    before its first `=`, less spaces and tabs, which is a browser's reading wherever
+    that is a token. It is checked last, after the cookie and its options. A response
+    can't remove a cookie at two paths now: that takes two responses.
 - **It refuses, with an assertion violation, what a browser would drop without a word:**
   - a name that isn't a token, or is empty;
   - a value that isn't `cookie-octet`s, bare or inside quotes (RFC 6265bis §4.1.1). A

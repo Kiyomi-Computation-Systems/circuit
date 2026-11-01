@@ -38,7 +38,8 @@ release before 1.0.
   cookie. Many cookies a browser would drop without a word are refused when written: a
   name that is no token, a value that isn't cookie-octets, over 4096 bytes, a domain no
   host can hold, such as `localhost:8080`, `SameSite=None` without `Secure`, or a
-  `__Secure-` or `__Host-` name without what its prefix needs.
+  `__Secure-` or `__Host-` name without what its prefix needs. A response sets each
+  name once: a second `set-cookie` of one name is refused, as RFC 6265bis asks.
 - **`wrap-catch-with` and `wrap-log-with`**, in `(circuit middleware waits)`.
   `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each make a middleware, so
   `wrap` takes them as it takes `(wrap-timeout ms)`:

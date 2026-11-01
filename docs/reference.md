@@ -1230,7 +1230,8 @@ res-add-cookie : Res String String CookieOption ... -> Res
 The response with one `set-cookie` field added, its attributes in one
 order. A cookie a browser would drop is refused: a name that is no token,
 a value that isn't cookie-octets, over 4096 bytes, `SameSite=None` without
-`Secure`, or a prefix's rules broken. See [Cookies](cookies.md).
+`Secure`, or a prefix's rules broken. So is a second `set-cookie` field of
+the name in the response, whatever its path. See [Cookies](cookies.md).
 
 ### `res-expire-cookie`
 
@@ -1240,7 +1241,8 @@ res-expire-cookie : Res String CookieOption ... -> Res
 
 The response with one `set-cookie` field added that removes the cookie:
 no value, and `Expires` in 1970. It takes the options but
-`cookie-max-age`. See [Cookies](cookies.md).
+`cookie-max-age`, and refuses a second field of the name, as
+`res-add-cookie` does. See [Cookies](cookies.md).
 
 ### `cookie-path`
 

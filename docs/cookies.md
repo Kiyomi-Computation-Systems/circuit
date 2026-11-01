@@ -57,8 +57,8 @@ Content-Length: 0
 - A value reads as it was sent: its quotes kept, nothing decoded, nothing
   checked.
 - `(res-add-cookie res name value option ...)` adds one `set-cookie` field
-  and keeps the response's others. Write each name once a response:
-  RFC 6265bis asks a server not to send two.
+  and keeps the response's others. A response sets each name once: a
+  second is refused (below).
 - The options, each at most once, in any order:
   - `(cookie-path "/")`: the paths it is sent to;
   - `(cookie-domain "example.com")`: that host and its subdomains too;
@@ -94,6 +94,7 @@ field when you ask. Values aren't URL-decoded, and a response has no
 (try (lambda () (res-add-cookie res "name" "Zoë Ada")))
 (try (lambda () (res-add-cookie res "__Host-id" "abc" (cookie-secure))))
 (try (lambda () (res-add-cookie res "id" "abc" (cookie-same-site 'none))))
+(try (lambda () (res-add-cookie (res-add-cookie res "id" "abc") "id" "def")))
 (try (lambda () (res-add-cookie res "name" "Wm_DqyBBZGE" (cookie-max-age 3600))))
 ```
 
@@ -101,6 +102,7 @@ field when you ask. Values aren't URL-decoded, and a response has no
 a cookie value is cookie-octets, bare or between two quotes: encode a space, a quote, a comma, a semicolon, a backslash, a control or anything past ASCII first
 a __Host- name needs cookie-secure and (cookie-path "/"), and no cookie-domain: a browser ignores the cookie otherwise
 SameSite=None needs cookie-secure: a browser ignores the cookie without it
+a response sets each cookie name once: it holds a set-cookie field of this name already
 (("set-cookie" . "name=Wm_DqyBBZGE; Max-Age=3600"))
 ```
 
@@ -124,6 +126,10 @@ when you write one, an assertion violation:
   `(cookie-secure)`, `(cookie-path "/")` and no domain. A browser checks
   these in any case, so `__HOST-` is one too.
 - `(cookie-same-site 'none)` needs `(cookie-secure)`.
+- A response sets each name once, as RFC 6265bis asks: a second
+  `set-cookie` of the name is refused, whatever its path, even after one
+  written with `res-add-header`. Two parts of an app setting one cookie is
+  a bug, and a browser would keep the later without a word.
 
 ## Test with cookies
 
