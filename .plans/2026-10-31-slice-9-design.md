@@ -451,7 +451,8 @@ judges. The owner chose it (§8.1).
   - a name that isn't a token, or is empty;
   - a value that isn't `cookie-octet`s, bare or inside quotes (RFC 6265bis §4.1.1). A
     space, `,`, `;`, `\` and anything outside ASCII need encoding first. The docs show
-    base64url, which sessions will use;
+    base64url. Sessions write `params->string`'s output instead (the sessions design
+    §5);
   - a name and value over 4096 bytes together (§5.6, "ignore the set-cookie-string
     entirely"), held from both sides: 4096 passes, 4097 is refused;
   - a `Path` or `Domain` over 1024 bytes, or holding a control character or `;`. A
@@ -504,7 +505,8 @@ judges. The owner chose it (§8.1).
 ## 7. Sessions, after slice 9
 
 Sessions get a design of their own, written after 9c. The owner wants more discussion
-first, cryptography above all. Its questions, as of 2026-10-31:
+first, cryptography above all. Its questions, as of 2026-10-31, which the sessions design
+([2026-11-01-sessions-design.md](2026-11-01-sessions-design.md)) answers:
 
 - **Where a session lives:**
   - 12-factor's processes keep no state, so a signed cookie store fits.
