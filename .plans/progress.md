@@ -230,9 +230,10 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "agree, record decision and lets move to the release", after "what goes
 into the release" and the recommendation on `wrap-form-params`. Commits on
-`release/v0.2.0`: the release and the decision (a4c5c93), this close-out, and its CI
-run named here. In the container, `make test` passes 25 suites, and `make check-site`
-and `make check-help` pass.
+`release/v0.2.0`: the release and the decision (a4c5c93), this close-out (62128ec), and
+its CI run named here. In the container, `make test` passes 25 suites, and
+`make check-site` and `make check-help` pass. CI passed on the PR (run 42314209561,
+4m36s), on amd64, arm64 and the site job.
 
 - **`[0.2.0]`:** Unreleased whole, from #26 to #41, under an intro: the fourth release,
   its libraries, `hashing` from Akku and `make submodules` again in an older checkout,
