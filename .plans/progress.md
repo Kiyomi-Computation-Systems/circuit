@@ -227,9 +227,11 @@ close-out under **Close-outs**, newest first.
 On the owner's "fix the stale server pin, lets discuss check-pins", then "do check-pins
 and both extras (make deps and repair gap) also do the test row": 10b's two open
 questions. Commits on `chore/pins-in-records`: the code, tests and records (d9c2484), this
-close-out, and its CI run named here. In the container, `make test` passes 25
+close-out (80dc2ce), and its CI run named here. In the container, `make test` passes 25
 suites, and `make check-site`, `make check-help` and `make check-site-deps` pass;
-`make check-pins` passes on the host.
+`make check-pins` passes on the host. CI passed on the PR (run 42305056224, 4m20s), on
+amd64, arm64 and the site job; on both architectures, `make check-pins` held hashing to
+its archive.
 
 - **the records' pins:** ADR-0003's items 1 and 6, and the global constraints, named the
   server at v0.9.1 and chez-websocket at v0.4.1, though PR #22 moved them to v0.10.0
