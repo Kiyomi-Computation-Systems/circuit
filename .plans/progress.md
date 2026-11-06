@@ -158,13 +158,17 @@ close-out under **Close-outs**, newest first.
   `tests/test-reference.sps` holds the global constraints' and ADR-0003's pins to
   `SERVER_PIN` and `WEBSOCKET_PIN`; `make deps` refuses a hashing that isn't the lock's,
   and the fetch downloads an archive missing from `dl/` again.
-- **Next:** a release after 10b is the owner's call (the sessions design §1).
+- **v0.2.0's release is merged**, squashed from
+  [PR #42](https://github.com/Kiyomi-Computation-Systems/circuit/pull/42) on 2026-11-06;
+  its close-out is below. `[0.2.0]` takes Unreleased whole. With it, design §15.35:
+  `wrap-form-params` takes no limit on pairs, so the Open list loses it.
+- **Next,** each when the owner asks: the signed tag `v0.2.0` on #42's squash once
+  main's CI passes on it, whose push redeploys the docs site; a GitHub Release from
+  `[0.2.0]`; a fresh clone of the tag, as Installing says. If the tag lands after
+  2026-11-06, `[0.2.0]`'s date moves to its day first.
 
 ## Open
 
-- **`wrap-form-params` has no limit on pairs** (slice 9b): parsed, 1 MiB of `a&` is
-  524,288 pairs, 25,142,936 bytes. Express's body-parser refuses a form of more than
-  1,000 by default, `413`. A limit would be a new option: the owner's call.
 - **`scripts/require-chez`, left from PR #28:**
   - with no GNU `timeout` or `gtimeout` on PATH, as on a Mac without coreutils, its probe
     is unbounded: a `scheme` that never exits hangs every make target, `make help`
@@ -221,6 +225,40 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-06: v0.2.0, and `wrap-form-params`'s pairs, in PR #42
+
+On the owner's "agree, record decision and lets move to the release", after "what goes
+into the release" and the recommendation on `wrap-form-params`. Commits on
+`release/v0.2.0`: the release and the decision (a4c5c93), this close-out, and its CI
+run named here. In the container, `make test` passes 25 suites, and `make check-site`
+and `make check-help` pass.
+
+- **`[0.2.0]`:** Unreleased whole, from #26 to #41, under an intro: the fourth release,
+  its libraries, `hashing` from Akku and `make submodules` again in an older checkout,
+  `wrap-log`'s line, and the names that join, so 0.2.0. A Changed entry names every
+  new name in `(circuit)`, `(circuit router)` and `(circuit middleware waits)`, where
+  Unreleased warned only of the router's three. The links gain `[0.2.0]`, and
+  Unreleased compares from v0.2.0;
+- **checked for the notes:** each public library's exports at v0.1.2 and on main,
+  loaded by Chez, v0.1.2's `src/` from a worktree on main's pins. Names were added to
+  `(circuit)` (five), `(circuit middleware waits)` (two) and `(circuit router)`
+  (three), and none left any library; `(circuit websocket)`'s are unchanged. The pin
+  lines and both gitlinks are as v0.1.2 had them. A probe program that imports
+  `(circuit)` and defines `res-set` was refused, "multiple definitions for res-set";
+- **the version:** 0.2.0 in `Akku.manifest`; README.org's status, the home page's and
+  Installing's clone of the tag name v0.2.0. No check holds those four to one
+  another;
+- **minor, not a patch:** before 1.0, a release that can break a program is minor.
+  `wrap-log`'s line has a new last field, a capture with a raw character a path
+  can't hold is a 400, and a program defining a new name is refused;
+- **design §15.35:** `wrap-form-params` takes no limit on pairs. Its byte cap bounds
+  them, at most `n/2`, about 25 times `n` parsed, which the params page says, and the
+  pairs are a list, so the cost is linear in `n`. Weighed: Express's `parameterLimit`
+  as an option, which pays only for an app that needs a large `n`, and can come later
+  after `n`. The slice 9 design's form section points to it, and the Open list loses
+  the item;
+- **Agents:** none.
 
 ### 2026-11-06: the records' pins, and `make check-pins` on `vendor/akku`, in PR #41
 
