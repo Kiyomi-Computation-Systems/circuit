@@ -1,7 +1,8 @@
 #!/bin/sh
 # tests/fetch-akku-lock.sh: what scripts/fetch-akku-lock promises, checked
 # offline. It builds an archive and a lock of its own (a file:// URL) in a
-# scratch directory, so it needs curl or wget, tar and xz, but no network.
+# scratch directory, so it needs curl or wget, tar, xz and diff, but no
+# network.
 # `make check-site-deps` runs it.
 set -u
 cd "$(dirname "$0")/.."
@@ -178,6 +179,48 @@ if ! run pkg && grep -q 'unpacked to nothing' "$scratch/out" \
 else
   fail "an archive that unpacks to nothing is refused"; cat "$scratch/out" >&2
 fi
+
+# 10. A tree that records the lock's sha256 is held to its archive under
+#     dl/, with no network: the server's archive is gone. A whole tree is
+#     left alone; one with a file deleted, changed or added is unpacked
+#     again, whole, from that archive.
+mkdir -p "$scratch/srv4/src"
+echo '(library (pkg four) (export) (import (rnrs)))' > "$scratch/srv4/src/four.sls"
+echo 'four' > "$scratch/srv4/src/notes.txt"
+tar -cf - -C "$scratch/srv4" . | xz -c > "$scratch/srv/pkg.tar.xz"
+write_lock "$(sha256 "$scratch/srv/pkg.tar.xz")"
+run pkg
+mv "$scratch/srv/pkg.tar.xz" "$scratch/srv/pkg.tar.xz.away"
+whole() {
+  [ "$(cat "$scratch/dest/pkg/src/four.sls")" = '(library (pkg four) (export) (import (rnrs)))' ] \
+    && [ "$(cat "$scratch/dest/pkg/src/notes.txt")" = four ] \
+    && [ "$(ls "$scratch/dest/pkg/src" | tr '\n' ' ')" = 'four.sls notes.txt ' ] \
+    && [ ! -e "$scratch/dest/pkg.check" ]
+}
+if run pkg && grep -q 'pkg is up to date' "$scratch/out" && whole; then
+  pass "a tree its archive under dl/ holds is left alone, offline"
+else
+  fail "a tree its archive under dl/ holds is left alone, offline"; cat "$scratch/out" >&2
+fi
+rm "$scratch/dest/pkg/src/four.sls"
+if run pkg && grep -q 'differs from its archive' "$scratch/out" && whole; then
+  pass "a file deleted from the tree is put back from its archive, offline"
+else
+  fail "a file deleted from the tree is put back from its archive, offline"; cat "$scratch/out" >&2
+fi
+echo 'edited' > "$scratch/dest/pkg/src/notes.txt"
+if run pkg && grep -q 'differs from its archive' "$scratch/out" && whole; then
+  pass "a file changed in the tree is put back from its archive, offline"
+else
+  fail "a file changed in the tree is put back from its archive, offline"; cat "$scratch/out" >&2
+fi
+echo 'stray' > "$scratch/dest/pkg/src/stray.sls"
+if run pkg && grep -q 'differs from its archive' "$scratch/out" && whole; then
+  pass "a file added to the tree is removed, the tree unpacked again from its archive, offline"
+else
+  fail "a file added to the tree is removed, the tree unpacked again from its archive, offline"; cat "$scratch/out" >&2
+fi
+mv "$scratch/srv/pkg.tar.xz.away" "$scratch/srv/pkg.tar.xz"
 
 if [ "$fails" -eq 0 ]; then
   echo "fetch-akku-lock: all checks passed"

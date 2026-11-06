@@ -12,12 +12,16 @@
   the audit allows (ADR-0006). A third, `(circuit websocket)`, imports
   chez-websocket's facade `(websocket)`, which imports the server. No other
   library imports `(websocket)`, none imports another `(websocket ...)`
-  library, and none imports `(circuit websocket)` (ADR-0006).
+  library, and none imports `(circuit websocket)` (ADR-0006). One core
+  library, `(circuit session)`, imports `hashing`'s `(hashing sha-2)`,
+  through `only`, and no other library imports a `(hashing ...)` one; what
+  `(hashing sha-2)` imports is held to `(rnrs ...)` and its own two
+  libraries (ADR-0008).
   `make check-imports` holds it, and `make test` runs it once `src/` exists.
 * Follow the 12 Factor Apps philosophy
 * Project is built for Chez Scheme but should be mostly portable to R6RS:
-  the core is plain R6RS, and only the two libraries above may use Chez's
-  own procedures.
+  the core is plain R6RS, `hashing` too, and only the two libraries above
+  may use Chez's own procedures.
 * Project should be portable across macos (darwin) and linux; windows is not
   supported (`.plans/decisions/0001-windows-is-not-supported.md`)
 * Project should be portable across amd64 and arm64
@@ -36,8 +40,15 @@
   isn't cloned: circuit's server is the one on the path, so chez-websocket's
   server gitlink must equal `SERVER_PIN`. The server's pin moves only with a
   chez-websocket release on that server.
+* hashing, Gwen Weinholt's SHA-2 and HMAC, from the Akku index, for
+  `(circuit session)`: circuit's one runtime dependency from Akku
+  (ADR-0008). `Akku.manifest` names it in `depends`, and `Akku.lock` pins
+  its archive and sha256.
 * `make submodules`, on the host, clones the server and the pins it
-  carries, not its test clients, and chez-websocket, not its server.
+  carries, not its test clients, and chez-websocket, not its server. Then
+  it fetches hashing as `Akku.lock` pins it into `vendor/akku`, which is
+  git-ignored, on the library path, and kept by `make clean`; `make deps`
+  fails without it.
   `make check-pins`, on the host and in CI, holds the server at
   `SERVER_PIN`, each pin it carries where the server records it, and
   chez-websocket at `WEBSOCKET_PIN` with its server gitlink at `SERVER_PIN`,
@@ -47,8 +58,8 @@
 * chez-http-server isn't on the Akku index, so Akku can't install it for
   circuit: the submodule is the only way in.
 * chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
-  development dependency of `Akku.manifest`, which names no `depends`.
-  `make site-deps`, on the host, fetches it into `build/akku/`.
+  development dependency of `Akku.manifest`. `make site-deps`, on the host,
+  fetches it into `build/akku/`, off the library path.
 * Circuit's tests run handlers through the server's test host,
   `(http-server testing)`, which its package installs. Its fake shell is
   `(http-server private fake-shell)`, which no circuit library imports
@@ -67,7 +78,7 @@
   `build/site/`, and the Pages workflow publishes it on a release tag.
   `make check-site` gates it: every page is in `site/pages.sls`, in the
   home page's Read next order. `tests/test-reference.sps` holds
-  `docs/reference.md` to every export of the ten public libraries and its
+  `docs/reference.md` to every export of the eleven public libraries and its
   signature comment: a new export needs an entry.
 * Documentation should be very concise, focused, to the point, ELI5 style.
 * `Makefile` should have a `help` command which lists all of its commands

@@ -56,6 +56,7 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 | `(circuit router)` | `make-router`: routes by the path, then the method |
 | `(circuit params)` | `req-query-params` and `wrap-form-params`: the query and a form, as pairs |
 | `(circuit cookies)` | `req-cookies` and `res-add-cookie`: read, set and remove cookies |
+| `(circuit session)` | `wrap-session`: a session kept in a signed cookie |
 | `(circuit middleware waits)` | `wrap-catch`, `wrap-timeout` and `wrap-log` |
 | `(circuit middleware cors)` | `wrap-cors`: lets a page on another origin call you |
 | `(circuit middleware headers)` | `wrap-default-headers` and `wrap-hsts`: safe headers on every response |
@@ -67,8 +68,9 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 - **No TLS, no HTTP/2.** The server speaks HTTP/1.1 over plain TCP. For
   `https://`, put a proxy such as Caddy or nginx in front (the server's
   [Deploying](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.10.0/docs/deploying.md)).
-- **No framework.** There are no templates, sessions or database layer.
-  Write what you need as middleware.
+- **No framework.** There are no templates or database layer, and a
+  session lives in a signed cookie alone. Write what you need as
+  middleware.
 - **No Windows.** Linux and macOS, on x86-64 and arm64.
 
 ## Status
@@ -90,6 +92,8 @@ the [changelog](../CHANGELOG.md) says what each release has.
   fields.
 - [Cookies](cookies.md): reading the request's cookies, and setting and
   removing them.
+- [Sessions](sessions.md): remembering a visitor between requests, in a
+  signed cookie.
 - [Middleware](middleware.md): writing one, and the catch, timeout, log,
   CORS and headers that come with circuit.
 - [Routing](routing.md): routes, groups and mounts.

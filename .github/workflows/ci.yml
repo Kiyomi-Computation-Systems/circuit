@@ -2,9 +2,10 @@ name: CI
 
 # Linux only, deliberately (AGENTS.md: do NOT set up macOS runners). One job,
 # run on two images, amd64 and arm64 (AGENTS.md: portable across both): it
-# gets the pinned server, the pins it carries, and
-# chez-websocket with `make submodules`, holds them at their pins with `make
-# check-pins`, builds Chez at its floor (once, then cached), and runs `make
+# installs the toolchain, gets the pinned server, the pins it carries,
+# chez-websocket, and hashing as Akku.lock pins it, with `make submodules`,
+# holds the submodules at their pins with `make check-pins`, builds Chez at
+# its floor (once, then cached), and runs `make
 # test`, which builds chez-libuv's shim against the system libuv and runs
 # check-help, check-suites and every suite, then checks the docs site and runs
 # the cost gate, `make gate`. The site job builds the site as the Pages
@@ -83,34 +84,37 @@ jobs:
         with:
           persist-credentials: false
 
-      # Clone the server, the pins it carries, and chez-websocket, then verify
-      # each is where its pin or its parent records before building anything:
-      # a drifted pin fails here, in seconds, not after a cold Chez build.
-      # Every one is public, so no token is needed, and a pull request from a
-      # fork, which gets no secrets, builds as one from this repository does.
-      # `make test` needs the checkouts (deps checks they are there) and never
-      # fetches.
-      - name: Init submodules
-        run: make submodules
-
-      - name: Check dependency pins
-        run: make check-pins
-
       # libuv for the shim (pkg-config path); a C compiler and make for the
       # shim and for Chez, which scripts/ci/build-chez.sh configures with no
-      # X11 or curses; curl, which fetches Chez and oha and is the client the
-      # integration suites run against the server, over loopback; coreutils
-      # is GNU timeout, which `make test` and `make gate` run under, and
-      # sha256sum, which checks oha's fetch; cmark-gfm, the library the docs
-      # site renders through, and xz-utils, which unpacks chez-cmark-gfm's
-      # archive. Most are already on the image: naming them keeps the job from
-      # depending on that. No cmake: with libuv at its floor the shim links the
-      # system one.
+      # X11 or curses; git, which clones the submodules; curl, which fetches
+      # hashing, Chez and oha and is the client the integration suites run
+      # against the server, over loopback; coreutils is GNU timeout, which
+      # `make test` and `make gate` run under, and sha256sum, which checks
+      # hashing's fetch and oha's; cmark-gfm, the library the docs site
+      # renders through, and xz-utils, which unpacks hashing's archive and
+      # chez-cmark-gfm's. Installed first: `make submodules` fetches hashing.
+      # Most are already on the image: naming them keeps the job from
+      # depending on that. No cmake: with libuv at its floor the shim links
+      # the system one.
       - name: Install toolchain
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config libuv1-dev git curl coreutils cmark-gfm xz-utils
+
+      # Clone the server, the pins it carries, and chez-websocket, and fetch
+      # hashing into vendor/akku, its sha256 checked against Akku.lock; then
+      # verify each submodule is where its pin or its parent records before
+      # building anything: a drifted pin fails here, in seconds, not after a
+      # cold Chez build. Every one is public, so no token is needed, and a
+      # pull request from a fork, which gets no secrets, builds as one from
+      # this repository does. `make test` needs the checkouts and hashing
+      # (deps checks they are there) and never fetches.
+      - name: Init submodules
+        run: make submodules
+
+      - name: Check dependency pins
+        run: make check-pins
 
       # The OS release for the Chez cache key, read off the machine rather than
       # restated from runs-on (which a bump could forget), so a new image misses
@@ -229,6 +233,8 @@ jobs:
   # and no libuv. apt's Chez is below the floor, which is fine here: nothing
   # the site runs imports the server or (libuv). Of the submodules, the site
   # needs only chez-srfi, for its suites' SRFI-64, which `make srfi` links.
+  # xz-utils comes first: `make submodules` fetches hashing too, and unpacks
+  # it.
   site:
     name: site
     runs-on: ubuntu-24.04
@@ -238,13 +244,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Init submodules
-        run: make submodules
-
       - name: Install Chez and cmark-gfm
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends chezscheme cmark-gfm xz-utils
+
+      - name: Init submodules
+        run: make submodules
 
       - name: Get chez-cmark-gfm as Akku.lock pins it
         run: make site-deps

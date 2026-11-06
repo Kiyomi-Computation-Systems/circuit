@@ -1,6 +1,10 @@
 # build artifacts: the SRFI-64 link tree and anything else we generate
 /build/
 
+# hashing, as Akku.lock pins it, which `make submodules` fetches; outside
+# build/, so `make clean` keeps it (ADR-0008)
+/vendor/akku/
+
 # Chez compiled objects / whole-program optimization outputs
 *.so
 *.wpo

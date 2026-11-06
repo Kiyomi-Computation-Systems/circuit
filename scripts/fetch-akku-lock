@@ -5,7 +5,10 @@
 # without the akku tool: downloads the archive the lock names, checks its
 # sha256 against the lock, and unpacks it to $AKKU_DEST/NAME/. A package
 # whose unpacked tree already records the lock's sha256 is left alone, so a
-# second run needs no network.
+# second run needs no network: when its archive is still under dl/, the
+# tree is first held to it, unpacked beside it and compared by diff -r, and
+# a tree that differs, a file deleted, changed or added, is unpacked again
+# from that archive.
 #
 # AKKU_LOCK (default Akku.lock) and AKKU_DEST (default build/akku) exist so
 # tests/fetch-akku-lock.sh can run it on a lock of its own.
@@ -67,11 +70,27 @@ for name in "$@"; do
   fi
   url=$1 want=$2
   tree=$dest/$name
-  if [ -d "$tree" ] && [ "$(cat "$tree.sha256" 2>/dev/null)" = "$want" ]; then
-    echo "fetch-akku-lock: $name is up to date ($tree)"
-    continue
-  fi
   archive=$dest/dl/$name.tar.xz
+  if [ -d "$tree" ] && [ "$(cat "$tree.sha256" 2>/dev/null)" = "$want" ]; then
+    if [ ! -f "$archive" ] || [ "$(sha256 "$archive")" != "$want" ]; then
+      echo "fetch-akku-lock: $name is up to date ($tree)"
+      continue
+    fi
+    rm -rf "$tree.check"
+    mkdir -p "$tree.check"
+    if ! tar -xf "$archive" -C "$tree.check" 2>/dev/null; then
+      rm -rf "$tree.check"
+      echo "fetch-akku-lock: $name is up to date ($tree; its archive can't be unpacked here to hold the tree to it)"
+      continue
+    fi
+    if diff -r "$tree.check" "$tree" > /dev/null 2>&1; then
+      rm -rf "$tree.check"
+      echo "fetch-akku-lock: $name is up to date ($tree)"
+      continue
+    fi
+    rm -rf "$tree.check"
+    echo "fetch-akku-lock: $tree differs from its archive, so it is unpacked again"
+  fi
   if [ ! -f "$archive" ] || [ "$(sha256 "$archive")" != "$want" ]; then
     rm -f "$archive"
     if ! fetch "$url" "$archive.part"; then

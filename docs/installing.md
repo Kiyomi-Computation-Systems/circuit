@@ -12,8 +12,10 @@ build one small C library, and run your program from the checkout.
 - **libuv 1.48 or newer**, where `pkg-config` can see it: `brew install libuv`
   on macOS, `apt install libuv1-dev` on Ubuntu 24.04 or newer. An older one,
   such as Debian 12's 1.44, won't do.
-- **A C compiler, `make`, `git` and `curl`.** The compiler builds the small
-  C library under the server's libuv binding. The tests run curl.
+- **A C compiler, `make`, `git` and `curl`, and `xz` on Linux.** The
+  compiler builds the small C library under the server's libuv binding.
+  `make submodules` downloads one dependency with curl, or wget, and
+  unpacks it with tar, which on Linux needs `xz`. The tests run curl.
 - **GNU `timeout`**, which `make test` runs each suite under. On macOS,
   `brew install coreutils`.
 
@@ -26,7 +28,8 @@ make submodules
 make test
 ```
 
-- `make submodules` clones the pinned dependencies. It needs git and the
+- `make submodules` clones the pinned dependencies, and downloads
+  `hashing` into `vendor/akku`, checking its sha256. It needs git and the
   network.
 - `make test` builds the C library, then runs every suite under `tests/`.
   Its last line counts them: none should fail or hang.
@@ -53,6 +56,12 @@ chez-http-server v0.10.0 and chez-websocket v0.5.1 are git submodules under
 `vendor/`, pinned at their release tags, and `make check-pins` checks them.
 Neither is on the Akku package index yet, so Akku can't install circuit:
 the checkout is the way in.
+
+`hashing` 1.4.0, Gwen Weinholt's SHA-2 and HMAC, comes from the Akku
+package index: `Akku.lock` pins its archive and sha256,
+and `make submodules` puts it in `vendor/akku`, which `make clean` keeps.
+`(circuit session)` signs its cookie with it, and no other library uses
+it.
 
 ## Run a program
 

@@ -1,0 +1,22 @@
+;; -*- mode: scheme; coding: utf-8 -*-
+;; A stand-in for (hashing sha-2), written for this fixture: the audit
+;; reads its imports as data, and nothing runs it.
+#!r6rs
+
+(library (hashing sha-2)
+  (export hmac-sha-256)
+  (import (rnrs arithmetic bitwise)
+          (rnrs base)
+          (rnrs bytevectors)
+          (rnrs control)
+          (rnrs mutable-strings)
+          (rnrs records syntactic)
+          (rnrs syntax-case)
+          (hashing fixnums)
+          (hashing hmac)
+          (rnrs eval)
+          (prefix (rnrs eval (6)) e:)
+          (only (hashing sha-2) hmac-sha-256)
+          (hashing md5)
+          (only (chezscheme) getenv))
+  (define hmac-sha-256 0))

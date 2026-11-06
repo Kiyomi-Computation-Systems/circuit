@@ -45,6 +45,17 @@ release before 1.0.
   hands one down. Every response helper keeps the keys, `make-res` makes a response with
   none, and none is sent. A request's key and a response's are two kinds: each side
   refuses the other's.
+- **Sessions: `(circuit session)`.** `wrap-session` reads a session from a cookie
+  signed with HMAC-SHA-256 before the handler, for `(req-session req)`, and writes the
+  one a handler hands back with `(res-with-session res session)`; `'()` removes the
+  cookie. A session is `(name . value)` strings. The cookie holds them in plain text,
+  the time it was written and the signature: a visitor can read it but not change it.
+  It takes a list of secrets, each 32 bytes or more, the first signing and each
+  verifying, a clock, and a max age of up to 400 days. The cookie is `__Host-session`,
+  `Path=/`, `Secure`, `HttpOnly` and `SameSite=Lax`, which `session-name`,
+  `session-path`, `session-domain`, `session-same-site` and `session-insecure` change,
+  `HttpOnly` always on. Every response gets `vary: cookie`, and one that sets or
+  removes the cookie `cache-control: private`, unless it has a `cache-control` field.
 - **`res-with-take-over`**, in `(circuit)`, puts another take-over in an upgrade's place,
   its headers and keys kept, so a middleware can wrap a take-over without dropping what
   the handler set on the response. Upgrades' page uses it.
@@ -71,6 +82,15 @@ release before 1.0.
 
 ### Changed
 
+- **`make submodules` also downloads `hashing` 1.4.0**, circuit's first dependency from
+  the Akku index, into `vendor/akku`, its sha256 checked against `Akku.lock`, which now
+  pins it. It needs curl or wget, `sha256sum` or `shasum`, `diff`, and with GNU tar
+  `xz`. `vendor/akku` is on the library path, `make deps` fails without it, and
+  `make clean` keeps it. Only `(circuit session)` imports it, and `make check-imports`
+  holds that.
+- **`scripts/fetch-akku-lock` holds a tree to its archive:** one that records the lock's
+  sha256 is compared with its archive under `dl/`, and unpacked again from it, with no
+  download, when a file was deleted, changed or added. `make site-deps` takes it too.
 - **`wrap-log`'s line ends with the client's address**, `req-remote-address`, or `-` for
   none, as the server's `request-refused` line does:
   `request GET /users 200 written 0 127.0.0.1`. A program that reads the milliseconds as

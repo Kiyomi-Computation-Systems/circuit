@@ -64,19 +64,52 @@
 ;;;       itself, and a LIBDIR that does not exist, which holds nothing, are
 ;;;       passed over. A name such as circuit-testing is another library's,
 ;;;       and tests/fixtures/, where this check's own fixtures hold
-;;;       (circuit ...) libraries, is no directory on a path.
+;;;       (circuit ...) libraries, is no directory on a path;
+;;;   (k) (circuit session) is a core library that may also import
+;;;       (hashing sha-2), weinholt's hashing from Akku, for HMAC-SHA-256,
+;;;       and no other library may import a (hashing ...) library (ADR-0008).
+;;;       It imports no other (hashing ...) library, and that one only through
+;;;       an only right around it, or around (library ...), naming at least
+;;;       one identifier, as rule (d) reads an only: so its header names all
+;;;       it takes from code circuit didn't write;
+;;;   (l) when (circuit session) imports (hashing sha-2) as rule (k) lets
+;;;       it, the AKKU that --akku names is read as data for that library's
+;;;       closure: (hashing sha-2) and the (hashing fixnums) and (hashing
+;;;       hmac) it reaches, each read once, so a cycle ends. Each is found as
+;;;       Chez finds it, by Chez's own library search handler over its own
+;;;       library extensions, with AKKU the one library directory: a
+;;;       .chezscheme.sls, which Chez prefers to a .scm, is the file read.
+;;;       The closure imports only the (rnrs ...) libraries except (rnrs
+;;;       eval), and those two. It fails closed: no --akku, a library Chez
+;;;       finds no source for, a compiled object Chez could load in place of
+;;;       the source unread, a source it cannot read as data, a file that is
+;;;       not exactly one library form of the library's name, and an import
+;;;       spec it cannot read are each named. Rule (h) does not hold these
+;;;       files: hashing's carry #!r6rs after a comment;
+;;;   (m) as rule (j) holds circuit, each LIBDIR but the directory and AKKU
+;;;       holds nothing named hashing or hashing.<anything>, in any case: one
+;;;       there could stand in for the closure rule (l) reads. It holds
+;;;       whether --akku is named or not, and with no --akku, every LIBDIR
+;;;       holding one is named. AKKU is still a LIBDIR to rule (j), and a
+;;;       LIBDIR it cannot list is rule (j)'s to name.
 ;;;
 ;;; The lists are allowlists: a library that is not on one is refused, so a
 ;;; route nobody thought of is closed until a reviewer opens it. Exports are
 ;;; not read: a library cannot import by exporting.
 ;;;
-;;; On a pass it prints one line to stdout, naming how many libraries it
-;;; checked, and, when it was named LIBDIRs, a second, naming how many of
-;;; them it looked in. It exits 0 or 1, never a count.
+;;;   usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [LIBDIR ...]
+;;;
+;;; A --akku with no directory after it, or one that is no directory, is
+;;; named. On a pass it prints one line to stdout, naming how many libraries
+;;; it checked; when it was named LIBDIRs, a second, naming how many of them
+;;; rule (j) looked in; when it read the closure, a third, naming AKKU and
+;;; how many libraries it read; and when it was named --akku, a last, naming
+;;; how many LIBDIRs rule (m) looked in. It exits 0 or 1, never a count.
 ;;; tests/test-check-imports.sps runs it on a tree for each rule.
 (import (rnrs)
         (circuit-testing)
-        (only (chezscheme) directory-list file-directory? parameterize print-graph))
+        (only (chezscheme) directory-list file-directory? library-extensions
+              library-search-handler parameterize print-graph))
 
 ;; impure : (Listof (Listof Symbol))
 ;; The libraries that may import the server, and use Chez's own procedures.
@@ -91,6 +124,21 @@
 
 ;; websocket-facade : (Listof Symbol)
 (define websocket-facade '(websocket))
+
+;; session-library : (Listof Symbol)
+;; The one library that may import a (hashing ...) library: weinholt's
+;; hashing, from Akku, signs its cookies. Changing it is a reviewed change to
+;; the architecture (ADR-0006, ADR-0008).
+(define session-library '(circuit session))
+
+;; hashing-library : (Listof Symbol)
+;; The one (hashing ...) library session-library may import, through only.
+(define hashing-library '(hashing sha-2))
+
+;; hashing-siblings : (Listof (Listof Symbol))
+;; The (hashing ...) libraries hashing-library's closure may import beside
+;; the (rnrs ...) ones. A pin that adds one is a reviewed change (ADR-0008).
+(define hashing-siblings '((hashing fixnums) (hashing hmac)))
 
 ;; rnrs-libraries : (Listof (Listof Symbol))
 ;; The standard libraries a library under the directory may import: R6RS's, but
@@ -275,19 +323,29 @@
      (and (pair? (cdr spec)) (spec-name (cadr spec) (cons spec seen))))
     (else (reference-name spec))))
 
-;; narrow-chez? : Any -> Boolean
-;; Whether SPEC, which imports (chezscheme), takes from it only chez-names:
-;; the import set right around the reference, or around (library ...), is an
-;; only that names nothing else. The wrappers outside it can only drop or
-;; rename what it lets through. spec-name has unwrapped SPEC, so it holds no
-;; cycle.
-(define (narrow-chez? spec)
+;; narrowed? : Any ((Listof Any) -> Boolean) -> Boolean
+;; Whether the import set right around SPEC's reference, or around
+;; (library ...), is an only whose names NAMES-OK? takes. The wrappers
+;; outside it can only drop or rename what it lets through. spec-name has
+;; unwrapped SPEC, so it holds no cycle.
+(define (narrowed? spec names-ok?)
   (and (memq (car spec) wrappers)
        (let ((inner (cadr spec)))
          (if (and (pair? inner) (memq (car inner) wrappers))
-             (narrow-chez? inner)
-             (and (eq? (car spec) 'only)
-                  (for-all (lambda (id) (memq id chez-names)) (cddr spec)))))))
+             (narrowed? inner names-ok?)
+             (and (eq? (car spec) 'only) (names-ok? (cddr spec)))))))
+
+;; narrow-chez? : Any -> Boolean
+;; Whether SPEC, which imports (chezscheme), takes from it only chez-names,
+;; through an only that names nothing else.
+(define (narrow-chez? spec)
+  (narrowed? spec (lambda (ids) (for-all (lambda (id) (memq id chez-names)) ids))))
+
+;; narrow-hashing? : Any -> Boolean
+;; Whether SPEC, which imports hashing-library, names what it takes from it,
+;; through an only that names at least one identifier and nothing else.
+(define (narrow-hashing? spec)
+  (narrowed? spec (lambda (ids) (and (pair? ids) (for-all symbol? ids)))))
 
 ;; headed? : Symbol Any -> Boolean
 (define (headed? key form)
@@ -331,7 +389,8 @@
 (define (import-complaints path root name impure? spec defined)
   (let ((imported (spec-name spec '()))
         (library (written name))
-        (websocket? (equal? name websocket-library)))
+        (websocket? (equal? name websocket-library))
+        (session? (equal? name session-library)))
     (define (refuse imported reason)
       (list (string-append path ": " library " imports " (written imported)
                            ", but " reason)))
@@ -364,6 +423,20 @@
               (refuse imported
                       (string-append "only " (written websocket-library) " may import "
                                      (written websocket-facade) ", chez-websocket's facade")))))
+      ((eq? (car imported) (car hashing-library))
+       (cond ((not session?)
+              (refuse imported
+                      (string-append "only " (written session-library)
+                                     " may import a (hashing ...) library")))
+             ((not (equal? imported hashing-library))
+              (refuse imported
+                      (string-append (written session-library) " may import no (hashing ...) library but "
+                                     (written hashing-library))))
+             ((narrow-hashing? spec) '())
+             (else
+              (refuse imported
+                      (string-append (written session-library) " imports " (written hashing-library)
+                                     " only through only, right around it, naming at least one identifier: so its header names all it takes from code circuit didn't write")))))
       ((and impure? (equal? imported '(chezscheme)))
        (if (narrow-chez? spec)
            '()
@@ -386,6 +459,11 @@
                (string-append (written websocket-library)
                               " may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and "
                               (written websocket-facade))))
+      (session?
+       (refuse imported
+               (string-append (written session-library)
+                              " may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and "
+                              (written hashing-library) " through only")))
       (else
        (refuse imported
                "a core library may import only the (rnrs ...) libraries except (rnrs eval), and core (circuit ...) libraries")))))
@@ -459,17 +537,121 @@
                            (list (string-append path ": it cannot be read as data: " (cadr found))))
                    0)))))))
 
-;; circuit-entry? : String -> Boolean
+;; imports-hashing? : (Listof (Pair String Read)) -> Boolean
+;; Whether a library form named session-library, in the files read, imports
+;; hashing-library as rule (k) lets it, so rule (l) reads its closure.
+(define (imports-hashing? reads)
+  (exists (lambda (entry)
+            (let ((found (cdr entry)))
+              (and (eq? (car found) 'data)
+                   (exists (lambda (form)
+                             (and (equal? (reference-name (cadr form)) session-library)
+                                  (exists (lambda (spec)
+                                            (and (equal? (spec-name spec '()) hashing-library)
+                                                 (narrow-hashing? spec)))
+                                          (cdr (cadddr form)))))
+                           (filter library-form? (cadr found))))))
+          reads))
+
+;; resolved : String (Listof Symbol) -> (List (U String #f) (U String #f) Boolean)
+;; Where Chez finds the library NAME with AKKU its one library directory, for
+;; sources and objects both: by Chez's own search handler, over its own
+;; library extensions, so the file named is the one Chez would load. The
+;; source, or #f; the object file's path, or #f; whether that object exists.
+(define (resolved akku name)
+  (call-with-values
+    (lambda () ((library-search-handler) 'import name (list (cons akku akku)) (library-extensions)))
+    list))
+
+;; closure-import-complaints : String String Any -> (Listof String)
+;; What is wrong with the import spec SPEC of the closure's library LIBRARY,
+;; written, read from SOURCE: none, or one.
+(define (closure-import-complaints source library spec)
+  (let ((imported (spec-name spec '())))
+    (cond
+      ((not imported)
+       (list (string-append source ": " library " has an import it cannot read: " (abbreviated spec))))
+      ((or (member imported rnrs-libraries) (member imported hashing-siblings)) '())
+      (else
+       (list (string-append source ": " library " imports " (written imported)
+                            ", but the closure of " (written hashing-library)
+                            " may import only the (rnrs ...) libraries except (rnrs eval), "
+                            (joined " and " (map written hashing-siblings))))))))
+
+;; closure-library : String (Listof Symbol) -> (Pair (Listof String) (Listof (Listof Symbol)))
+;; Rule (l) for the library NAME, found in AKKU: its complaints, and the
+;; hashing-siblings it imports, which the closure reads next. A file that is
+;; not exactly one library form of NAME is named, and its imports are not
+;; read: what Chez would make of it is unknown.
+(define (closure-library akku name)
+  (let* ((where (resolved akku name))
+         (source (car where))
+         (library (written name))
+         (compiled (if (caddr where)
+                       (list (string-append (cadr where) ": it is compiled, so Chez could load " library
+                                            " from it in place of its source, which this check reads"))
+                       '())))
+    (if (not source)
+        (cons (cons (string-append akku ": Chez finds no source for " library
+                                   " in it, so this check cannot read what it imports")
+                    compiled)
+              '())
+        (let ((found (read-data source)))
+          (cond
+            ((eq? (car found) 'unreadable)
+             (cons (append compiled
+                           (list (string-append source ": it cannot be read as data: " (cadr found))))
+                   '()))
+            ((not (and (= (length (cadr found)) 1)
+                       (library-form? (car (cadr found)))
+                       (equal? (reference-name (cadr (car (cadr found)))) name)))
+             (cons (append compiled
+                           (list (string-append source ": Chez loads " library
+                                                " from it, but it is not exactly one library form named "
+                                                library)))
+                   '()))
+            (else
+             (let ((specs (cdr (cadddr (car (cadr found))))))
+               (cons (append compiled
+                             (apply append
+                                    (map (lambda (spec) (closure-import-complaints source library spec))
+                                         specs)))
+                     (filter (lambda (imported) (member imported hashing-siblings))
+                             (map (lambda (spec) (spec-name spec '())) specs))))))))))
+
+;; closure-result : String -> (Pair (Listof String) Natural)
+;; Rule (l): the complaints about hashing-library's closure in AKKU, in the
+;; order read, and how many libraries it read. Each is read once, however
+;; often it is imported, so a cycle ends.
+(define (closure-result akku)
+  (let loop ((todo (list hashing-library)) (seen '()) (complaints '()))
+    (cond
+      ((null? todo) (cons complaints (length seen)))
+      ((member (car todo) seen) (loop (cdr todo) seen complaints))
+      (else
+       (let ((found (closure-library akku (car todo))))
+         (loop (append (cdr todo) (cdr found))
+               (cons (car todo) seen)
+               (append complaints (car found))))))))
+
+;; family-entry? : String String -> Boolean
 ;; Whether NAME, an entry of a directory on a library path, is one Chez could
-;; take a (circuit ...) library from: circuit, the directory of every
-;; (circuit NAME ...), or circuit.<extension>, the file of (circuit) itself
+;; take a (FAMILY ...) library from: FAMILY, the directory of every
+;; (FAMILY NAME ...), or FAMILY.<extension>, the file of (FAMILY) itself
 ;; under any of Chez's library extensions, compiled ones among them. In any
 ;; case: a Mac's default disk finds Circuit/ or CIRCUIT.sls for circuit.
-(define (circuit-entry? name)
-  (let ((name (string-downcase name)))
-    (or (string=? name "circuit")
-        (and (> (string-length name) (string-length "circuit."))
-             (string=? (substring name 0 (string-length "circuit.")) "circuit.")))))
+(define (family-entry? family name)
+  (let ((name (string-downcase name))
+        (dotted (string-append family ".")))
+    (or (string=? name family)
+        (and (> (string-length name) (string-length dotted))
+             (string=? (substring name 0 (string-length dotted)) dotted)))))
+
+;; circuit-entry? : String -> Boolean
+(define (circuit-entry? name) (family-entry? "circuit" name))
+
+;; hashing-entry? : String -> Boolean
+(define (hashing-entry? name) (family-entry? "hashing" name))
 
 ;; path-dirs : String (Listof String) -> (Listof String)
 ;; The LIBDIRS rule (j) looks in, each without the slashes it ends with: not
@@ -497,42 +679,98 @@
                            (list-sort string<? (filter circuit-entry? names))))))
               dirs)))
 
+;; hashing-path-complaints : (U String #f) (Listof String) -> (Listof String)
+;; Rule (m): each entry of each of DIRS that hashing-entry? takes, sorted.
+;; DIRS are rule (j)'s, but AKKU, when --akku names one. A directory it
+;; cannot list is passed over: rule (j) names it, as it looks in each.
+(define (hashing-path-complaints akku dirs)
+  (apply append
+         (map (lambda (dir)
+                (let ((names (guard (e (#t #f)) (directory-list dir))))
+                  (map (lambda (name)
+                         (string-append dir "/" name
+                                        (if akku
+                                            (string-append ": its directory is on the library path beside " akku
+                                                           ", so Chez could load a (hashing ...) library from it in place of "
+                                                           akku "'s, which this check reads; only " akku " may hold one")
+                                            ": its directory is on the library path, so Chez could load a (hashing ...) library from it, and no --akku names the one directory that may hold one")))
+                       (list-sort string<? (filter hashing-entry? (or names '()))))))
+              dirs)))
+
+;; usage : String
+(define usage "usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [LIBDIR ...]")
+
 ;; main : (Listof String) -> Unit
 (define (main args)
-  (cond
-    ((null? args)
-     (say (current-error-port) "usage: scheme --program tests/check-imports.sps DIR [LIBDIR ...]")
-     (exit 1))
-    ((not (file-directory? (car args)))
-     (say (current-error-port) (string-append (car args) ": not a directory"))
-     (exit 1))
-    (else
-     (let* ((root (without-slashes (car args)))
-            (entries (list-sort (lambda (a b) (string<? (car a) (car b))) (walk root)))
-            (reads (map (lambda (entry) (cons (car entry) (read-data (car entry))))
-                        (filter (lambda (entry)
-                                  (and (eq? (cdr entry) 'file) (suffix? (car entry) ".sls")))
-                                entries)))
-            (defined (defined-libraries reads))
-            (results (map (lambda (entry) (entry-result entry root reads defined)) entries))
-            (checked (apply + (map cdr results)))
-            (dirs (path-dirs root (cdr args)))
-            (complaints (append (apply append (map car results))
-                                (if (= checked 0)
-                                    (list (string-append "no library under " root))
-                                    '())
-                                (path-complaints root dirs))))
-       (cond
-         ((null? complaints)
-          (say (current-output-port)
-               (string-append "ok, libraries checked: " (number->string checked)))
-          (unless (null? (cdr args))
-            (say (current-output-port)
-                 (string-append "ok, no other directory on the library path holds circuit: "
-                                (number->string (length dirs)) " looked in")))
-          (exit 0))
-         (else
-          (for-each (lambda (c) (say (current-error-port) c)) complaints)
-          (exit 1)))))))
+  (let ((akku? (and (pair? args) (pair? (cdr args)) (string=? (cadr args) "--akku"))))
+    (cond
+      ((null? args)
+       (say (current-error-port) usage)
+       (exit 1))
+      ((not (file-directory? (car args)))
+       (say (current-error-port) (string-append (car args) ": not a directory"))
+       (exit 1))
+      ((and akku? (null? (cddr args)))
+       (say (current-error-port) "--akku names no directory after it")
+       (exit 1))
+      ((and akku? (not (file-directory? (caddr args))))
+       (say (current-error-port) (string-append "--akku " (caddr args) ": not a directory"))
+       (exit 1))
+      (else
+       (check (without-slashes (car args))
+              (and akku? (without-slashes (caddr args)))
+              (if akku? (cdddr args) (cdr args)))))))
+
+;; check : String (U String #f) (Listof String) -> Unit
+;; The rules, on the tree ROOT, with hashing's closure read from AKKU, and
+;; the LIBDIRS named.
+(define (check root akku libdirs)
+  (let* ((entries (list-sort (lambda (a b) (string<? (car a) (car b))) (walk root)))
+         (reads (map (lambda (entry) (cons (car entry) (read-data (car entry))))
+                     (filter (lambda (entry)
+                               (and (eq? (cdr entry) 'file) (suffix? (car entry) ".sls")))
+                             entries)))
+         (defined (defined-libraries reads))
+         (results (map (lambda (entry) (entry-result entry root reads defined)) entries))
+         (checked (apply + (map cdr results)))
+         (hashing? (imports-hashing? reads))
+         (closure (and hashing? akku (closure-result akku)))
+         (dirs (path-dirs root libdirs))
+         (hashing-dirs (filter (lambda (dir) (not (and akku (string=? dir akku)))) dirs))
+         (complaints (append (apply append (map car results))
+                             (if (= checked 0)
+                                 (list (string-append "no library under " root))
+                                 '())
+                             (cond
+                               ((not hashing?) '())
+                               (akku (car closure))
+                               (else
+                                (list (string-append (written session-library) " imports "
+                                                     (written hashing-library)
+                                                     ", but no --akku names the directory this check reads its closure from"))))
+                             (path-complaints root dirs)
+                             (hashing-path-complaints akku hashing-dirs))))
+    (cond
+      ((null? complaints)
+       (say (current-output-port)
+            (string-append "ok, libraries checked: " (number->string checked)))
+       (unless (null? libdirs)
+         (say (current-output-port)
+              (string-append "ok, no other directory on the library path holds circuit: "
+                             (number->string (length dirs)) " looked in")))
+       (when closure
+         (say (current-output-port)
+              (string-append "ok, the closure of " (written hashing-library) " in " akku
+                             " imports only the (rnrs ...) libraries except (rnrs eval), "
+                             (joined " and " (map written hashing-siblings)) ": "
+                             (number->string (cdr closure)) " libraries read")))
+       (when akku
+         (say (current-output-port)
+              (string-append "ok, no other directory on the library path holds hashing: "
+                             (number->string (length hashing-dirs)) " looked in")))
+       (exit 0))
+      (else
+       (for-each (lambda (c) (say (current-error-port) c)) complaints)
+       (exit 1)))))
 
 (main (cdr (command-line)))

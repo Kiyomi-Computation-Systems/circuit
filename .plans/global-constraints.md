@@ -29,6 +29,12 @@ provisional. They bind until that record is accepted or amended.
 - **chez-cmark-gfm, the docs site's renderer, is pinned by `Akku.lock`**, a development
   dependency alone: nothing under `src/` and no `tests/test-*.sps` imports it.
   `make site-deps` fetches it on the host (ADR-0003).
+- **hashing 1.4.0, from the Akku index, is circuit's one runtime dependency from Akku.**
+  `Akku.manifest`'s `depends` names it, `Akku.lock` pins its archive and sha256, and
+  `make submodules` fetches it on the host into `vendor/akku`, git-ignored, on the library
+  path last, and kept by `make clean`. `make deps` fails without it. A move of the lock is
+  tried first: hashing's own suites, and circuit's rows holding RFC 4231's cases through
+  the pin, pass on it before it lands (ADR-0008).
 
 ## Tooling
 
@@ -68,6 +74,11 @@ provisional. They bind until that record is accepted or amended.
   `display-condition`, `print-record` and `parameterize` today. Every file under
   `src/` begins with the line `#!r6rs` and holds `#!` nowhere else. `make check-imports`
   holds it, and `make test` runs it once `src/` exists (ADR-0006).
+- **Only `(circuit session)` may import a `hashing` library: `(hashing sha-2)` alone,
+  through `only`.** `(hashing sha-2)`, as Chez resolves it from `vendor/akku`, and the
+  libraries it imports, import `(rnrs ...)` but `(rnrs eval)`, `(hashing fixnums)` and
+  `(hashing hmac)` alone, and no other directory on the library path holds a `hashing`.
+  `make check-imports` holds it (ADR-0006, ADR-0008).
 - **Only `(circuit websocket)` may import `(websocket)`, chez-websocket's facade**, which
   imports the server. No circuit library imports any other `(websocket ...)` library,
   nor `(circuit websocket)`, and `(circuit websocket)` imports neither `(chezscheme)` nor

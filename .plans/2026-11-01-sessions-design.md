@@ -106,8 +106,9 @@ the cryptography R6RS can reach (§7):
   still needs one host step before `make deps`. `vendor/akku/` is git-ignored and outside
   `build/`, so `make clean` keeps it and the container, which can't fetch, still finds
   it (found in review: under `build/akku`, `make clean` would strand the container).
-- **`vendor/akku` joins the library path.** It holds `hashing/` and the archive's `dl/`,
-  and nothing else; chez-cmark-gfm stays in `build/akku/`, off the path. Chez loads
+- **`vendor/akku` joins the library path.** It holds `hashing/`, the archive's `dl/` and
+  the fetch's record, `hashing.sha256`, and nothing else; chez-cmark-gfm stays in
+  `build/akku/`, off the path. Chez loads
   `hashing`'s `.scm` files: its `library-extensions` hold `.scm` (probed).
 - **`make deps` checks for it,** `vendor/akku/hashing/sha-2.scm` beside the submodules'
   files, and names `make submodules` when it's missing.
@@ -374,6 +375,53 @@ The page warns of what a signed cookie can't stop:
 - **A program over loopback,** run by hand with curl's cookie engine and recorded in the
   close-out, as 9c's was: its cookie stored, sent back and expired.
 - **Mutants** as each slice's: every row watched failing.
+
+### What the build settled (10b)
+
+Built in 10b; each is the design's text made exact, or a correction, recorded in its
+close-out:
+
+- **The order of the checks:** the secrets, the clock, the max age, the options, the
+  clock's first answer, then the trial cookie. `session-path`, `session-domain` and
+  `session-same-site` build their cookie option when called, refusing with the cookies'
+  words under their own names, as the slice 9 design's §2 has an option check its
+  argument; `session-name` checks a string, and the trial its token.
+- **The example above needs `getenv` from `(chezscheme)` too,** which neither `(rnrs)`
+  nor `(circuit)` exports (probed: unbound). The Sessions page imports
+  `(only (chezscheme) getenv current-time time-second)`.
+- **The trial cookie's value is the shortest a session writes,** one empty pair at the
+  clock's first answer, so a name too long to hold any session is refused when
+  `wrap-session` is called, not at the first write.
+- **No condition names a secret,** which a log line would show: a short one is refused
+  naming its size in bytes, and a list that isn't one of strings with no irritant. A
+  string given where the clock, the max age or an option goes, as a secret misplaced in
+  a rotation, is named `'string` (found in review). A name given to `session-name` is
+  named, as a cookie's name is sent to every browser.
+- **The request's key is set on every request,** `'()` when no cookie verified, so
+  nested, the innermost reads as well as writes: an inner handler with no cookie of its
+  own reads `'()`, never the outer's session, which it could write back under its own
+  name (a row since review).
+- **`'()` expires the cookie with every attribute it was set with,** another name's
+  path, domain and same-site among them: held by a row since review, as the default
+  cookie's alone was before.
+- **`scripts/fetch-akku-lock` holds an up-to-date tree to its archive** under `dl/`, and
+  unpacks it again when a file was deleted, changed or added, so `make deps`'s hint,
+  `make submodules`, repairs a damaged `vendor/akku` (found in review). `make check-pins`
+  doesn't hold `vendor/akku`: a tree edited after `make submodules` is put back by the
+  next one.
+- **`submodules` needs `xz` with GNU tar alone,** which reads the archive through it;
+  bsdtar, macOS's, reads it itself (found in review; the fetch's offline test holds
+  what the host's tar does without xz).
+- **The clock is called once for each cookie of the name whose mac holds,** so once
+  with a `__Host-` name, and once for a session written.
+- **A planted cookie doesn't shadow the real one** (the page's warning above): one that
+  fails the mac is skipped, as the first of the name that verifies is read. A `__Host-`
+  name guards against a valid cookie of an attacker's own, copied to a sibling host and
+  sent first, which signs the visitor in as the attacker. The Sessions page says so.
+- **Two equivalent mutants survive,** of 88 here and 37 in review: `sha-256-hash=?` swapped for `bytevector=?`, as
+  above, and the trial's expiry dropped. `res-expire-cookie` refuses nothing
+  `res-add-cookie` takes with the same attributes, so the expiry tried holds against a
+  change to `(circuit cookies)` alone.
 
 ## 6. The records
 
