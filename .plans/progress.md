@@ -221,9 +221,9 @@ close-out under **Close-outs**, newest first.
 ### 2026-11-06: slice 10b, sessions, in PR #40
 
 On the owner's "start 10b". Commits on `open/slice-10b`: the code, tests and docs (996d5d9),
-this close-out (LEDGER), and its CI run named here. `make test` passes 25 suites,
+this close-out (bcfd01d), and its CI run named here. `make test` passes 25 suites,
 `make check-site` passes, and `make gate` passes every held gate. CI passed on the PR (run
-RUN, TIME), on amd64, arm64 and the site job.
+42293193746, 4m23s), on amd64, arm64 and the site job.
 
 - **`(circuit session)`**, the eleventh public library, as the sessions design's §5 has
   it: `wrap-session`, `req-session`, `res-with-session` and the five `session-` options.
