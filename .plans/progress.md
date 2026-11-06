@@ -215,8 +215,9 @@ close-out under **Close-outs**, newest first.
 ### 2026-11-06: slice 10a, response keys, in PR #39
 
 On the owner's "start slice 10a". Commits on `open/slice-10a`: the code, tests and docs
-(a457402), this close-out, and its CI run named here. `make test` passes 23 suites, and
-`make check-site` passes.
+(a457402), this close-out (12e09ff), and its CI run named here. `make test` passes 23
+suites, and `make check-site` passes. CI passed on the PR (run 42255293093, 4m23s), on
+amd64, arm64 and the site job.
 
 - **Response keys:** `make-res-key`, `res-key?`, `res-ref` and `res-set` in
   `(circuit response)` and the facade, as the sessions design's §3 has them. A response's
