@@ -10,9 +10,11 @@
 # SRFI-64. chez-websocket pins a server of its own, which circuit doesn't
 # clone: it must be SERVER_PIN. `make submodules` clones those, and not the
 # server's test clients; `make check-pins` holds them where the pins say.
-# Both need git and the network, so they run on the host: the container has
-# neither. `make deps` builds chez-libuv's shim and links SRFI-64, and never
-# fetches.
+# One dependency comes from Akku: hashing, for (circuit session), which
+# `make submodules` also fetches into vendor/akku as Akku.lock pins it, its
+# sha256 checked (ADR-0008). Both need git or the network, so they run on
+# the host: the container has neither. `make deps` builds chez-libuv's shim
+# and links SRFI-64, and never fetches.
 
 # The Chez binary. In the container, scripts/guix-env-enter exports the
 # profile's real `scheme` binary. Elsewhere, scripts/require-chez --find
@@ -61,14 +63,17 @@ SRFI_DIR         := $(SERVER_DIR)/vendor/chez-srfi
 
 # --- the library paths --------------------------------------------------------
 # LIBDIRS is the path `make run` and `make dev` use: circuit's src/, then the
-# server's, chez-websocket's and the libraries the server carries. chez-libuv
-# locates its C shim by an absolute path baked into the config.sls its build
-# generates, so only its src/ is needed. build/scheme-libs carries (srfi :64).
+# server's, chez-websocket's and the libraries the server carries, then
+# vendor/akku, which holds hashing. chez-libuv locates its C shim by an
+# absolute path baked into the config.sls its build generates, so only its
+# src/ is needed. build/scheme-libs carries (srfi :64). vendor/akku comes
+# last, so it can stand in for none of the others' libraries.
 #
 # TEST_LIBDIRS is the suites' path: LIBDIRS, then tests/, which holds
 # (circuit-testing). Test code stays off LIBDIRS.
 BUILD_DIR := build
 SRFI_LIBS := $(BUILD_DIR)/scheme-libs
+AKKU_DIR := vendor/akku
 EMPTY :=
 SPACE := $(EMPTY) $(EMPTY)
 LIBDIR_LIST := src \
@@ -77,7 +82,8 @@ LIBDIR_LIST := src \
   $(LIBUV_DIR)/src \
   $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src \
   $(URIPARSE_DIR)/src \
-  $(SRFI_LIBS)
+  $(SRFI_LIBS) \
+  $(AKKU_DIR)
 LIBDIRS := $(subst $(SPACE),:,$(strip $(LIBDIR_LIST)))
 TEST_LIBDIRS := $(LIBDIRS):tests
 
@@ -173,12 +179,23 @@ check-guix-inside: ## (inside the container) Assert the pinned toolchain, isolat
 # Targeted, so neither chez-libuv's own vendored libuv nor the server's test
 # clients (vtest2) are cloned: the shim links the libuv pkg-config finds when
 # it meets chez-libuv's floor, as the container's does. chez-websocket's own
-# server isn't cloned either: circuit's is the one on the path.
-submodules: ## (host) Clone the pinned server, the pins it carries, and chez-websocket
-	@scripts/require-tools "$(GOAL)" git
+# server isn't cloned either: circuit's is the one on the path. Then hashing,
+# downloaded as Akku.lock pins it, its sha256 checked, and unpacked into
+# vendor/akku by scripts/fetch-akku-lock, which needs curl or wget, tar,
+# sha256sum or shasum, and diff, and xz with GNU tar, which reads the
+# archive through it: bsdtar, macOS's, reads it itself. A tree that already
+# records the lock's sha256 is held to its archive under vendor/akku/dl and
+# unpacked again if it differs, with no download.
+FETCH_TOOL = $(if $(shell command -v curl 2>/dev/null),curl,$(if $(shell command -v wget 2>/dev/null),wget,"curl or wget"))
+SHA256_TOOL = $(if $(shell command -v sha256sum 2>/dev/null),sha256sum,$(if $(shell command -v shasum 2>/dev/null),shasum,"sha256sum or shasum"))
+XZ_TOOL = $(if $(findstring GNU,$(shell tar --version 2>/dev/null)),xz)
+
+submodules: ## (host) Clone the pinned server, the pins it carries, and chez-websocket; fetch hashing into vendor/akku
+	@scripts/require-tools "$(GOAL)" git $(FETCH_TOOL) tar $(XZ_TOOL) $(SHA256_TOOL) diff
 	git submodule update --init $(SERVER_DIR) $(WEBSOCKET_DIR)
 	git -C $(SERVER_DIR) submodule update --init vendor/chez-libuv vendor/uriparse vendor/chez-srfi
 	git -C $(SERVER_DIR) submodule update --init --recursive vendor/chez-httparse
+	AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock hashing
 
 # Each checkout is asked for its own .git first: in a submodule that was
 # never cloned, `git -C` would climb to the repository around it and answer
@@ -267,6 +284,10 @@ deps: check-chez ## Build chez-libuv's shim and link SRFI-64 into build/scheme-l
 	    exit 1; \
 	  fi; \
 	done
+	@if [ ! -e $(AKKU_DIR)/hashing/sha-2.scm ]; then \
+	  echo "deps: $(AKKU_DIR)/hashing/sha-2.scm not found, so hashing, which Akku.lock pins, isn't fetched. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
+	  exit 1; \
+	fi
 	@$(MAKE) --no-print-directory -C $(LIBUV_DIR) build
 	$(link-srfi)
 	@echo "deps: chez-libuv's shim built; $(SRFI_DIR) linked into $(SRFI_LIBS)/srfi"
@@ -338,14 +359,18 @@ check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared ex
 # at its name's path, only (circuit http-server) and (circuit middleware
 # waits) import the server or (chezscheme), and only (circuit websocket)
 # imports chez-websocket, through its facade (websocket) alone: the core is
-# plain R6RS, importing its own libraries and (rnrs ...) alone
-# (tests/check-imports.sps). And no other directory of LIBRARY_DIRS holds a
-# (circuit ...) library. It names each breach on stderr. make test runs
-# it once src/ exists; an src/ with no library fails it. Its own suite,
-# tests/test-check-imports.sps, runs in make test whether src/ exists or not.
-check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), only (circuit websocket) imports (websocket), the core imports nothing else, and only src holds circuit's libraries
+# plain R6RS, importing its own libraries and (rnrs ...) alone, but
+# (circuit session), which imports (hashing sha-2) through only
+# (tests/check-imports.sps). (hashing sha-2), read from AKKU_DIR as Chez
+# resolves it, and the libraries it imports, import (rnrs ...) and each
+# other alone. And no other directory of LIBRARY_DIRS holds a (circuit ...)
+# library, nor any but AKKU_DIR a hashing one. It names each breach on
+# stderr. make test runs it once src/ exists; an src/ with no library fails
+# it. Its own suite, tests/test-check-imports.sps, runs in make test whether
+# src/ exists or not.
+check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), only (circuit websocket) imports (websocket), only (circuit session) imports hashing, the core imports nothing else, only src holds circuit's libraries, and only vendor/akku hashing
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
-	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src $(LIBRARY_DIRS)
+	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src --akku $(AKKU_DIR) $(LIBRARY_DIRS)
 
 # The cost gate (design §15.6, ADR-0007), outside `make test`: bytes a
 # request through circuit's adapter, against the raw server and its

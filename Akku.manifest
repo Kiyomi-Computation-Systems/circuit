@@ -1,15 +1,18 @@
 #!r6rs ; -*- scheme -*-
 (import (akku format manifest))
 
-;; Development only: chez-cmark-gfm renders docs/ into the docs site (`make
-;; site`). circuit's own dependencies, chez-http-server and chez-websocket,
-;; are submodules under vendor/, so this manifest names no `depends` and
-;; circuit is not installed through Akku (ADR-0003). Akku.lock is `akku
-;; lock`'s output for this file. .akkuignore keeps `akku install` to
-;; chez-cmark-gfm alone.
+;; One runtime dependency from Akku: hashing, whose (hashing sha-2) signs a
+;; session's cookie in (circuit session) (ADR-0008). `make submodules`
+;; fetches it as Akku.lock pins it into vendor/akku/, on the library path.
+;; chez-http-server and chez-websocket aren't on the Akku index, so they are
+;; submodules under vendor/, and circuit is not installed through Akku yet
+;; (ADR-0003). Development only: chez-cmark-gfm renders docs/ into the docs
+;; site (`make site`). Akku.lock is `akku lock`'s output for this file.
+;; .akkuignore keeps `akku install` from installing circuit's own libraries.
 (akku-package ("circuit" "0.1.2")
   (synopsis "An HTTP layer in the manner of Ring, for R6RS Scheme")
   (authors "Kiyomi Computation Systems LLC")
   (homepage "https://github.com/Kiyomi-Computation-Systems/circuit")
   (license "BSD-3-Clause")
+  (depends ("hashing" "^1.4.0"))
   (depends/dev ("chez-cmark-gfm" "^2.0.0")))

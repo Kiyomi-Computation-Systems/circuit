@@ -16,6 +16,7 @@
       ("bodies.md"        . "Bodies and streaming")
       ("params.md"        . "Query strings and forms")
       ("cookies.md"       . "Cookies")
+      ("sessions.md"      . "Sessions")
       ("middleware.md"    . "Middleware")
       ("routing.md"       . "Routing")
       ("waiting.md"       . "Waiting")

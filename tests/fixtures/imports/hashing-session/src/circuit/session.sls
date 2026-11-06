@@ -1,0 +1,11 @@
+#!r6rs
+(library (circuit session)
+  (export)
+  (import (rnrs)
+          (only (circuit cookies) req-cookies)
+          (only (hashing sha-2) hmac-sha-256)
+          (only (library (hashing sha-2)) sha-256->bytevector)
+          (prefix (only (hashing sha-2) sha-256->string) h:)
+          (rename (only (hashing sha-2 (1 4)) sha-256-hash=?) (sha-256-hash=? same?))
+          (except (only (hashing sha-2) hmac-sha-256 sha-256) sha-256)
+          (for (only (hashing sha-2) sha-256) run)))

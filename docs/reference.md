@@ -1,6 +1,6 @@
 # API reference
 
-Every name the ten public libraries export, one entry each, library by
+Every name the eleven public libraries export, one entry each, library by
 library. An entry gives the name's signature, says what it does, and links
 the guide page that explains it. A name `(circuit http-server)` re-exports
 from chez-http-server has no signature here: its entry links the server's
@@ -19,6 +19,7 @@ Body       = (U #f Bytevector String Producer BinaryInputPort
 Producer   = (-> (U Bytevector Eof))
 Params     = (Listof (Pair String String))
 Cookies    = (Listof (Pair String String))
+Session    = (Listof (Pair String String))
 TakeOver   = (Transport Bytevector -> Answer)
 Env        = (String -> (U String #f))
 ```
@@ -36,7 +37,8 @@ Env        = (String -> (U String #f))
 - `CorsOption` is what a `cors-` constructor makes, such as
   `cors-origins`, and `HstsOption` what `hsts-include-subdomains` makes.
   `CookieOption` is what a `cookie-` constructor makes, such as
-  `cookie-path`.
+  `cookie-path`, and `SessionOption` what a `session-` constructor makes,
+  such as `session-name`.
 - `Request`, `Transport`, `Answer` and `Awaiting` are chez-http-server's.
   `WebSocket`, `HandshakeSettings` and `WebsocketLimits` are
   chez-websocket's.
@@ -1348,6 +1350,90 @@ cookie-same-site : Symbol -> CookieOption
 
 `SameSite`: `'strict`, `'lax` or `'none`, which needs `cookie-secure`. See
 [Cookies](cookies.md).
+
+## `(circuit session)`
+
+A session kept in a signed cookie: read before the handler, and written
+when the handler hands one back.
+
+```scheme
+(import (rnrs) (circuit) (circuit session))
+```
+
+### `wrap-session`
+
+```text
+wrap-session : (Listof String) (-> Integer) Nat SessionOption ... -> Middleware
+```
+
+Middleware that reads the session from its cookie, signed with
+HMAC-SHA-256, and writes the one the handler hands back. The secrets are
+32 bytes or more each: the first signs, and each verifies. The clock
+answers the seconds since 1970, and the max age, 1 to 34560000 seconds, is
+how long a cookie lives. Every response gets `vary: cookie`. A bad setting
+is refused when it is called. See [Sessions](sessions.md).
+
+### `req-session`
+
+```text
+req-session : Req -> Session
+```
+
+The session `wrap-session` read from the request's cookie, or `'()` when
+none verified or no `wrap-session` saw the request. See
+[Sessions](sessions.md).
+
+### `res-with-session`
+
+```text
+res-with-session : Res Session -> Res
+```
+
+The response with a session handed back, for `wrap-session` to write
+whole; `'()` removes the cookie. See [Sessions](sessions.md).
+
+### `session-name`
+
+```text
+session-name : String -> SessionOption
+```
+
+The cookie's name, `__Host-session` unless given. See
+[Sessions](sessions.md).
+
+### `session-path`
+
+```text
+session-path : String -> SessionOption
+```
+
+The cookie's `Path`, `/` unless given. See [Sessions](sessions.md).
+
+### `session-domain`
+
+```text
+session-domain : String -> SessionOption
+```
+
+The cookie's `Domain`, none unless given. See [Sessions](sessions.md).
+
+### `session-same-site`
+
+```text
+session-same-site : Symbol -> SessionOption
+```
+
+The cookie's `SameSite`: `'strict`, `'lax` or `'none`, `'lax` unless
+given. See [Sessions](sessions.md).
+
+### `session-insecure`
+
+```text
+session-insecure : -> SessionOption
+```
+
+No `Secure`, so the cookie goes over plain `http`: for development alone.
+See [Sessions](sessions.md).
 
 ## `(circuit websocket)`
 

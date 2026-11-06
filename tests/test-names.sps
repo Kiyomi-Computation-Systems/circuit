@@ -37,6 +37,7 @@
         (circuit router)
         (circuit params)
         (circuit cookies)
+        (circuit session)
         (circuit test)
         (circuit http-server)
         (circuit websocket)
@@ -188,6 +189,16 @@
   '()
   (filter (lambda (name) (memq name (library-exports '(circuit))))
           (library-exports '(circuit cookies))))
+
+(test-equal "(circuit session) exports its eight exactly"
+  '(req-session res-with-session session-domain session-insecure session-name session-path
+    session-same-site wrap-session)
+  (sorted-exports '(circuit session)))
+
+(test-equal "(circuit) exports none of the session's names: an app imports (circuit session) beside it"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit))))
+          (library-exports '(circuit session))))
 
 (test-equal "(circuit websocket) exports websocket-res alone: an app takes the rest from (websocket)"
   '(websocket-res)

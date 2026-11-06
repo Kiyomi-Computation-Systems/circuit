@@ -147,8 +147,14 @@ close-out under **Close-outs**, newest first.
   its close-out is below. `make-res-key`, `res-ref` and `res-set` carry a handler's data
   to the middleware around it, and `res-with-take-over` keeps them through a wrapped
   take-over: the owner's answer in it is design §15.34.
-- **Next:** slice 10b, `(circuit session)`, with `hashing` from Akku (the sessions design
-  §4 and §5, ADR-0008). A release after 10b is the owner's call (the sessions design §1).
+- **Slice 10b, `(circuit session)`, is merged**, squashed from
+  [PR #40](https://github.com/Kiyomi-Computation-Systems/circuit/pull/40) on 2026-11-06;
+  its close-out is below. Sessions live in a cookie signed with HMAC-SHA-256 by
+  `hashing` 1.4.0 from Akku, circuit's first runtime dependency (ADR-0008, accepted), in
+  `vendor/akku`. Eleven public libraries, and slice 10 is done.
+- **Next:** a release after 10b is the owner's call (the sessions design §1). The
+  owner's open questions from 10b: whether `make check-pins` should hold `vendor/akku`,
+  and the stale v0.9.1 in ADR-0003 and the global constraints (the close-out).
 
 ## Open
 
@@ -211,6 +217,133 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-06: slice 10b, sessions, in PR #40
+
+On the owner's "start 10b". Commits on `open/slice-10b`: the code, tests and docs (996d5d9),
+this close-out (bcfd01d), and its CI run named here. `make test` passes 25 suites,
+`make check-site` passes, and `make gate` passes every held gate. CI passed on the PR (run
+42293193746, 4m23s), on amd64, arm64 and the site job.
+
+- **`(circuit session)`**, the eleventh public library, as the sessions design's §5 has
+  it: `wrap-session`, `req-session`, `res-with-session` and the five `session-` options.
+  A session is string pairs, kept in a cookie whose value is the pairs by
+  `params->string`, the clock's time and an HMAC-SHA-256 of the cookie's name, the pairs
+  and the time, under a key derived from the first secret ("circuit session"). Read
+  before the handler: the first cookie of the name that verifies, its octets, its split
+  from the right, its mac by `sha-256-hash=?`, then its time, by one call of the clock.
+  Written after: whole, `'()` an expiry with every attribute, nothing for no session;
+  `cache-control: private` on a write, `vary: cookie` on every response, and a mark so
+  an outer `wrap-session` leaves the response alone;
+- **what the build settled,** recorded in the design's new "What the build settled":
+  the checks' order; the session options checking their own settings under their own
+  names; the trial cookie's value the shortest a session writes, so a name too long for
+  any session is refused when `wrap-session` is called; no condition naming a secret;
+  the request's key set on every request, so nested, the innermost reads too; the
+  design's example missing `getenv` from `(chezscheme)`; and the planted-cookie warning
+  made exact: one that fails the mac is skipped, and `__Host-` guards against a valid
+  cookie of an attacker's own;
+- **the dependency,** as ADR-0008 decides: `Akku.manifest`'s first `depends`,
+  `("hashing" "^1.4.0")`; `Akku.lock`'s entry, the index's archive and sha256 for 1.4.0;
+  `make submodules` fetching it with `scripts/fetch-akku-lock` into `vendor/akku`,
+  git-ignored, last on the library path, and kept by `make clean`; `make deps` refusing
+  without it; `submodules`' `require-tools` naming curl or wget, tar, sha256sum or
+  shasum, diff, and xz with GNU tar. CI's three jobs install their tools before
+  `make submodules` now. The tree
+  fetched equals the one the design's probe read in full (`diff -r`);
+- **`make check-imports`'s three rules,** built by an agent, the design's §4 as ADR-0006's
+  fifth decision now has them, the command line `DIR [--akku AKKU] [LIBDIR ...]`:
+  - (k): only `(circuit session)` imports a `(hashing ...)` library, `(hashing sha-2)`
+    alone, through an `only` right around it naming at least one identifier;
+  - (l): `(hashing sha-2)`'s closure is read as data from `vendor/akku`, each library
+    found by Chez's own `library-search-handler` over its `library-extensions`, so a
+    `.chezscheme.sls` it would prefer is the file read; the closure imports `(rnrs ...)`
+    but `(rnrs eval)`, `(hashing fixnums)` and `(hashing hmac)` alone, and no `--akku`, a
+    missing source, a compiled object beside one, an unreadable file, a misshapen one or
+    an unreadable import fails it;
+  - (m): no directory on the path but `src` and `vendor/akku` holds `hashing` or
+    `hashing.<anything>`, in any case;
+  - two pass lines after today's two, which through make read 15, 10, 3 libraries read,
+    and 9; 38 rows new or changed, 98 in the suite, each watched failing: 41 mutants of
+    the program, every one killed by failing rows. Verified here: the suite and
+    `make check-imports` rerun; seven of its mutants rerun, each killed as it reported;
+    and three plants refused, a `hashing/` in `build/scheme-libs` through make, a
+    `hmac.so` beside the source, and a `fixnums.chezscheme.sls` importing `(chezscheme)`,
+    each in a copy of `vendor/akku`;
+- **the rows:**
+  - `tests/test-session.sps`, 56: RFC 4231's seven cases through the pin, each
+    confirmed by openssl; two whole known-answer fields whose macs openssl made on the
+    host; round trips; tampering, each against its untampered control, every character
+    at every position, cut, lengthened, the mac at 63 and 65 digits and in upper case,
+    and values signed by hand so the mac holds and the step under test alone refuses
+    them: a time with `+`, a letter, empty or missing, a Latin-1 byte, a space, a quote
+    and a backslash; another name and another secret; the clock never called for a mac
+    that fails; two cookies of the name; the time 60 and 61 seconds ahead, and a second
+    before its expiry and at it; rotation over three secrets, the write under the first;
+    writing, its headers whole, `cache-control` and `vary` not over the response's own,
+    the substring trap among them, nested middleware, non-responses, raises, a fresh
+    response inside, the handler's own `set-cookie`, payloads of 4006 and 4007 bytes, an
+    upgrade, other keys; `res-with-session`'s refusals; every setting from both sides,
+    each refusal's words, and their order;
+  - `tests/test-session-properties.sps`, 2: S1, a session of 9b's P1 pairs, under a name,
+    a secret at any place of one to three and a clock of 0, ten digits or a bignum,
+    reads back whole, 1000 cases; S2, one character of the value changed reads none,
+    1000 cases;
+  - `tests/test-names.sps`, 2, and `tests/test-reference.sps` and `tests/site-unit.sps`
+    taking the library and the page;
+- **watched failing:** a stub exporting the eight names and doing nothing failed 51 of
+  the 56 rows and both properties. 88 mutants of `(circuit session)`, and one of the
+  pin, a SHA-256 round constant changed, each a library of its own first on the path,
+  regenerated from `build/s10b/make-mutants.py` on the final code: 86 killed, each by a
+  failing row, and two equivalent survivors, the design's `bytevector=?` compare and the
+  trial's expiry dropped. The reviewer's 37, regenerated on the final code: 36 killed,
+  and the trial's expiry again. Every one of the 58 rows failed at least once;
+- **the program over loopback,** the Sessions page's, in the container, with curl's
+  cookie engine: not signed in; `/login?as=ada` set the cookie, its mac checked by
+  openssl on the host; the cookie sent back read "signed in as ada"; `/logout` expired
+  it, and the jar was left empty. Its test example ran too, and `wrap-catch` answered a
+  4007-byte session 500;
+- **the gate,** with `vendor/akku` on its path, before the review's fixes and on the
+  code commit: G3 GET +321 B, then +323 B, and POST +290 B, then +293 B, against 384 B
+  and 352 B; G7 +309 B, then +308 B; every held gate within its bound both times.
+  Sessions add no gate row (the slice 9 design §2);
+- **the docs:** the Sessions page; the reference's section and `Session` alias; the
+  home page's table, its "No framework" line and Read next; Installing's tools and
+  pinned dependencies; the CHANGELOG's Unreleased;
+- **the records:** ADR-0008 accepted, its third and fourth decisions made exact;
+  ADR-0006 and ADR-0003 amended; the global constraints; AGENTS.md; the sessions design's
+  "What the build settled"; the circuit design's §17 item 10;
+- **left as found:** ADR-0003's first decision and the global constraints still name the
+  server at v0.9.1, though `SERVER_PIN` has been v0.10.0 since PR #22;
+- **the review**, read-only on Opus, found no way to forge or move a cookie, and:
+  - blocking: two claims the design makes that no row held, each a surviving mutant.
+    `'()` expired the cookie with the default attributes, so a logout under another
+    path, domain or same-site would leave the browser's cookie; and the request's key
+    set only when a cookie verified, so an inner handler with no cookie read the
+    outer's session. A row each now;
+  - an empty or unparsed time read as 0 survived, as a time of 0 was expired at t0: the
+    time rows run with the clock at 100 now. The octet check moved after the clock
+    survived: that row counts the clock's calls. `vary` on a write was held only
+    without a session, and two near-equivalents, `string-ci=?` (the Kelvin sign is a
+    k to it) and the outer middleware adding `vary` to a written response, survived:
+    a row each;
+  - a secret given where the clock, the max age or an option goes was the refusal's
+    irritant: a string there is named `'string` now;
+  - `scripts/fetch-akku-lock` trusted its record over the tree, so `make deps`'s hint,
+    `make submodules`, repaired nothing: an up-to-date tree is held to its archive
+    under `dl/` now, and unpacked again from it, four rows in the fetch's offline test,
+    the three repairs watched failing on `main`'s script and the control on a mutant.
+    Shown on the real tree: `sha-2.scm` deleted, `make deps` refused, `make submodules`
+    put it back;
+  - `submodules` asked for `xz` where macOS's bsdtar needs none: it asks with GNU tar
+    alone now, shown with a stand-in tar answering as bsdtar; macOS itself unverified;
+  - nits fixed: the design's §4 on what `vendor/akku` holds, the CHANGELOG's
+    `cache-control` line, the page's "older than the max age", the moved-cookie row's
+    control, and S2's control in the same check;
+  - everything else it checked held, the known answers recomputed by Python's `hmac`,
+    the page's examples, the audit, against 8 mutants of its own, and the build;
+- **agents:** the audit's rules, Opus, 248,857 tokens and 32.3 min; the reviewer, Opus,
+  281,239 tokens and 23.7 min. The library, its suites and the docs were mine.
 
 ### 2026-11-06: slice 10a, response keys, in PR #39
 

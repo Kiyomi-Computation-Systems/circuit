@@ -17,7 +17,11 @@
   2026-10-30, with the pins at chez-http-server v0.10.0 and chez-websocket v0.5.1: it
   takes `print-record` and `parameterize` too, which show a record inside the catch
   helper's line by its type alone, as the server's log now does (PR #22; the owner's
-  decision, 2026-10-30, over setting and restoring `print-record` by `dynamic-wind`)
+  decision, 2026-10-30, over setting and restoring `print-record` by `dynamic-wind`);
+  2026-11-06, in slice 10b: one core library, `(circuit session)`, may import hashing's
+  `(hashing sha-2)` through `only`, and the audit reads that library's closure from
+  `vendor/akku` (item 5; [ADR-0008](0008-hashing-from-akku-is-the-first-runtime-dependency.md),
+  the sessions design §4)
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
@@ -45,7 +49,8 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
 ## Decision
 
 1. **The core is plain R6RS**: every circuit library but the three below imports only
-   `(rnrs ...)` libraries other than `(rnrs eval)`, and core circuit libraries.
+   `(rnrs ...)` libraries other than `(rnrs eval)`, and core circuit libraries, and
+   `(circuit session)` `(hashing sha-2)` too (item 5).
 2. **`(circuit http-server)`, the adapter, and `(circuit middleware waits)`**, which holds
    `wrap-timeout`, the catch helper `wrap-catch` and request logging `wrap-log`, may also
    import the server's libraries, but none of
@@ -68,6 +73,21 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
    websocket)` imports neither `(chezscheme)` nor an `(http-server ...)` library, as a
    core library doesn't, and since `(websocket)` imports the server, no library imports
    `(circuit websocket)`, as none imports an impure one. The audit's rule (i) holds it.
+5. **`(circuit session)`, a core library, may also import `(hashing sha-2)`**, from
+   hashing, circuit's one runtime dependency from Akku, through an `only` right around it
+   naming at least one identifier, so its header names all it takes from code circuit
+   didn't write. It imports no other `(hashing ...)` library, and no other circuit library
+   imports any (the audit's rule (k)). The audit reads `(hashing sha-2)`'s closure as
+   data from `vendor/akku`, named by `--akku`, each library found as Chez's own search
+   handler and library extensions find it, so a `.chezscheme.sls` Chez would prefer is
+   the file read. The closure imports only the `(rnrs ...)` libraries other than
+   `(rnrs eval)`, `(hashing fixnums)` and `(hashing hmac)`; no `--akku`, a missing source,
+   a compiled object Chez could load in its place, an unreadable file, a file that isn't
+   one library form of its name, and an import it can't read each fail it (rule (l)).
+   hashing's files carry `#!r6rs` after a comment, so rule (h) doesn't hold them. No
+   directory on the library path but `src` and `vendor/akku` holds anything named
+   `hashing` or `hashing.<anything>`, in any case, so no other copy stands in for the one
+   read (rule (m)); `vendor/akku` is still held to rule (j).
 
 ## Consequences
 
@@ -83,6 +103,10 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
 - **`(circuit websocket)` is tested through the server's test host**, since its take-over
   runs on the server's transport.
 - **A fourth library that reaches the server is a reviewed change**, as the third was.
+- **`(hashing sha-2)`'s body reaches only what its imports give**, as a core library's
+  does: `(rnrs ...)` without `eval`. A pin of hashing that adds a library to the closure,
+  or imports anything else, fails the audit until it is reviewed, and the audit's
+  "through make" row holds the closure's size, 3 libraries, on the pin.
 - **Taking another name from `(chezscheme)` is a reviewed change** to the audit's
   allowlist, and the name must not be one that can import, evaluate or load.
 - **The allowlist took `port-has-port-length?` and `port-length` in slice 4**, for the

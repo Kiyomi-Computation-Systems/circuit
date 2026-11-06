@@ -11,8 +11,11 @@
 ;;;
 ;;; Each case's tree is the one fault it names, in an otherwise legal
 ;;; setting, so that only that rule can make it fail. The cases that must
-;;; pass say so with the program's own pass line, count included. The fixture
-;;; trees are never suites: make test runs tests/test-*.sps only, which
+;;; pass say so with the program's own pass lines, counts included. A case
+;;; whose (circuit session) imports (hashing sha-2), so that rule (l) reads
+;;; its closure, holds its tree in src/ beside the AKKUs it is run with, each
+;;; holding stand-ins for hashing's files, written for it. The fixture trees
+;;; are never suites: make test runs tests/test-*.sps only, which
 ;;; check-suites reads.
 ;;;
 ;;; make test runs every suite from the repository root, where tests/ is, with
@@ -124,6 +127,21 @@
 
 (define glue-tail
   "but (circuit websocket) may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and (websocket)")
+
+;; Rule (k)'s: a (hashing ...) library imported elsewhere, another one in
+;; (circuit session), (hashing sha-2) through anything but only, and the rest
+;; of what (circuit session) imports.
+(define hashing-elsewhere-tail
+  "but only (circuit session) may import a (hashing ...) library")
+
+(define hashing-other-tail
+  "but (circuit session) may import no (hashing ...) library but (hashing sha-2)")
+
+(define hashing-only-tail
+  "but (circuit session) imports (hashing sha-2) only through only, right around it, naming at least one identifier: so its header names all it takes from code circuit didn't write")
+
+(define session-tail
+  "but (circuit session) may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and (hashing sha-2) through only")
 
 ;; imports : String String String String String -> String
 ;; The complaint about the library LIB, in FILE of the tree CASE, importing
@@ -422,6 +440,63 @@
                   (imports "websocket-imported" "circuit/websocket.sls" "(circuit websocket)"
                            "(circuit websocket)" glue-import-tail)))
 
+   ;; --- rule (k): hashing, through (circuit session) alone ---
+   ;; None of these trees imports (hashing sha-2) as rule (k) lets it, so
+   ;; rule (l) reads no closure. akku-cases holds the trees that do.
+   (list "hashing-elsewhere"
+         "rule (k): a (hashing ...) library, through only or bare, in a core library, in each impure library, in (circuit websocket), and in lookalikes of (circuit session), longer and plural, which are core; (hashing-extras), no family of it, is a core library's own refusal"
+         (refused (imports "hashing-elsewhere" "circuit.sls" "(circuit)" "(hashing sha-2)"
+                           hashing-elsewhere-tail)
+                  (imports "hashing-elsewhere" "circuit/http-server.sls" "(circuit http-server)"
+                           "(hashing sha-2)" hashing-elsewhere-tail)
+                  (imports "hashing-elsewhere" "circuit/middleware/waits.sls" "(circuit middleware waits)"
+                           "(hashing)" hashing-elsewhere-tail)
+                  (imports "hashing-elsewhere" "circuit/request.sls" "(circuit request)"
+                           "(hashing-extras)" core-tail)
+                  (imports "hashing-elsewhere" "circuit/session/extra.sls" "(circuit session extra)"
+                           "(hashing sha-2)" hashing-elsewhere-tail)
+                  (imports "hashing-elsewhere" "circuit/sessions.sls" "(circuit sessions)"
+                           "(hashing sha-2)" hashing-elsewhere-tail)
+                  (imports "hashing-elsewhere" "circuit/websocket.sls" "(circuit websocket)"
+                           "(hashing hmac)" hashing-elsewhere-tail)))
+   (list "hashing-session-other"
+         "rule (k): (circuit session) importing a (hashing ...) library but (hashing sha-2), through only: (hashing hmac), (hashing fixnums), (hashing) bare, a longer (hashing sha-2 extra), (hashing md5) and (hashing private common)"
+         (apply refused
+                (map (lambda (imported)
+                       (imports "hashing-session-other" "circuit/session.sls" "(circuit session)"
+                                imported hashing-other-tail))
+                     '("(hashing hmac)" "(hashing fixnums)" "(hashing)" "(hashing sha-2 extra)"
+                       "(hashing md5)" "(hashing private common)"))))
+   (list "hashing-session-bare"
+         "rule (k): (circuit session) importing (hashing sha-2) through anything but an only right around it that names identifiers: bare, with a version reference, library, prefix, except, rename, for, an only naming nothing, only around prefix, only around except, and an only naming a number"
+         (apply refused
+                (map (lambda (i)
+                       (imports "hashing-session-bare" "circuit/session.sls" "(circuit session)"
+                                "(hashing sha-2)" hashing-only-tail))
+                     (iota 11))))
+   (list "hashing-session-core"
+         "rule (k): (circuit session) is otherwise a core library: (chezscheme), bare and through only, the server, (rnrs eval), a third party's, chez-websocket's facade, an impure library, (circuit websocket), (hashing-extras) and a (circuit ...) library the tree does not define are each named"
+         (refused (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(chezscheme)" edge-tail)
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(chezscheme)" edge-tail)
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(http-server)" edge-tail)
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(rnrs eval)" session-tail)
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(srfi :1)" session-tail)
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(websocket)" facade-tail)
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(circuit http-server)" (impure-import-tail "(circuit http-server)"))
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(circuit websocket)" glue-import-tail)
+                  (imports "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                           "(hashing-extras)" session-tail)
+                  (undefined "hashing-session-core" "circuit/session.sls" "(circuit session)"
+                             "(circuit nope)")))
+
    ;; --- rule (h): the #!r6rs line ---
    (list "header-missing"
          "rule (h): a library with no #!r6rs line, otherwise legal"
@@ -488,6 +563,186 @@
                        "(rnrs 5)" "(rnrs (6) base)" "\"str\"" "(rnrs . base)" "(library (rnrs . base))"
                        "((rnrs))" "(only 5)"))))))
 
+;; --- rules (k) and (l): the trees whose closure is read ----------------------------------
+
+;; passed : Natural (U Natural #f) (U (Pair String Natural) #f) (U Natural #f)
+;;          -> (List 0 String "")
+;; A pass's whole answer: the tree's line, with how many libraries it
+;; checked; rule (j)'s, with how many LIBDIRs it looked in, when it was
+;; named any; rule (l)'s, naming AKKU and how many libraries it read, when
+;; it read the closure; rule (m)'s, with how many LIBDIRs it looked in, when
+;; --akku was named.
+(define (passed libraries circuit-looked closure hashing-looked)
+  (list 0
+        (string-append
+         "check-imports: ok, libraries checked: " (number->string libraries) "\n"
+         (if circuit-looked
+             (string-append "check-imports: ok, no other directory on the library path holds circuit: "
+                            (number->string circuit-looked) " looked in\n")
+             "")
+         (if closure
+             (string-append "check-imports: ok, the closure of (hashing sha-2) in " (car closure)
+                            " imports only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac): "
+                            (number->string (cdr closure)) " libraries read\n")
+             "")
+         (if hashing-looked
+             (string-append "check-imports: ok, no other directory on the library path holds hashing: "
+                            (number->string hashing-looked) " looked in\n")
+             ""))
+        ""))
+
+;; Rule (l)'s complaints: no --akku, and for a library of the closure, no
+;; source, a compiled object, a file that is no one library form of its
+;; name, an import it cannot read, and one it may not import.
+(define no-akku
+  "(circuit session) imports (hashing sha-2), but no --akku names the directory this check reads its closure from")
+
+;; not-found : String String -> String
+(define (not-found akku lib)
+  (string-append akku ": Chez finds no source for " lib " in it, so this check cannot read what it imports"))
+
+;; compiled : String String -> String
+(define (compiled object lib)
+  (string-append object ": it is compiled, so Chez could load " lib
+                 " from it in place of its source, which this check reads"))
+
+;; misshapen : String String -> String
+(define (misshapen source lib)
+  (string-append source ": Chez loads " lib " from it, but it is not exactly one library form named " lib))
+
+;; closure-spec : String String String -> String
+(define (closure-spec source lib spec)
+  (string-append source ": " lib " has an import it cannot read: " spec))
+
+;; closure-imports : String String String -> String
+(define (closure-imports source lib imported)
+  (string-append source ": " lib " imports " imported
+                 ", but the closure of (hashing sha-2) may import only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac)"))
+
+;; cannot-read : String -> String
+(define (cannot-read source)
+  (string-append source ": it cannot be read as data: " (read-error source)))
+
+;; on-hashing-path : String String (U String #f) -> String
+;; Rule (m)'s complaint about ENTRY, in the library directory DIR, when
+;; --akku names AKKU, or names none.
+(define (on-hashing-path dir entry akku)
+  (string-append dir "/" entry
+                 (if akku
+                     (string-append ": its directory is on the library path beside " akku
+                                    ", so Chez could load a (hashing ...) library from it in place of "
+                                    akku "'s, which this check reads; only " akku " may hold one")
+                     ": its directory is on the library path, so Chez could load a (hashing ...) library from it, and no --akku names the one directory that may hold one")))
+
+;; akku-cases : (Listof (List String String (Listof String) Expected))
+;; The fixture directory, which holds a tree in src/ and one AKKU or more,
+;; what it holds, the command line, each path in it under the fixture
+;; directory, and the program's whole answer. Each src/ but the first
+;; case's holds (circuit session) alone, importing (hashing sha-2) through
+;; only, so the closure is read. Each fake hashing file is a stand-in,
+;; written for its fixture, and its #!r6rs comes after a comment, as
+;; hashing's do: rule (h) does not hold them.
+(define akku-cases
+  (let ((akku (lambda (case dir) (at case dir)))
+        (file (lambda (case dir name) (at case (string-append dir "/hashing/" name)))))
+    (list
+     (list "hashing-session"
+           "rule (k): (circuit session) imports (hashing sha-2) through only right around it, around library, and inside prefix, rename, except and for, with a version reference, beside a core library; a core library imports (circuit session); the closure is read once"
+           '("src" "--akku" "akku")
+           (passed 3 #f (cons (akku "hashing-session" "akku") 3) 0))
+     (list "hashing-legal"
+           "rule (l): the closure as the pin has it, (hashing sha-2) in a .scm importing (rnrs ...) libraries and its two siblings, (hashing fixnums) in a .sls with a version reference on (rnrs), (hashing hmac) in a .scm; hashing's other files, which import (chezscheme) and (guile), are not in it and are not read"
+           '("src" "--akku" "akku")
+           (passed 1 #f (cons (akku "hashing-legal" "akku") 3) 0))
+     (list "hashing-legal"
+           "rule (l): a slash after AKKU changes nothing: the line names AKKU without it"
+           '("src" "--akku" "akku/")
+           (passed 1 #f (cons (akku "hashing-legal" "akku") 3) 0))
+     (list "hashing-legal"
+           "rule (l): (hashing sha-2) imported, and no --akku named"
+           '("src")
+           (refused no-akku))
+     (list "hashing-legal"
+           "rules (l) and (m): the command line before --akku, AKKU named as a LIBDIR alone: no closure is read, and rule (m) names its hashing and hashing.sha256"
+           '("src" "akku")
+           (refused no-akku
+                    (on-hashing-path (akku "hashing-legal" "akku") "hashing" #f)
+                    (on-hashing-path (akku "hashing-legal" "akku") "hashing.sha256" #f)))
+     (list "hashing-extensions"
+           "rule (l): each library is the file Chez takes, by its extensions' order: (hashing sha-2) from .sch, the last; (hashing fixnums) from .ss, over a .sls, .scm and .sch that import (chezscheme); (hashing hmac) from .sls, over a .scm and .sch that do"
+           '("src" "--akku" "akku")
+           (passed 1 #f (cons (akku "hashing-extensions" "akku") 3) 0))
+     (list "hashing-preferred"
+           "rule (l): a .chezscheme.sls beside (hashing sha-2)'s legal .scm, and a .ss beside (hashing hmac)'s, are the files Chez loads, and are read: each one's import is named"
+           '("src" "--akku" "akku")
+           (refused (closure-imports (file "hashing-preferred" "akku" "sha-2.chezscheme.sls")
+                                     "(hashing sha-2)" "(chezscheme)")
+                    (closure-imports (file "hashing-preferred" "akku" "hmac.ss")
+                                     "(hashing hmac)" "(rnrs eval)")))
+     (list "hashing-cycle"
+           "rule (l): (hashing fixnums) and (hashing hmac) import each other, with version references on the libraries' names and imports: each is read once, and the closure ends"
+           '("src" "--akku" "akku")
+           (passed 1 #f (cons (akku "hashing-cycle" "akku") 3) 0))
+     (list "hashing-not-found"
+           "rule (l): no source for (hashing hmac), beside files Chez would not take for it: .guile.sls, .scm.bak, hmacs.scm and a directory hmac/"
+           '("src" "--akku" "akku-no-hmac")
+           (refused (not-found (akku "hashing-not-found" "akku-no-hmac") "(hashing hmac)")))
+     (list "hashing-not-found"
+           "rule (l): no source for (hashing sha-2), beside its siblings and files Chez would not take for it: .guile.sls, sha2.scm, .scm.bak, and a sha-2.scm outside hashing/"
+           '("src" "--akku" "akku-no-sha-2")
+           (refused (not-found (akku "hashing-not-found" "akku-no-sha-2") "(hashing sha-2)")))
+     (list "hashing-unreadable"
+           "rule (l): a source that cannot be read as data, named with the running Chez's own words for it"
+           '("src" "--akku" "akku-broken")
+           (refused (cannot-read (file "hashing-unreadable" "akku-broken" "hmac.scm"))))
+     (list "hashing-unreadable"
+           "rule (l): a directory where the source would be, which Chez's search handler names, cannot be read as data"
+           '("src" "--akku" "akku-directory")
+           (refused (cannot-read (file "hashing-unreadable" "akku-directory" "hmac.scm"))))
+     (list "hashing-shape"
+           "rule (l): a library of another name where Chez finds (hashing fixnums), and a second library after (hashing hmac)"
+           '("src" "--akku" "akku-a")
+           (refused (misshapen (file "hashing-shape" "akku-a" "fixnums.sls") "(hashing fixnums)")
+                    (misshapen (file "hashing-shape" "akku-a" "hmac.scm") "(hashing hmac)")))
+     (list "hashing-shape"
+           "rule (l): a file of comments alone where Chez finds (hashing fixnums), and a datum before (hashing hmac)"
+           '("src" "--akku" "akku-b")
+           (refused (misshapen (file "hashing-shape" "akku-b" "fixnums.sls") "(hashing fixnums)")
+                    (misshapen (file "hashing-shape" "akku-b" "hmac.scm") "(hashing hmac)")))
+     (list "hashing-shape"
+           "rule (l): (hashing sha-2) with its import clause before its export clause, which is no library form: its imports, and so its siblings, are not read"
+           '("src" "--akku" "akku-c")
+           (refused (misshapen (file "hashing-shape" "akku-c" "sha-2.scm") "(hashing sha-2)")))
+     (list "hashing-spec"
+           "rule (l): imports in the closure that name no library: (library (rnrs) extra), 42 and (only); the (rnrs) beside them is not named"
+           '("src" "--akku" "akku")
+           (refused (closure-spec (file "hashing-spec" "akku" "fixnums.sls") "(hashing fixnums)"
+                                  "(library (rnrs) extra)")
+                    (closure-spec (file "hashing-spec" "akku" "hmac.scm") "(hashing hmac)" "42")
+                    (closure-spec (file "hashing-spec" "akku" "hmac.scm") "(hashing hmac)" "(only)")))
+     (list "hashing-imports"
+           "rule (l): the closure imports nothing but (rnrs ...), (hashing fixnums) and (hashing hmac): (rnrs eval), plain and under prefix with a version reference, (hashing sha-2) itself, (hashing md5), (chezscheme) through only, a (circuit ...) library, a third party's, (hashing-extras), (hashing private compat) and (hashing) are each named; (hashing fixnums), reached twice, is read once"
+           '("src" "--akku" "akku")
+           (let ((sha-2 (file "hashing-imports" "akku" "sha-2.scm"))
+                 (fixnums (file "hashing-imports" "akku" "fixnums.sls"))
+                 (hmac (file "hashing-imports" "akku" "hmac.scm")))
+             (refused (closure-imports sha-2 "(hashing sha-2)" "(rnrs eval)")
+                      (closure-imports sha-2 "(hashing sha-2)" "(rnrs eval)")
+                      (closure-imports sha-2 "(hashing sha-2)" "(hashing sha-2)")
+                      (closure-imports sha-2 "(hashing sha-2)" "(hashing md5)")
+                      (closure-imports sha-2 "(hashing sha-2)" "(chezscheme)")
+                      (closure-imports fixnums "(hashing fixnums)" "(circuit session)")
+                      (closure-imports fixnums "(hashing fixnums)" "(srfi :1)")
+                      (closure-imports fixnums "(hashing fixnums)" "(hashing-extras)")
+                      (closure-imports hmac "(hashing hmac)" "(hashing sha-2)")
+                      (closure-imports hmac "(hashing hmac)" "(hashing private compat)")
+                      (closure-imports hmac "(hashing hmac)" "(hashing)")))))))
+
+;; akku-args : String (Listof String) -> (Listof String)
+;; ARGS, each path in them under the fixture directory CASE.
+(define (akku-args case args)
+  (map (lambda (arg) (if (string=? arg "--akku") arg (at case arg))) args))
+
 (test-begin "check-imports")
 
 (test-equal "CHEZ names the Chez to spawn"
@@ -504,10 +759,29 @@
      (run (list (root (car case))))))
  cases)
 
+;; spaced : (Pairof String (Listof String)) -> String
+;; WORDS, a space between each two.
+(define (spaced words)
+  (fold-left (lambda (text word) (string-append text " " word)) (car words) (cdr words)))
+
+(for-each
+ (lambda (case)
+   (test-equal (string-append (car case) ", run with " (spaced (caddr case)) ": " (cadr case))
+     (cadddr case)
+     (run (akku-args (car case) (caddr case)))))
+ akku-cases)
+
+;; unique : (Listof String) -> (Listof String)
+;; NAMES, each once, in the order first named.
+(define (unique names)
+  (fold-left (lambda (found name) (if (member name found) found (append found (list name))))
+             '()
+             names))
+
 ;; A fixture nothing runs guards nothing, and a case with no fixture runs on a
 ;; missing directory.
 (test-equal "every fixture directory is a case above, and every case has its directory"
-  (list-sort string<? (map car cases))
+  (list-sort string<? (unique (append (map car cases) (map car akku-cases))))
   (list-sort string<?
              (filter (lambda (name) (file-directory? (string-append fixtures "/" name)))
                      (directory-list fixtures))))
@@ -618,9 +892,19 @@
   (run '("tests/check-suites.sps")))
 
 (define usage
-  (list 1 "" "check-imports: usage: scheme --program tests/check-imports.sps DIR [LIBDIR ...]\n"))
+  (list 1 "" "check-imports: usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [LIBDIR ...]\n"))
 
 (test-equal "no directory named: the usage line, exit 1" usage (run '()))
+
+(test-equal "--akku with no directory after it is named, exit 1"
+  (refused "--akku names no directory after it")
+  (run (list (root "legal") "--akku")))
+
+(test-equal "--akku naming no directory is named, exit 1: one that does not exist, and a file before a LIBDIR"
+  (list (refused "--akku no-such-directory: not a directory")
+        (refused "--akku tests/check-suites.sps: not a directory"))
+  (list (run (list (root "legal") "--akku" "no-such-directory"))
+        (run (list (root "legal") "--akku" "tests/check-suites.sps" "src"))))
 
 (test-equal "a directory that does not exist, named before LIBDIRs, is named"
   (refused "no-such-directory: not a directory")
@@ -743,6 +1027,126 @@
                                           why))))
        (if (and (equal? got want) (= (car made) 0) (= (car restored) 0)) 'refused (list made got))))))
 
+;; --- rule (l): compiled objects ---------------------------------------------------------
+;; Git keeps no .so here (.gitignore), so these trees are hashing-legal's,
+;; copied, with objects beside them.
+
+;; with-legal-copy : (String -> Any) -> Any
+;; PROC on a copy of the fixture hashing-legal, in a directory of its own.
+(define (with-legal-copy proc)
+  (call-with-temp-directory
+   (lambda (dir)
+     (let ((copy (string-append dir "/legal")))
+       (capture-command (list "cp" "-R" (root "hashing-legal") copy))
+       (proc copy)))))
+
+(test-equal "rule (l): a compiled object beside each library's source is named, as Chez could load it unread; one beside a file the closure does not hold is not"
+  'refused
+  (with-legal-copy
+   (lambda (copy)
+     (let* ((at (lambda (name) (string-append copy "/akku/hashing/" name)))
+            (made (begin (make-tree copy '("akku/hashing/sha-2.so" "akku/hashing/fixnums.so"
+                                           "akku/hashing/hmac.so" "akku/hashing/md5.so"))
+                         'made))
+            (want (refused (compiled (at "sha-2.so") "(hashing sha-2)")
+                           (compiled (at "fixnums.so") "(hashing fixnums)")
+                           (compiled (at "hmac.so") "(hashing hmac)")))
+            (got (run (list (string-append copy "/src") "--akku" (string-append copy "/akku")))))
+       (if (and (eq? made 'made) (equal? got want)) 'refused got)))))
+
+(test-equal "rule (l): a compiled object with no source beside it is named, and so is the missing source"
+  'refused
+  (with-legal-copy
+   (lambda (copy)
+     (let* ((akku (string-append copy "/akku"))
+            (removed (capture-command (list "rm" (string-append akku "/hashing/hmac.scm"))))
+            (made (begin (make-tree copy '("akku/hashing/hmac.so")) 'made))
+            (want (refused (not-found akku "(hashing hmac)")
+                           (compiled (string-append akku "/hashing/hmac.so") "(hashing hmac)")))
+            (got (run (list (string-append copy "/src") "--akku" akku))))
+       (if (and (= (car removed) 0) (eq? made 'made) (equal? got want)) 'refused (list removed got))))))
+
+;; --- rule (m): no other hashing on the library path -------------------------------------
+
+;; Every name Chez could take a (hashing ...) library from: the directory,
+;; a library file under each extension, source and compiled, and a link to
+;; a directory. Beside them, names that only begin with hashing's letters,
+;; and AKKU, named again among the LIBDIRs, which holds hashing.
+(test-equal "rule (m): each library directory but DIR and AKKU that holds hashing, or hashing.<anything>, is named, entry by entry, in the order the directories are named"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("akku/hashing/sha-2.scm" "akku/hashing.sha256"
+                      "a/hashing/sha-2.scm" "b/hashing.sls" "b/hashing.ss" "b/hashing.chezscheme.sls"
+                      "b/hashing.so" "b/hashing.scm" "b/hashing.sch" "c/hashings/x.sls"
+                      "c/hashing-extras.sls" "c/hashingx.sls" "c/xhashing.sls" "c/sha-2.scm" "d/linked/" "e/"))
+     (capture-command (list "ln" "-s" (string-append dir "/d/linked") (string-append dir "/e/hashing")))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (akku (at "akku"))
+            (want (refused (on-hashing-path (at "b") "hashing.chezscheme.sls" akku)
+                           (on-hashing-path (at "b") "hashing.sch" akku)
+                           (on-hashing-path (at "b") "hashing.scm" akku)
+                           (on-hashing-path (at "b") "hashing.sls" akku)
+                           (on-hashing-path (at "b") "hashing.so" akku)
+                           (on-hashing-path (at "b") "hashing.ss" akku)
+                           (on-hashing-path (at "a") "hashing" akku)
+                           (on-hashing-path (at "e") "hashing" akku)))
+            (got (run (list (root "legal") "--akku" akku (at "b") (at "c") (at "a") akku (at "e") (at "d")))))
+       (if (equal? got want) 'refused got)))))
+
+;; A Mac's default disk finds a name in any case, so Chez there would take
+;; (hashing sha-2) from Hashing/sha-2.scm, and (hashing) from HASHING.scm.
+(test-equal "rule (m): hashing's names in any case are named; names in another case that only begin with its letters are not"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("akku/hashing/sha-2.scm" "g/Hashing/sha-2.scm" "g/HASHING.scm" "g/hAsHiNg.Ss"
+                      "g/Hashings/x.sls" "g/HASHING-EXTRAS.sls" "g/HASHINGX.SLS"))
+     (let* ((g (string-append dir "/g"))
+            (akku (string-append dir "/akku"))
+            (want (refused (on-hashing-path g "HASHING.scm" akku)
+                           (on-hashing-path g "Hashing" akku)
+                           (on-hashing-path g "hAsHiNg.Ss" akku)))
+            (got (run (list (root "legal") "--akku" akku g))))
+       (if (equal? got want) 'refused got)))))
+
+(test-equal "rule (m): with no --akku, every library directory that holds hashing is named, the one --akku would name among them"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("akku/hashing/sha-2.scm" "b/hashing.sls" "c/hashings/x.sls"))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (want (refused (on-hashing-path (at "akku") "hashing" #f)
+                           (on-hashing-path (at "b") "hashing.sls" #f)))
+            (got (run (list (root "legal") (at "akku") (at "c") (at "b")))))
+       (if (equal? got want) 'refused got)))))
+
+(test-equal "rule (m): DIR, AKKU named again with a slash and without, a LIBDIR that does not exist, a file, and names that only begin with hashing's letters pass, and the pass names how many rules (j) and (m) looked in"
+  'passed
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("akku/hashing/sha-2.scm" "akku/hashing.sha256" "c/hashings/x.sls"
+                      "c/hashing-extras.sls" "c/hashingx.sls" "c/xhashing.sls" "c/sha-2.scm" "f/plain.sls"))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (want (passed 6 4 #f 2))
+            (got (run (list (root "legal") "--akku" (at "akku") (at "akku") (at "c") (root "legal")
+                            (string-append (at "akku") "/") (at "no-such") (at "f/plain.sls") (at "f")))))
+       (if (equal? got want) 'passed got)))))
+
+(test-equal "rule (m): with --akku and no LIBDIR, the pass is the tree's line and rule (m)'s, which looked in none"
+  (passed 6 #f #f 0)
+  (run (list (root "legal") "--akku" (at "hashing-legal" "akku"))))
+
+(test-equal "rule (j) holds AKKU as it holds any library directory: a circuit there is named, and its hashing is not"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("akku/hashing/sha-2.scm" "akku/circuit/request.sls"))
+     (let* ((akku (string-append dir "/akku"))
+            (want (refused (on-path akku "circuit" (root "legal"))))
+            (got (run (list (root "legal") "--akku" akku akku))))
+       (if (equal? got want) 'refused got)))))
+
 ;; make-check-imports : String -> (List Integer String String)
 ;; make check-imports, in a make of its own, with BUILD_DIR at BUILD: its
 ;; scheme-libs, where deps links SRFI-64, is then a directory of every
@@ -775,10 +1179,37 @@
                    "\n"))
                 (split-lines text)))))
 
+;; begins? : String String -> Boolean
+(define (begins? text head)
+  (and (>= (string-length text) (string-length head))
+       (string=? (substring text 0 (string-length head)) head)))
+
+;; looked-in : String String -> (U Natural #f)
+;; How many directories LINE, a pass's rule (j) or (m) line for FAMILY,
+;; says it looked in; #f when it is no such line.
+(define (looked-in line family)
+  (let ((head (string-append "check-imports: ok, no other directory on the library path holds "
+                             family ": "))
+        (tail " looked in"))
+    (and (begins? line head)
+         (> (string-length line) (+ (string-length head) (string-length tail)))
+         (string=? (substring line (- (string-length line) (string-length tail)) (string-length line))
+                   tail)
+         (let ((n (string->number (substring line (string-length head)
+                                             (- (string-length line) (string-length tail))))))
+           (and (integer? n) (exact? n) (>= n 0) n)))))
+
+;; make-closure-line : String
+;; Rule (l)'s pass line through make, on the pinned hashing in vendor/akku.
+(define make-closure-line
+  "check-imports: ok, the closure of (hashing sha-2) in vendor/akku imports only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac): 3 libraries read")
+
 ;; The Makefile's wiring: check-imports passes the audit every directory
 ;; of the library paths, so a (circuit ...) library in one of them, here
 ;; the scheme-libs of a BUILD_DIR of the row's own, fails make
-;; check-imports, and the same tree without it passes.
+;; check-imports, and the same tree without it passes. The pass reads the
+;; closure from vendor/akku, and rule (m) looks in every directory rule (j)
+;; does but vendor/akku.
 (test-equal "rule (j), through make: a circuit/ in a directory of the library path fails make check-imports, and without it the audit passes"
   'refused-then-passed
   (call-with-temp-directory
@@ -794,17 +1225,40 @@
                                 (string-append "check-imports: " (on-path libs "circuit" "src") "\n"
                                                "make: *** [check-imports] Error 1\n")))
             (passed-lines (split-lines (cadr passed)))
-            (looked "check-imports: ok, no other directory on the library path holds circuit: "))
+            (circuit-looked (and (= (length passed-lines) 5)
+                                 (looked-in (list-ref passed-lines 2) "circuit")))
+            (hashing-looked (and (= (length passed-lines) 5)
+                                 (looked-in (list-ref passed-lines 4) "hashing"))))
        (if (and (equal? planted want-planted)
                 (= (car passed) 0)
                 (string=? (caddr passed) "")
-                (= (length passed-lines) 3)
+                (= (length passed-lines) 5)
                 (string=? (string-append (car passed-lines) "\n") deps-line)
-                (let ((last (caddr passed-lines)))
-                  (and (> (string-length last) (string-length looked))
-                       (string=? (substring last 0 (string-length looked)) looked))))
+                (begins? (cadr passed-lines) "check-imports: ok, libraries checked: ")
+                circuit-looked
+                (string=? (list-ref passed-lines 3) make-closure-line)
+                hashing-looked
+                (= hashing-looked (- circuit-looked 1)))
            'refused-then-passed
            (list 'passed passed 'planted planted))))))
+
+;; The Makefile names vendor/akku twice: by --akku, and among the library
+;; path's directories. So a hashing/ in another of them fails make
+;; check-imports, while vendor/akku's own is passed over.
+(test-equal "rule (m), through make: a hashing/ in a directory of the library path but vendor/akku fails make check-imports"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((build (string-append dir "/build"))
+            (libs (string-append build "/scheme-libs"))
+            (deps-line (string-append "deps: chez-libuv's shim built; vendor/chez-http-server/vendor/chez-srfi linked into "
+                                      libs "/srfi\n"))
+            (planted (begin (make-tree build '("scheme-libs/hashing/sha-2.scm"))
+                            (make-check-imports build)))
+            (want (list 2 deps-line
+                        (string-append "check-imports: " (on-hashing-path libs "hashing" "vendor/akku") "\n"
+                                       "make: *** [check-imports] Error 1\n"))))
+       (if (equal? planted want) 'refused planted)))))
 
 ;; --- the lists the program holds are exact ---------------------------------------------
 ;; The program's lists are read from it as data, never from its output.
@@ -853,6 +1307,18 @@
 (test-equal "the one library that may import (websocket) is exactly (circuit websocket)"
   '(circuit websocket)
   (declared 'websocket-library))
+
+(test-equal "the one library that may import a (hashing ...) library is exactly (circuit session)"
+  '(circuit session)
+  (declared 'session-library))
+
+(test-equal "the one (hashing ...) library (circuit session) may import is exactly (hashing sha-2)"
+  '(hashing sha-2)
+  (declared 'hashing-library))
+
+(test-equal "the (hashing ...) libraries the closure may import are exactly (hashing fixnums) and (hashing hmac)"
+  (sorted-libraries '((hashing fixnums) (hashing hmac)))
+  (sorted-libraries (declared 'hashing-siblings)))
 
 (test-end "check-imports")
 

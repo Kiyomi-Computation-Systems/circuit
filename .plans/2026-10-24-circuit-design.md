@@ -1772,4 +1772,5 @@ The owner's answer in slice 10a (2026-11-06), after its review:
     in `(circuit response)`, and 10b, `(circuit session)`, a signed cookie store, with
     `hashing` from Akku (§15.33, ADR-0008). 10a, with `res-with-take-over` (§15.34),
     built and closed out in
-    [PR #39](https://github.com/Kiyomi-Computation-Systems/circuit/pull/39).
+    [PR #39](https://github.com/Kiyomi-Computation-Systems/circuit/pull/39); 10b in
+    [PR #40](https://github.com/Kiyomi-Computation-Systems/circuit/pull/40).
