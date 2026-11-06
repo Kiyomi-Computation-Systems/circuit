@@ -60,6 +60,7 @@ the checkout is the way in.
 `hashing` 1.4.0, Gwen Weinholt's SHA-2 and HMAC, comes from the Akku
 package index: `Akku.lock` pins its archive and sha256,
 and `make submodules` puts it in `vendor/akku`, which `make clean` keeps.
+`make check-pins` checks it too.
 `(circuit session)` signs its cookie with it, and no other library uses
 it.
 

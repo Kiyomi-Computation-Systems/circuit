@@ -48,13 +48,16 @@
   carries, not its test clients, and chez-websocket, not its server. Then
   it fetches hashing as `Akku.lock` pins it into `vendor/akku`, which is
   git-ignored, on the library path, and kept by `make clean`; `make deps`
-  fails without it.
+  fails without it, or on another than the one the lock pins.
   `make check-pins`, on the host and in CI, holds the server at
-  `SERVER_PIN`, each pin it carries where the server records it, and
+  `SERVER_PIN`, each pin it carries where the server records it,
   chez-websocket at `WEBSOCKET_PIN` with its server gitlink at `SERVER_PIN`,
-  and refuses a checkout with local edits. Move a gitlink and its pin
+  and `vendor/akku`'s hashing to the archive the lock pins, and refuses a
+  checkout or a tree with local edits. Move a gitlink and its pin
   (`SERVER_PIN` or `WEBSOCKET_PIN`) on one commit, with the docs' links into
-  that repository: `tests/test-reference.sps` holds them at the pin's tag.
+  that repository and the records' lines on the pin, the global
+  constraints' "now" and ADR-0003's "since": `tests/test-reference.sps`
+  holds the links at the pin's tag and the lines to the pin.
 * chez-http-server isn't on the Akku index, so Akku can't install it for
   circuit: the submodule is the only way in.
 * chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
@@ -118,8 +121,9 @@
   exception, holding comments to the docs: `tests/test-reference.sps` holds
   each signature comment to `docs/reference.md` and its procedure's arity,
   each type alias comment to the page's, each re-export's to the server's or
-  chez-websocket's reference, and the Makefile's comment on a pin to the
-  pin's tag.
+  chez-websocket's reference, the Makefile's comment on a pin to the
+  pin's tag, and the global constraints' and ADR-0003's pins to the
+  Makefile's.
 * Chez must be a threaded build: chez-http-server needs one, so circuit has
   no `--nothreads` lane.
 * `make test` runs every suite under GNU `timeout`, which kills a hung

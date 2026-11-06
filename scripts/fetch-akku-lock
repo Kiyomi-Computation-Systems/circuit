@@ -1,14 +1,21 @@
 #!/bin/sh
-# scripts/fetch-akku-lock NAME...
+# scripts/fetch-akku-lock [--check | --check-record] NAME...
 #
 # Gets each named package exactly as Akku.lock pins it, for a machine
 # without the akku tool: downloads the archive the lock names, checks its
 # sha256 against the lock, and unpacks it to $AKKU_DEST/NAME/. A package
-# whose unpacked tree already records the lock's sha256 is left alone, so a
-# second run needs no network: when its archive is still under dl/, the
-# tree is first held to it, unpacked beside it and compared by diff -r, and
-# a tree that differs, a file deleted, changed or added, is unpacked again
-# from that archive.
+# whose unpacked tree already records the lock's sha256 is held to its
+# archive under dl/, unpacked in a scratch directory and compared by
+# diff -r, and a tree that differs, a file deleted, changed or added, is
+# unpacked again from that archive. So a second run needs no network while
+# dl/ holds the archive; when it doesn't, or the archive there has another
+# sha256, the archive is downloaded again first.
+#
+# --check downloads nothing and changes nothing under $AKKU_DEST: it fails
+# unless each tree records the lock's sha256, dl/ holds the archive with
+# that sha256, and the tree is that archive unpacked, naming each file that
+# differs. --check-record holds the record alone, so it needs no tar, xz,
+# diff or sha256 tool.
 #
 # AKKU_LOCK (default Akku.lock) and AKKU_DEST (default build/akku) exist so
 # tests/fetch-akku-lock.sh can run it on a lock of its own.
@@ -19,11 +26,17 @@
 # and unpacks nothing.
 set -eu
 
+mode=fetch
+case ${1:-} in
+  --check) mode=check; shift ;;
+  --check-record) mode=record; shift ;;
+esac
+
 lock=${AKKU_LOCK:-Akku.lock}
 dest=${AKKU_DEST:-build/akku}
 
 if [ "$#" -lt 1 ]; then
-  echo "usage: fetch-akku-lock NAME..." >&2
+  echo "usage: fetch-akku-lock [--check | --check-record] NAME..." >&2
   exit 2
 fi
 if [ ! -f "$lock" ]; then
@@ -59,7 +72,22 @@ fetch() {
   fi
 }
 
-mkdir -p "$dest/dl"
+# Holding a tree to its archive unpacks the archive in a directory of the
+# run's own, outside $AKKU_DEST, removed when the run ends.
+if [ "$mode" != record ]; then
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/fetch-akku-lock.XXXXXX")
+  trap 'rm -rf "$scratch"' EXIT
+fi
+
+# held TREE ARCHIVE: 0 when TREE is ARCHIVE unpacked; 1 when it differs,
+# with diff -rq's lines in $scratch/diff; 2 when tar can't unpack ARCHIVE.
+held() {
+  rm -rf "${scratch:?}/tree" && mkdir "$scratch/tree" || return 2
+  tar -xf "$2" -C "$scratch/tree" 2>/dev/null || return 2
+  diff -rq "$scratch/tree" "$1" > "$scratch/diff" 2>&1 || return 1
+}
+
+[ "$mode" != fetch ] || mkdir -p "$dest/dl"
 status=0
 for name in "$@"; do
   set -- $(lookup "$name")
@@ -71,26 +99,40 @@ for name in "$@"; do
   url=$1 want=$2
   tree=$dest/$name
   archive=$dest/dl/$name.tar.xz
-  if [ -d "$tree" ] && [ "$(cat "$tree.sha256" 2>/dev/null)" = "$want" ]; then
-    if [ ! -f "$archive" ] || [ "$(sha256 "$archive")" != "$want" ]; then
-      echo "fetch-akku-lock: $name is up to date ($tree)"
-      continue
+  recorded=$(cat "$tree.sha256" 2>/dev/null) || recorded=
+
+  if [ "$mode" != fetch ]; then
+    if [ ! -d "$tree" ]; then
+      echo "fetch-akku-lock: $tree not found, so $name isn't fetched" >&2
+      status=1
+    elif [ -z "$recorded" ]; then
+      echo "fetch-akku-lock: $tree records no sha256, but $lock pins $want" >&2
+      status=1
+    elif [ "$recorded" != "$want" ]; then
+      echo "fetch-akku-lock: $tree records sha256 $recorded, but $lock pins $want" >&2
+      status=1
+    elif [ "$mode" = record ]; then
+      echo "fetch-akku-lock: $name records the sha256 $lock pins ($tree)"
+    elif [ ! -f "$archive" ]; then
+      echo "fetch-akku-lock: $archive not found, so $tree can't be held to it" >&2
+      status=1
+    elif [ "$(sha256 "$archive")" != "$want" ]; then
+      echo "fetch-akku-lock: $archive has sha256 $(sha256 "$archive"), but $lock pins $want" >&2
+      status=1
+    else
+      r=0; held "$tree" "$archive" || r=$?
+      case $r in
+        0) echo "fetch-akku-lock: $name is its archive as $lock pins it ($tree)" ;;
+        1) echo "fetch-akku-lock: $tree differs from its archive:" >&2
+           sed 's/^/  /' "$scratch/diff" >&2
+           status=1 ;;
+        *) echo "fetch-akku-lock: could not unpack $archive to hold $tree to it (tar needs xz to read it)" >&2
+           status=1 ;;
+      esac
     fi
-    rm -rf "$tree.check"
-    mkdir -p "$tree.check"
-    if ! tar -xf "$archive" -C "$tree.check" 2>/dev/null; then
-      rm -rf "$tree.check"
-      echo "fetch-akku-lock: $name is up to date ($tree; its archive can't be unpacked here to hold the tree to it)"
-      continue
-    fi
-    if diff -r "$tree.check" "$tree" > /dev/null 2>&1; then
-      rm -rf "$tree.check"
-      echo "fetch-akku-lock: $name is up to date ($tree)"
-      continue
-    fi
-    rm -rf "$tree.check"
-    echo "fetch-akku-lock: $tree differs from its archive, so it is unpacked again"
+    continue
   fi
+
   if [ ! -f "$archive" ] || [ "$(sha256 "$archive")" != "$want" ]; then
     rm -f "$archive"
     if ! fetch "$url" "$archive.part"; then
@@ -108,6 +150,16 @@ for name in "$@"; do
     echo "fetch-akku-lock: $name's archive has sha256 $got, but $lock pins $want" >&2
     status=1
     continue
+  fi
+  if [ -d "$tree" ] && [ "$recorded" = "$want" ]; then
+    r=0; held "$tree" "$archive" || r=$?
+    case $r in
+      0) echo "fetch-akku-lock: $name is up to date ($tree)"
+         continue ;;
+      1) echo "fetch-akku-lock: $tree differs from its archive, so it is unpacked again" ;;
+      *) echo "fetch-akku-lock: $name is up to date ($tree; its archive can't be unpacked here to hold the tree to it)"
+         continue ;;
+    esac
   fi
   # tar reads the archive itself and finds the xz compression: piped from
   # xz, a missing xz left bsdtar an empty stream, which it unpacks as an

@@ -65,15 +65,41 @@ else
   fail "the pinned archive is unpacked and its sha256 recorded"; cat "$scratch/out" >&2
 fi
 
-# 2. A second run needs no network: the server's archive is gone.
+# 2. A tree that records the lock's sha256, but whose archive is gone from
+#    dl/ or damaged there, has the archive downloaded again and is held to
+#    it: an edit made meanwhile is put back. Offline, the run fails, naming
+#    the download, and leaves the tree as it was.
+pkg_sls='(library (pkg) (export) (import (rnrs)))'
+rm -f "$scratch/dest/dl/pkg.tar.xz"
+echo 'edited' > "$scratch/dest/pkg/src/pkg.sls"
+if run pkg && grep -q 'differs from its archive' "$scratch/out" \
+   && [ "$(cat "$scratch/dest/pkg/src/pkg.sls")" = "$pkg_sls" ] \
+   && [ "$(sha256 "$scratch/dest/dl/pkg.tar.xz")" = "$good" ]; then
+  pass "a tree whose archive is gone from dl/ has it downloaded again, and is held to it"
+else
+  fail "a tree whose archive is gone from dl/ has it downloaded again, and is held to it"; cat "$scratch/out" >&2
+fi
+printf 'damaged\n' > "$scratch/dest/dl/pkg.tar.xz"
+echo 'edited' > "$scratch/dest/pkg/src/pkg.sls"
+if run pkg && grep -q 'differs from its archive' "$scratch/out" \
+   && [ "$(cat "$scratch/dest/pkg/src/pkg.sls")" = "$pkg_sls" ] \
+   && [ "$(sha256 "$scratch/dest/dl/pkg.tar.xz")" = "$good" ]; then
+  pass "a tree whose archive under dl/ is damaged has it downloaded again, and is held to it"
+else
+  fail "a tree whose archive under dl/ is damaged has it downloaded again, and is held to it"; cat "$scratch/out" >&2
+fi
 mv "$scratch/srv/pkg.tar.xz" "$scratch/srv/pkg.tar.xz.away"
 rm -f "$scratch/dest/dl/pkg.tar.xz"
-if run pkg && grep -q 'pkg is up to date' "$scratch/out"; then
-  pass "an unpacked tree that records the lock's sha256 is left alone, offline"
+echo 'edited' > "$scratch/dest/pkg/src/pkg.sls"
+if ! run pkg && grep -q 'could not download' "$scratch/out" \
+   && [ "$(cat "$scratch/dest/pkg/src/pkg.sls")" = edited ] \
+   && [ "$(cat "$scratch/dest/pkg.sha256")" = "$good" ]; then
+  pass "offline, a tree whose archive is gone from dl/ fails, naming the download, and is left as it was"
 else
-  fail "an unpacked tree that records the lock's sha256 is left alone, offline"; cat "$scratch/out" >&2
+  fail "offline, a tree whose archive is gone from dl/ fails, naming the download, and is left as it was"; cat "$scratch/out" >&2
 fi
 mv "$scratch/srv/pkg.tar.xz.away" "$scratch/srv/pkg.tar.xz"
+run pkg
 
 # 3. An archive whose sha256 is not the lock's is refused, deleted, and
 #    nothing is unpacked; the tree from before is not trusted either.
@@ -145,7 +171,7 @@ tar -cf - -C "$scratch/srv3" . | xz -c > "$scratch/srv/pkg.tar.xz"
 new=$(sha256 "$scratch/srv/pkg.tar.xz")
 before=$(cat "$scratch/dest/pkg.sha256")
 write_lock "$new"
-for t in sh awk cut cat mkdir rm mv ls tar curl wget sha256sum shasum; do
+for t in sh awk cut cat mkdir mktemp rm mv ls tar curl wget sha256sum shasum; do
   p=$(command -v "$t" 2>/dev/null) && ln -s "$p" "$scratch/noxz/$t"
 done
 path=$PATH
@@ -221,6 +247,117 @@ else
   fail "a file added to the tree is removed, the tree unpacked again from its archive, offline"; cat "$scratch/out" >&2
 fi
 mv "$scratch/srv/pkg.tar.xz.away" "$scratch/srv/pkg.tar.xz"
+
+# What dest holds: every path, and each file's sha256. A row that says a
+# run changes nothing compares it before and after.
+snapshot() {
+  (cd "$scratch/dest" && find . | LC_ALL=C sort \
+     && find . -type f | LC_ALL=C sort | while read -r f; do echo "$f $(sha256 "$f")"; done)
+}
+
+# 11. --check fetches nothing and changes nothing. It passes a tree that
+#     records the lock's sha256 and is its archive under dl/, unpacked, and
+#     fails, naming why, on a file deleted, changed or added, a record of
+#     another sha256 or of none, a tree that isn't there, an archive gone
+#     from dl/ or damaged there, and one tar can't unpack. The server holds
+#     the archive throughout, so a check that fetched would pass.
+four=$(cat "$scratch/dest/pkg.sha256")
+holds() { # TEXT...: each is in the output
+  for want in "$@"; do grep -qF -- "$want" "$scratch/out" || return 1; done
+}
+checked() { # NAME, EXPECTED STATUS, TEXT the output holds...: one row
+  row=$1 status=$2; shift 2
+  before=$(snapshot)
+  run --check pkg; got=$?
+  if [ "$got" -eq "$status" ] && holds "$@" && [ "$(snapshot)" = "$before" ]; then
+    pass "$row"
+  else
+    fail "$row (exit $got)"; cat "$scratch/out" >&2
+  fi
+}
+checked "--check passes a tree that is its archive, and changes nothing" \
+  0 "fetch-akku-lock: pkg is its archive as $scratch/Akku.lock pins it ($scratch/dest/pkg)"
+echo 'edited' > "$scratch/dest/pkg/src/notes.txt"
+checked "--check fails on a file changed in the tree, naming it, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg differs from its archive:" "notes.txt"
+echo 'four' > "$scratch/dest/pkg/src/notes.txt"
+rm "$scratch/dest/pkg/src/four.sls"
+checked "--check fails on a file deleted from the tree, naming it, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg differs from its archive:" "four.sls"
+echo '(library (pkg four) (export) (import (rnrs)))' > "$scratch/dest/pkg/src/four.sls"
+echo 'stray' > "$scratch/dest/pkg/src/stray.sls"
+checked "--check fails on a file added to the tree, naming it, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg differs from its archive:" "stray.sls"
+rm "$scratch/dest/pkg/src/stray.sls"
+echo "$good" > "$scratch/dest/pkg.sha256"
+checked "--check fails on a tree that records another sha256, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg records sha256 $good, but $scratch/Akku.lock pins $four"
+rm "$scratch/dest/pkg.sha256"
+checked "--check fails on a tree that records no sha256, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg records no sha256, but $scratch/Akku.lock pins $four"
+echo "$four" > "$scratch/dest/pkg.sha256"
+mv "$scratch/dest/pkg" "$scratch/pkg.away"
+checked "--check fails on a tree that isn't there, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg not found, so pkg isn't fetched"
+mv "$scratch/pkg.away" "$scratch/dest/pkg"
+mv "$scratch/dest/dl/pkg.tar.xz" "$scratch/dl.away"
+checked "--check fails on an archive gone from dl/, downloading nothing" \
+  1 "fetch-akku-lock: $scratch/dest/dl/pkg.tar.xz not found, so $scratch/dest/pkg can't be held to it"
+printf 'damaged\n' > "$scratch/dest/dl/pkg.tar.xz"
+checked "--check fails on an archive damaged in dl/, downloading nothing" \
+  1 "fetch-akku-lock: $scratch/dest/dl/pkg.tar.xz has sha256 $(sha256 "$scratch/dest/dl/pkg.tar.xz"), but $scratch/Akku.lock pins $four"
+write_lock "$(sha256 "$scratch/dest/dl/pkg.tar.xz")"
+sha256 "$scratch/dest/dl/pkg.tar.xz" > "$scratch/dest/pkg.sha256"
+checked "--check fails on an archive tar can't unpack, and changes nothing" \
+  1 "fetch-akku-lock: could not unpack $scratch/dest/dl/pkg.tar.xz to hold $scratch/dest/pkg to it"
+mv "$scratch/dl.away" "$scratch/dest/dl/pkg.tar.xz"
+write_lock "$four"
+echo "$four" > "$scratch/dest/pkg.sha256"
+if ! AKKU_LOCK=$scratch/Akku.lock AKKU_DEST=$scratch/none "$script" --check pkg > "$scratch/out" 2>&1 \
+   && grep -qF "fetch-akku-lock: $scratch/none/pkg not found" "$scratch/out" \
+   && [ ! -e "$scratch/none" ]; then
+  pass "--check on an AKKU_DEST that isn't there fails, and makes nothing"
+else
+  fail "--check on an AKKU_DEST that isn't there fails, and makes nothing"; cat "$scratch/out" >&2
+fi
+if ! run --check absent pkg && holds "fetch-akku-lock: pkg is its archive" "absent is not in"; then
+  pass "--check goes on past a package that fails, and fails"
+else
+  fail "--check goes on past a package that fails, and fails"; cat "$scratch/out" >&2
+fi
+
+# 12. --check-record holds the record alone: a tree that records the
+#     lock's sha256 passes, even with a file changed and its archive gone
+#     from dl/, with no tar, xz, diff or sha256 tool on the PATH; one that
+#     records another sha256, or isn't there, fails. It changes nothing.
+mkdir -p "$scratch/bare"
+for t in awk cat; do
+  p=$(command -v "$t" 2>/dev/null) && ln -s "$p" "$scratch/bare/$t"
+done
+recorded() { # NAME, EXPECTED STATUS, TEXT the output holds...: one row
+  row=$1 status=$2; shift 2
+  before=$(snapshot)
+  (PATH=$scratch/bare; run --check-record pkg); got=$?
+  if [ "$got" -eq "$status" ] && holds "$@" && [ "$(snapshot)" = "$before" ]; then
+    pass "$row"
+  else
+    fail "$row (exit $got)"; cat "$scratch/out" >&2
+  fi
+}
+echo 'edited' > "$scratch/dest/pkg/src/notes.txt"
+mv "$scratch/dest/dl/pkg.tar.xz" "$scratch/dl.away"
+recorded "--check-record passes a tree that records the lock's sha256, with no tar, xz or diff, and changes nothing" \
+  0 "fetch-akku-lock: pkg records the sha256 $scratch/Akku.lock pins ($scratch/dest/pkg)"
+echo "$good" > "$scratch/dest/pkg.sha256"
+recorded "--check-record fails on a tree that records another sha256, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg records sha256 $good, but $scratch/Akku.lock pins $four"
+echo "$four" > "$scratch/dest/pkg.sha256"
+mv "$scratch/dest/pkg" "$scratch/pkg.away"
+recorded "--check-record fails on a tree that isn't there, and changes nothing" \
+  1 "fetch-akku-lock: $scratch/dest/pkg not found, so pkg isn't fetched"
+mv "$scratch/pkg.away" "$scratch/dest/pkg"
+mv "$scratch/dl.away" "$scratch/dest/dl/pkg.tar.xz"
+echo 'four' > "$scratch/dest/pkg/src/notes.txt"
 
 if [ "$fails" -eq 0 ]; then
   echo "fetch-akku-lock: all checks passed"

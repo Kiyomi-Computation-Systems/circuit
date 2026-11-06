@@ -104,9 +104,9 @@ jobs:
 
       # Clone the server, the pins it carries, and chez-websocket, and fetch
       # hashing into vendor/akku, its sha256 checked against Akku.lock; then
-      # verify each submodule is where its pin or its parent records before
-      # building anything: a drifted pin fails here, in seconds, not after a
-      # cold Chez build. Every one is public, so no token is needed, and a
+      # verify each submodule is where its pin or its parent records, and
+      # hashing is its archive, unpacked, before building anything: a
+      # drifted pin fails here, in seconds, not after a cold Chez build. Every one is public, so no token is needed, and a
       # pull request from a fork, which gets no secrets, builds as one from
       # this repository does. `make test` needs the checkouts and hashing
       # (deps checks they are there) and never fetches.

@@ -42,7 +42,10 @@
 ;;;
 ;;; A pin's tag is v and the version its vendored copy's Akku.manifest
 ;;; gives, which the Makefile's comment on the pin, `SERVER_PIN := <sha>  #
-;;; vX.Y.Z`, must name too. And the page's own shape: no heading out of the
+;;; vX.Y.Z`, must name too. The records name each pin as the Makefile does,
+;;; its tag and its sha's first seven digits, the server's then
+;;; chez-websocket's: the global constraints as `now vX.Y.Z (`sha`)`, and
+;;; ADR-0003 as `vX.Y.Z (`sha`) since <date>`. And the page's own shape: no heading out of the
 ;;; convention; each type alias in its intro is the alias comment in src/,
 ;;; `;; NAME = TYPE`, where two that name one type agree; every entry has
 ;;; words, and every entry but a re-export a link to a guide page, a
@@ -959,20 +962,71 @@
 
 ;; --- the pins --------------------------------------------------------------------------
 
-;; pin-tag : String String -> (U String #f)
-;; The tag after # on the Makefile line `VARIABLE := <sha>  # <tag>`.
-(define (pin-tag text variable)
+;; pin-value : String String -> (U String #f)
+;; What follows := on the first Makefile line `VARIABLE := ...`.
+(define (pin-value text variable)
   (let loop ((lines (string-lines text)))
     (if (null? lines)
         #f
-        (let ((line (car lines)))
-          (if (and (prefix? variable line)
-                   (prefix? ":=" (trim-left (substring line (string-length variable) (string-length line)))))
-              (let ((hash (string-search line "#" 0)))
-                (and hash
-                     (let ((tag (trim (substring line (+ hash 1) (string-length line)))))
-                       (and (not (string=? tag "")) tag))))
+        (let* ((line (car lines))
+               (rest (and (prefix? variable line)
+                          (trim-left (substring line (string-length variable) (string-length line))))))
+          (if (and rest (prefix? ":=" rest))
+              (substring rest 2 (string-length rest))
               (loop (cdr lines)))))))
+
+;; pin-tag : String String -> (U String #f)
+;; The tag after # on the Makefile line `VARIABLE := <sha>  # <tag>`.
+(define (pin-tag text variable)
+  (let* ((value (pin-value text variable))
+         (hash (and value (string-search value "#" 0)))
+         (tag (and hash (trim (substring value (+ hash 1) (string-length value))))))
+    (and tag (not (string=? tag "")) tag)))
+
+;; pin-sha : String String -> (U String #f)
+;; The sha on the Makefile line `VARIABLE := <sha>  # <tag>`: what stands
+;; before the first whitespace or #.
+(define (pin-sha text variable)
+  (let ((value (pin-value text variable)))
+    (and value
+         (let* ((v (trim-left value)) (n (string-length v)))
+           (let loop ((i 0))
+             (if (and (< i n) (not (char-whitespace? (string-ref v i))) (not (char=? (string-ref v i) #\#)))
+                 (loop (+ i 1))
+                 (and (> i 0) (substring v 0 i))))))))
+
+;; spaced-words : String -> (Listof String)
+;; S split at whitespace alone, line breaks included.
+(define (spaced-words s)
+  (let* ((s (collapse s)) (n (string-length s)))
+    (if (= n 0)
+        '()
+        (let loop ((start 0) (i 0) (out '()))
+          (cond ((= i n) (reverse (cons (substring s start n) out)))
+                ((char=? (string-ref s i) #\space) (loop (+ i 1) (+ i 1) (cons (substring s start i) out)))
+                (else (loop start (+ i 1) out)))))))
+
+;; pin-mentions : String -> (Listof (List (U String #f) String String (U String #f)))
+;; Each `VERSION (`SHA`)` in TEXT whose VERSION is a release tag, in order:
+;; the word before it, VERSION, SHA and the word after it, #f where there
+;; is none. A word is split at whitespace alone, so it keeps its
+;; punctuation, and a line break counts as a space.
+(define (pin-mentions text)
+  (let* ((ws (list->vector (spaced-words text))) (n (vector-length ws)))
+    (let loop ((k 1) (out '()))
+      (if (>= k n)
+          (reverse out)
+          (let* ((w (vector-ref ws k))
+                 (close (and (prefix? "(`" w) (string-search w "`)" 2)))
+                 (version (vector-ref ws (- k 1))))
+            (if (and close (> close 2) (release-tag? version))
+                (loop (+ k 1)
+                      (cons (list (and (>= k 2) (vector-ref ws (- k 2)))
+                                  version
+                                  (substring w 2 close)
+                                  (and (< (+ k 1) n) (vector-ref ws (+ k 1))))
+                            out))
+                (loop (+ k 1) out)))))))
 
 ;; manifest-package : (Listof Any) -> (U (Pair String String) #f)
 ;; The name and the version an Akku.manifest's data give, in
@@ -1379,6 +1433,20 @@
       (list (pin-tag text "SERVER_PIN") (pin-tag text "WEBSOCKET_PIN") (pin-tag text "OTHER_PIN")
             (map release-tag? '("v0.9.1" "v0.9" "0.9.1" "v0.9.x"))))))
 
+(test-equal "pin-sha reads the sha before a pin's comment"
+  '("0123abc" #f #f "fedcba9")
+  (guard (e (#t (list 'raised (describe e))))
+    (let ((text (joined "\n" '("SERVER_PIN_DIR := x  # v9.9.9" "SERVER_PIN := 0123abc  # v1.2.3"
+                               "WEBSOCKET_PIN :=   # v1" "OTHER_PIN := fedcba9#v1"))))
+      (list (pin-sha text "SERVER_PIN") (pin-sha text "WEBSOCKET_PIN") (pin-sha text "MISSING_PIN")
+            (pin-sha text "OTHER_PIN")))))
+
+(test-equal "pin-mentions reads each release tag's (`sha`), with the words around it, across a line break"
+  '((#f "v0.1.0" "0000000" "since") ("now" "v1.2.3" "abc1234" "Next") ("server's" "v2.0.0" "fff0000" #f))
+  (guard (e (#t (list 'raised (describe e))))
+    (pin-mentions (joined "\n" '("v0.1.0 (`0000000`) since a file (`x`), v0.9 (`1234567`) and v3.0.0 (``) now v1.2.3"
+                                 "  (`abc1234`). Next the server's v2.0.0 (`fff0000`)")))))
+
 (test-equal "manifest-package reads an Akku.manifest's name and version"
   '(("x" . "1.2.3") #f)
   (guard (e (#t (list 'raised (describe e))))
@@ -1400,6 +1468,38 @@
      (upstream-tag u)
      (upstream-makefile-tag u)))
  upstreams)
+
+;; --- the records' pins -----------------------------------------------------------------------
+;; The global constraints say which release each dependency is pinned at
+;; now, and ADR-0003 since when: each is the Makefile's pin, its tag and its
+;; sha's first seven digits, the server's then chez-websocket's.
+
+(define constraints ".plans/global-constraints.md")
+(define adr-0003 ".plans/decisions/0003-chez-http-server-is-a-submodule-pinned-at-a-release-tag.md")
+
+;; record-pins : (Listof (List (U String #f) (U String #f)))
+;; SERVER_PIN and WEBSOCKET_PIN as the records write them.
+(define record-pins
+  (guard (e (#t (list 'raised (describe e))))
+    (map (lambda (variable)
+           (let ((sha (pin-sha makefile-text variable)))
+             (list (pin-tag makefile-text variable)
+                   (and sha (>= (string-length sha) 7) (substring sha 0 7)))))
+         '("SERVER_PIN" "WEBSOCKET_PIN"))))
+
+(test-equal (string-append constraints ": each pin it says a dependency is at now is the Makefile's, "
+                           "SERVER_PIN's then WEBSOCKET_PIN's")
+  record-pins
+  (guard (e (#t (list 'raised (describe e))))
+    (map (lambda (m) (list (cadr m) (caddr m)))
+         (filter (lambda (m) (equal? (car m) "now")) (pin-mentions (or (read-text constraints) ""))))))
+
+(test-equal (string-append adr-0003 ": each pin it says a dependency is at since a date is the Makefile's, "
+                           "SERVER_PIN's then WEBSOCKET_PIN's")
+  record-pins
+  (guard (e (#t (list 'raised (describe e))))
+    (map (lambda (m) (list (cadr m) (caddr m)))
+         (filter (lambda (m) (equal? (cadddr m) "since")) (pin-mentions (or (read-text adr-0003) ""))))))
 
 ;; --- (a) the sections ------------------------------------------------------------------------
 
