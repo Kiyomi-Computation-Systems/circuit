@@ -152,9 +152,13 @@ close-out under **Close-outs**, newest first.
   its close-out is below. Sessions live in a cookie signed with HMAC-SHA-256 by
   `hashing` 1.4.0 from Akku, circuit's first runtime dependency (ADR-0008, accepted), in
   `vendor/akku`. Eleven public libraries, and slice 10 is done.
-- **Next:** a release after 10b is the owner's call (the sessions design §1). The
-  owner's open questions from 10b: whether `make check-pins` should hold `vendor/akku`,
-  and the stale v0.9.1 in ADR-0003 and the global constraints (the close-out).
+- **The records' pins are the Makefile's, and `make check-pins` holds `vendor/akku`**,
+  squashed from [PR #41](https://github.com/Kiyomi-Computation-Systems/circuit/pull/41)
+  on 2026-11-06; its close-out is below. The owner's answers to 10b's two questions:
+  `tests/test-reference.sps` holds the global constraints' and ADR-0003's pins to
+  `SERVER_PIN` and `WEBSOCKET_PIN`; `make deps` refuses a hashing that isn't the lock's,
+  and the fetch downloads an archive missing from `dl/` again.
+- **Next:** a release after 10b is the owner's call (the sessions design §1).
 
 ## Open
 
@@ -217,6 +221,64 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-06: the records' pins, and `make check-pins` on `vendor/akku`, in PR #41
+
+On the owner's "fix the stale server pin, lets discuss check-pins", then "do check-pins
+and both extras (make deps and repair gap) also do the test row": 10b's two open
+questions. Commits on `chore/pins-in-records`: the code, tests and records (d9c2484), this
+close-out, and its CI run named here. In the container, `make test` passes 25
+suites, and `make check-site`, `make check-help` and `make check-site-deps` pass;
+`make check-pins` passes on the host.
+
+- **the records' pins:** ADR-0003's items 1 and 6, and the global constraints, named the
+  server at v0.9.1 and chez-websocket at v0.4.1, though PR #22 moved them to v0.10.0
+  (`5c16f64`) and v0.5.1 (`4b70f22`) on 2026-10-30. They name those now, ADR-0003 with an
+  amendment for that day, and the circuit design's §1, §11 and §12 say so where they
+  spoke of the pin as it is. The tags' commits were read from the vendored checkouts;
+- **`tests/test-reference.sps`** holds the global constraints' two `now` pins and
+  ADR-0003's two `since` pins to `SERVER_PIN` and `WEBSOCKET_PIN`, each the Makefile's
+  tag and its sha's first seven digits, the server's then chez-websocket's. Four rows:
+  the two readers, `pin-sha` and `pin-mentions`, held to text written by hand, and the
+  two records. On the records before the fix, the two failed, naming v0.9.1 (`b7381a0`)
+  and v0.4.1 (`579c118`). `pin-tag` reads through `pin-value` now, which `pin-sha`
+  shares, and its own row failed on a mutant of that. Of nine mutants of the readers,
+  eight were killed by a failing row; the survivor searches for `#` from a value's
+  second character, which only a `PIN :=# tag` line, with no sha, tells apart;
+- **`scripts/fetch-akku-lock`:**
+  - `--check` downloads nothing and changes nothing under `AKKU_DEST`. It fails unless
+    each tree records the lock's sha256, `dl/` holds the archive with that sha256, and
+    the tree is that archive unpacked, naming each file that differs;
+  - `--check-record` holds the record alone, with no tar, xz, diff or sha256 tool;
+  - the repair gap: a tree that records the lock's sha256, but whose archive is missing
+    from `dl/` or damaged there, has the archive downloaded again and is held to it.
+    Before, the record was trusted, so an edited tree couldn't be repaired without
+    removing `vendor/akku`. Offline, that run fails, naming the download;
+  - a tree is held to its archive in a scratch directory of the run's own, outside
+    `AKKU_DEST`, where it was unpacked in `$tree.check` beside the tree;
+- **`make check-pins`** runs `--check` on `vendor/akku`'s hashing, so it needs tar, xz
+  with GNU tar, a sha256 tool and diff, as `make submodules` does; a failure names
+  `make submodules`, which fetches it again. **`make deps`** runs `--check-record`, so a
+  tree left from before a move of the lock fails every target that builds, in the
+  container too. Its stdout is unchanged on a pass, which `test-check-imports`'s make
+  rows compare;
+- **the rows:** `tests/fetch-akku-lock.sh`, 30 rows, 18 of them new or remade, all 18
+  failing on the script before the change while the other 12 passed. Row 2 held that a
+  tree with no archive under `dl/` was left alone, offline: it holds the repair now, as
+  three rows. 25 mutants of the script, each killed by a failing row, and every one of
+  the 30 rows watched failing;
+- **by hand,** on a copy of `vendor/akku` named by `AKKU_DIR`: `make check-pins` on the
+  host failed on an edit, naming the file, on an old record and on an archive gone from
+  `dl/`, downloading nothing; `make submodules` then downloaded the archive and put the
+  edit back, and check-pins passed. `make deps` in the container refused an old record,
+  and passed a current one with an edit and no archive, which check-pins is for. On the
+  real `vendor/akku`, `make check-pins` passes;
+- **the docs and records:** AGENTS.md, ADR-0003 (item 4) and ADR-0008 (items 2 and 3),
+  each amended; the global constraints; `docs/installing.md`; the CHANGELOG's
+  Unreleased; the Makefile's and CI's comments;
+- **not held:** ADR-0008 says `vendor/akku` holds nothing but `hashing/`, `dl/` and
+  `hashing.sha256`, and no check holds that. The circuit design's pins have no row.
+- **Agents:** none.
 
 ### 2026-11-06: slice 10b, sessions, in PR #40
 
