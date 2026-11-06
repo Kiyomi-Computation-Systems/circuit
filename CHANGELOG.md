@@ -7,6 +7,18 @@ release before 1.0.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-06
+
+The fourth release: cookies, sessions, the query and urlencoded forms, CORS and security
+headers, each a library of its own, and keys on a response, so a handler can hand a value
+back to the middleware around it. Sessions sign their cookie with `hashing` 1.4.0 from
+the Akku index, circuit's first runtime dependency, which `make submodules` fetches into
+`vendor/akku`: run it again in a checkout of an earlier release. `wrap-log`'s line gains
+the client's address, and names join `(circuit)`, `(circuit router)` and
+`(circuit middleware waits)`, where a program's own may clash with them, so the release
+is 0.2.0. No name leaves a library, and the pins stay at chez-http-server v0.10.0 and
+chez-websocket v0.5.1.
+
 ### Added
 
 - **CORS: `(circuit middleware cors)`.** `wrap-cors` answers a browser's preflight from
@@ -82,6 +94,11 @@ release before 1.0.
 
 ### Changed
 
+- **New names in `(circuit)`:** `make-res-key`, `res-key?`, `res-ref`, `res-set` and
+  `res-with-take-over`; in `(circuit middleware waits)`: `wrap-catch-with` and
+  `wrap-log-with`; in `(circuit router)`: `on-not-found`, `on-bad-request` and
+  `on-method-not-allowed`. Chez refuses a program that defines a name it imports, so one
+  that defines any of them itself must rename it.
 - **`make submodules` also downloads `hashing` 1.4.0**, circuit's first dependency from
   the Akku index, into `vendor/akku`, its sha256 checked against `Akku.lock`, which now
   pins it. It needs curl or wget, `sha256sum` or `shasum`, `diff`, and with GNU tar
@@ -269,7 +286,8 @@ both pinned submodules under `vendor/`. The API may change in any release before
   `make gate` holds what circuit adds to a request, in bytes. A pinned Guix container
   runs both. CI runs on Linux, on amd64 and arm64.
 
-[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.2.0
 [0.1.2]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.0

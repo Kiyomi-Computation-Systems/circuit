@@ -355,6 +355,8 @@ judges. The owner chose it (§8.1).
   - A body past it raises the server's `&body-failed`, `413`, as any capped read does
     (design §4), and no handler runs. `wrap-catch` outside it, or the server, answers
     the `413`.
+  - It bounds the pairs too: no limit of their own, at most `n/2` (design §15.35,
+    decided after the slice).
 - **The body is read once.** After the middleware, `req-body` reads eof.
   - A body already taken outside it is `req-with-body-cap`'s assertion violation, a 500:
     two readers of one body is a bug.
