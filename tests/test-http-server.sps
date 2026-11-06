@@ -21,10 +21,12 @@
 ;;;     request woken at the same instant sees; a row that holds the
 ;;;     streamed path gives a piece size smaller than its port;
 ;;;   - sized bodies and the server's mismatch handling; wraps and taps;
+;;;   - a response's keys, and an upgrade's, never on the wire;
 ;;;   - a client that leaves while the app waits;
 ;;;   - upgrades: the 101, then the taker's bytes and the client's, a taker
 ;;;     that waits, middleware that adds a field, removes one or wraps the
-;;;     take-over, an app that made its req-body, and the refusals, a 101
+;;;     take-over, with make-upgrade-res or res-with-take-over, which keeps
+;;;     the keys, an app that made its req-body, and the refusals, a 101
 ;;;     that make-res made among them;
 ;;;   - refusals, each a 500 before the head, logged handler-failed;
 ;;;   - CIRCUIT_PORT_PIECE_BYTES, read once, from env or the process's
@@ -595,6 +597,19 @@
   (list (exchange (lambda (r) (make-res 102 '() #f)) (get "/"))
         (exchange (lambda (r) (make-res 200 '(("content-length" . "2")) "ok")) (get "/"))))
 
+;; keyed : Res -> Res
+;; R with two keys set, one to a header field and one to a body, as they
+;; would show on the wire were a key ever sent.
+(define (keyed r)
+  (res-set (res-set r (make-res-key 'field) '("x-leak" . "yes")) (make-res-key 'body) "leaked"))
+
+(test-equal "a response's keys never reach the wire: with two and with none, the same bytes"
+  (let ((sent (list (list (response "200 OK" (list "x-a: 1" (length-field 2)) "ok")) #f '())))
+    (list sent sent))
+  (let ((plain (lambda (r) (make-res 200 '(("x-a" . "1")) "ok"))))
+    (list (exchange plain (get "/"))
+          (exchange (lambda (r) (keyed (plain r))) (get "/")))))
+
 ;;; --- port bodies ------------------------------------------------------------
 
 ;; In pieces of 4 these ports stream, sized by the measure, so a measure
@@ -1096,6 +1111,12 @@
           (test-client-close! c)
           (list at-0 at-49 at-50 (test-client-connection-closed? c) (logged host)))))))
 
+(test-equal "an upgrade's keys never reach the wire: the same 101 as with none, and the taker handed the same"
+  (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes")) "hello")))
+    (list head (string-append head "ping") '((retained "") (read "ping") (end eof)) #t '()))
+  (upgraded (lambda (taker note) (lambda (r) (keyed ((echo-upgrade taker) r))))
+            upgrade-request '("ping")))
+
 (test-equal "an upgrade carries the field a middleware adds, before the server's Connection: upgrade"
   (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes" "server: circuit")) "hello")))
     (list head (string-append head "ping") '((retained "") (read "ping") (end eof)) #t '()))
@@ -1132,6 +1153,27 @@
                                               (note (list 'outer (text retained) (transport? t)))
                                               (inner t retained))))))))
             (string-append upgrade-request "early") '("ping")))
+
+(test-equal "a middleware that wraps the take-over with res-with-take-over keeps the response's keys: one outside it reads the handler's"
+  (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes" "x-key: handed back")) "hello")))
+    (list head (string-append head "ping")
+          '((outer "early" #t) (retained "early") (read "ping") (end eof)) #t '()))
+  (let ((key (make-res-key 'note)))
+    (upgraded (lambda (taker note)
+                (wrap (lambda (r) (res-set ((echo-upgrade taker) r) key "handed back"))
+                      (lambda (handler)
+                        (lambda (r)
+                          (let* ((answer (handler r))
+                                 (inner (res-upgrade-body-take-over (res-body answer))))
+                            (res-with-take-over answer
+                                                (lambda (t retained)
+                                                  (note (list 'outer (text retained) (transport? t)))
+                                                  (inner t retained))))))
+                      (lambda (handler)
+                        (lambda (r)
+                          (let ((answer (handler r)))
+                            (res-add-header answer "x-key" (res-ref answer key "lost")))))))
+              (string-append upgrade-request "early") '("ping"))))
 
 (test-equal "an app that made its req-body, then answers an upgrade, still switches: an upgrade body holds no port"
   (let ((head (string-append (switching '("Upgrade: echo" "x-app: yes")) "hello")))

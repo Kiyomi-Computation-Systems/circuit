@@ -25,10 +25,10 @@ Env        = (String -> (U String #f))
 
 - `Req` is a request, `Res` a response, and `Nat` an exact integer, 0 or
   more.
-- `Key` is what `make-req-key` makes. `SizedBody`, `WrappedBody` and
-  `TappedBody` are what `make-sized-body`, `res-wrap-body` and
-  `res-tap-body` make, and `UpgradeBody` is the body of
-  `make-upgrade-res`'s 101.
+- `Key` is what `make-req-key` makes, and `ResKey` what `make-res-key`
+  makes. `SizedBody`, `WrappedBody` and `TappedBody` are what
+  `make-sized-body`, `res-wrap-body` and `res-tap-body` make, and
+  `UpgradeBody` is the body of `make-upgrade-res`'s 101.
 - `MethodEntry` is what `GET` and its like make, and `Route` what `route`,
   `group` and `mount` make. `RouterOption` is what `on-not-found`,
   `on-bad-request` and `on-method-not-allowed` make, or a handler, which
@@ -480,8 +480,58 @@ Whether a body is an upgrade's, so a middleware can pass one by. See
 res-upgrade-body-take-over : UpgradeBody -> TakeOver
 ```
 
-The take-over an upgrade body holds, so a middleware can make an upgrade
-around a wrapped one. See [Upgrades and WebSockets](upgrades.md).
+The take-over an upgrade body holds, so a middleware can wrap it. See
+[Upgrades and WebSockets](upgrades.md).
+
+### `res-with-take-over`
+
+```text
+res-with-take-over : Res TakeOver -> Res
+```
+
+A copy of an upgrade with another take-over, its headers and keys kept, so
+a middleware can wrap the take-over. A response that is no upgrade, or a
+take-over that is no procedure, is an assertion violation. See
+[Upgrades and WebSockets](upgrades.md).
+
+### `make-res-key`
+
+```text
+make-res-key : Any -> ResKey
+```
+
+A key no other call makes, for a value a handler hands back to a middleware
+on a response. The argument is a name for a reader. See
+[Requests and responses](requests.md).
+
+### `res-key?`
+
+```text
+res-key? : Any -> Boolean
+```
+
+Whether it is a key `make-res-key` made. A request's key is not. See
+[Requests and responses](requests.md).
+
+### `res-ref`
+
+```text
+res-ref : Res ResKey [Any] -> Any
+```
+
+The newest value the key was set to on the response, or the default, `#f`
+unless given. See [Requests and responses](requests.md).
+
+### `res-set`
+
+```text
+res-set : Res ResKey Any -> Res
+```
+
+A copy of the response with the key set to the value; the old one is left
+as it was. Every response helper keeps the keys, and none is sent. A key
+`make-res-key` didn't make, a request's included, is an assertion
+violation. See [Requests and responses](requests.md).
 
 ### `header-value`
 

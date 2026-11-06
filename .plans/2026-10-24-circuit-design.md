@@ -351,6 +351,11 @@ Body = #f                          no body
   UTF-8, headers Latin-1: a header that must carry non-Latin-1 text
   encodes it itself (RFC 8187).
 - **Accessors**: `res-status`, `res-headers`, `res-body`, and `res?`.
+- **Keys**, since slice 10a: `make-res-key`, `res-key?`, `res-ref` and `res-set`, a
+  handler's data for the middleware around it, as §3's keys are a middleware's for the
+  handlers inside it. Every helper keeps them, and they never reach the wire (the
+  sessions design §3, ADR-0005). `res-with-take-over` puts another take-over in an
+  upgrade's place, its headers and keys kept, for middleware that wraps one (§15.34).
 - **Helpers**, each giving a new response: `res-header` (look one up),
   `res-set-header` (replace), `res-add-header` (append),
   `res-remove-header` (drop every field of a name, since slice 6a), `res-with-status`,
@@ -1695,6 +1700,15 @@ and the owner approved it the same day:
       `cache-control: private`; the max age is at most 400 days; `hashing` is fetched
       into `vendor/akku`, which `make clean` keeps (the sessions design §9).
 
+The owner's answer in slice 10a (2026-11-06), after its review:
+
+34. **`res-with-take-over` keeps a response's keys through a wrapped take-over:** an
+    upgrade with its take-over replaced, its status, headers and keys kept; anything but
+    an upgrade refused. The upgrades page's middleware uses it in place of
+    `make-upgrade-res`, which makes a response with no keys, so a session handed back on
+    a 101 inside that middleware was dropped without a word. Weighed: a line on the page
+    saying the pattern drops keys; leaving it to 10b.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a
@@ -1756,4 +1770,6 @@ and the owner approved it the same day:
 10. Sessions: designed in
     [2026-11-01-sessions-design.md](2026-11-01-sessions-design.md) as 10a, response keys
     in `(circuit response)`, and 10b, `(circuit session)`, a signed cookie store, with
-    `hashing` from Akku (§15.33, ADR-0008).
+    `hashing` from Akku (§15.33, ADR-0008). 10a, with `res-with-take-over` (§15.34),
+    built and closed out in
+    [PR #39](https://github.com/Kiyomi-Computation-Systems/circuit/pull/39).

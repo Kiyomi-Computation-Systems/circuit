@@ -58,7 +58,9 @@ provisional. They bind until that record is accepted or amended.
   conditions, transport procedures and `awaiting` that `(circuit http-server)` re-exports
   as the same bindings (ADR-0005).
 - **Middleware's data on a request goes under unique keys** from `make-req-key`, read with
-  `req-ref` and set with `req-set` (ADR-0005).
+  `req-ref` and set with `req-set`, and a handler's data on a response under keys from
+  `make-res-key`, read with `res-ref` and set with `res-set`. Each side refuses the other's
+  keys, and every response helper keeps them (ADR-0005).
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`
   may import the server's libraries, never `(http-server private ...)`, and they take from
   `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's

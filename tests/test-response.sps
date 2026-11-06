@@ -3,7 +3,8 @@
 ;;; res-remove-header among them, res-with-status, res-with-body's closing,
 ;;; the sized and wrapped bodies, res-body-length, res-body-port, and
 ;;; res-body-stream for every body kind; make-upgrade-res, and an upgrade
-;;; body only in the 101 it makes.
+;;; body only in the 101 it makes, and res-with-take-over; and the keys,
+;;; which every helper keeps.
 ;;;
 ;;; A producer is drained a fixed number of calls, each answer shown as its
 ;;; text or eof, so a body that ends early, runs on, or answers an empty
@@ -14,7 +15,8 @@
         (srfi :64)
         (only (chezscheme) port-closed?)
         (circuit-testing)
-        (circuit response))
+        (circuit response)
+        (only (circuit request) make-req-key))
 
 (define runner (test-runner-simple))
 (test-runner-current runner)
@@ -1139,6 +1141,188 @@
   '(101 "text" #f)
   (let ((r (make-res 101 '() "text")))
     (list (res-status r) (res-body r) (res-upgrade-body? (res-body r)))))
+
+;; --- keys --------------------------------------------------------------------------------
+;; A response's keys mirror a request's: an alist, newest first, that res-set
+;; conses onto a copy. make-res and make-upgrade-res make a response with
+;; none, and every helper's copy keeps them. The refusals are asserted with
+;; their messages, as the upgrade's are.
+
+(define not-a-response "not a response")
+(define not-a-res-key "not a response key from make-res-key")
+
+(test-equal "res-ref: #f by default, or the default given, for a key never set, on a response and on an upgrade"
+  '((answer #f) none (answer #f) none)
+  (let ((key (make-res-key 'session)))
+    (list (answer (lambda () (res-ref (sample-res) key)))
+          (res-ref (sample-res) key 'none)
+          (answer (lambda () (res-ref (sample-upgrade) key)))
+          (res-ref (sample-upgrade) key 'none))))
+
+(test-equal "res-set: a new response with the key, the newest value read, the old response unchanged"
+  '(second first none)
+  (let* ((key (make-res-key 'session))
+         (r (sample-res))
+         (r1 (res-set r key 'first))
+         (r2 (res-set r1 key 'second)))
+    (list (res-ref r2 key) (res-ref r1 key) (res-ref r key 'none))))
+
+(test-equal "two keys with one name are two keys"
+  '(mine none)
+  (let* ((mine (make-res-key 'session))
+         (theirs (make-res-key 'session))
+         (r (res-set (sample-res) mine 'mine)))
+    (list (res-ref r mine 'none) (res-ref r theirs 'none))))
+
+(test-equal "res-set takes any value: a key set to #f or '() over an older value reads it, not the default nor the older"
+  '((answer #f) (answer ()))
+  (let* ((key (make-res-key 'k))
+         (r (res-set (sample-res) key 'older)))
+    (list (answer (lambda () (res-ref (res-set r key #f) key 'default)))
+          (answer (lambda () (res-ref (res-set r key '()) key 'default))))))
+
+(test-equal "res-set keeps the status, the headers and the body, the very ones"
+  '(#t 202 #t #t)
+  (let* ((r (sample-res))
+         (r2 (res-set r (make-res-key 'k) 1)))
+    (list (res? r2) (res-status r2) (eq? (res-headers r) (res-headers r2)) (eq? (res-body r) (res-body r2)))))
+
+(test-equal "res-set keeps a port body as it is: the very port, left open"
+  '(#t #f 206)
+  (let* ((p (digits-port))
+         (r (res-set (make-res 206 '() p) (make-res-key 'k) 1)))
+    (list (eq? p (res-body r)) (port-closed? p) (res-status r))))
+
+(test-equal "res-set keeps an upgrade one: 101, its headers, the very take-over, the key read"
+  '(101 (("Upgrade" . "echo") ("X-Mixed" . "Case") ("x-mixed" . "dup")) #t #t kept)
+  (let* ((key (make-res-key 'k))
+         (r (res-set (sample-upgrade) key 'kept)))
+    (list (res-status r) (res-headers r) (res-upgrade-body? (res-body r))
+          (eq? taker (res-upgrade-body-take-over (res-body r))) (res-ref r key 'lost))))
+
+(test-equal "res-key? answers for a response key, and for nothing else: a request key, a symbol, a response"
+  '(#t #f #f #f)
+  (list (res-key? (make-res-key 'k)) (res-key? (make-req-key 'k)) (res-key? 'k) (res-key? (sample-res))))
+
+;; not-res-keys : (Listof Any)
+;; A value of every kind that is no response key, a request key among them.
+(define not-res-keys
+  (list #f #t 0 "session" 'session #\k '() '(k) #vu8(1) car (make-req-key 'session) (sample-res)))
+
+(test-equal "a response key is a key from make-res-key: res-ref and res-set refuse a value of every other kind, a request key among them"
+  (map (lambda (v)
+         (list (list 'assertion-violation 'res-ref not-a-res-key (list v))
+               (list 'assertion-violation 'res-ref not-a-res-key (list v))
+               (list 'assertion-violation 'res-set not-a-res-key (list v))))
+       not-res-keys)
+  (let ((r (sample-res)))
+    (map (lambda (v)
+           (list (refusal (lambda () (res-ref r v)))
+                 (refusal (lambda () (res-ref r v 'default)))
+                 (refusal (lambda () (res-set r v 1)))))
+         not-res-keys)))
+
+(test-equal "res-ref and res-set refuse what is not a response, before they look at the key"
+  (map (lambda (who) (list 'assertion-violation who not-a-response '(x)))
+       '(res-ref res-ref res-ref res-set res-set))
+  (let ((key (make-res-key 'k)))
+    (list (refusal (lambda () (res-ref 'x key)))
+          (refusal (lambda () (res-ref 'x key 'default)))
+          (refusal (lambda () (res-ref 'x 'not-a-key)))
+          (refusal (lambda () (res-set 'x key 1)))
+          (refusal (lambda () (res-set 'x 'not-a-key 1))))))
+
+;; keyed : Res -> (Values Res ResKey ResKey)
+;; R with three pairs on it, newest first: FIRST set to new, SECOND to two,
+;; and FIRST to old. A copy that drops a pair, or reverses them, reads
+;; otherwise.
+(define (keyed r)
+  (let ((first (make-res-key 'first))
+        (second (make-res-key 'second)))
+    (values (res-set (res-set (res-set r first 'old) second 'two) first 'new) first second)))
+
+;; body-makers : (Listof (-> Body))
+;; A body of every kind, each made fresh, since a port is closed or read
+;; once.
+(define body-makers
+  (list (lambda () #f)
+        (lambda () (string->utf8 "bytes"))
+        (lambda () "text")
+        (lambda () (ending-with-eof "p"))
+        digits-port
+        (lambda () (make-sized-body 3 (ending-with-eof "abc")))
+        (lambda () (wrapped "w" (lambda (p) p)))
+        (lambda () (tapped "t" (lambda (piece) piece)))))
+
+;; Each helper, and a copy it makes of a response.
+(define keeping-cases
+  (list (cons 'res-with-status (lambda (r) (res-with-status r 404)))
+        (cons 'res-with-body (lambda (r) (res-with-body r "new body")))
+        (cons 'res-set-header (lambda (r) (res-set-header r "x-a" "1")))
+        (cons 'res-add-header (lambda (r) (res-add-header r "x-a" "1")))
+        (cons 'res-remove-header (lambda (r) (res-remove-header r "set-cookie")))
+        (cons 'res-wrap-body (lambda (r) (res-wrap-body r (lambda (p) p))))
+        (cons 'res-tap-body (lambda (r) (res-tap-body r (lambda (piece) piece))))
+        (cons 'res-set (lambda (r) (res-set r (make-res-key 'third) 3)))))
+
+(for-each
+ (lambda (c)
+   (test-equal (string-append (symbol->string (car c))
+                              ": the copy keeps every key, a key set twice its newest value, over a body of every kind")
+     (map (lambda (make) '(new two)) body-makers)
+     (map (lambda (make)
+            (let-values (((r first second) (keyed (make-res 202 '(("set-cookie" . "a=1")) (make)))))
+              (let ((copy ((cdr c) r)))
+                (list (res-ref copy first 'lost) (res-ref copy second 'lost)))))
+          body-makers)))
+ keeping-cases)
+
+(define (other-taker t retained) (list 'other t retained))
+
+(test-equal "res-set-header, res-add-header, res-remove-header and res-with-take-over keep an upgrade's keys"
+  '((new two) (new two) (new two) (new two))
+  (let-values (((r first second) (keyed (sample-upgrade))))
+    (map (lambda (copy) (list (res-ref copy first 'lost) (res-ref copy second 'lost)))
+         (list (res-set-header r "x-a" "1") (res-add-header r "x-a" "1") (res-remove-header r "x-mixed")
+               (res-with-take-over r other-taker)))))
+
+;; --- res-with-take-over ------------------------------------------------------------------
+
+(define no-take-over "only an upgrade response has a take-over to replace")
+
+(test-equal "res-with-take-over: an upgrade with the new take-over, its status and the very headers kept, the old response unchanged"
+  '((#t 101 (("Upgrade" . "echo") ("X-Mixed" . "Case") ("x-mixed" . "dup")) #t #t #t) #t)
+  (let* ((r (sample-upgrade))
+         (r2 (res-with-take-over r other-taker)))
+    (list (list (res? r2) (res-status r2) (res-headers r2) (eq? (res-headers r) (res-headers r2))
+                (res-upgrade-body? (res-body r2))
+                (eq? other-taker (res-upgrade-body-take-over (res-body r2))))
+          (eq? taker (res-upgrade-body-take-over (res-body r))))))
+
+(test-equal "res-with-take-over refuses a response of every other body kind, and closes nothing"
+  (list (map (lambda (make) (list 'assertion-violation 'res-with-take-over no-take-over '(the-response)))
+             body-makers)
+        #f)
+  (let ((p (digits-port)))
+    (list (map (lambda (make)
+                 (let ((r (make-res 200 '() (make))))
+                   (tagged (refusal (lambda () (res-with-take-over r other-taker))) r 'the-response)))
+               body-makers)
+          (begin (refusal (lambda () (res-with-take-over (make-res 200 '() p) other-taker)))
+                 (port-closed? p)))))
+
+(test-equal "res-with-take-over refuses a take-over that is no procedure; it checks the response, then its upgrade, then the take-over"
+  (append (map (lambda (t) (list 'assertion-violation 'res-with-take-over not-a-take-over (list t)))
+               (list 'x #f "taker"))
+          (list (list 'assertion-violation 'res-with-take-over not-a-response '(x))
+                (list 'assertion-violation 'res-with-take-over not-a-response '(x))
+                (list 'assertion-violation 'res-with-take-over no-take-over '(the-response))))
+  (append (map (lambda (t) (refusal (lambda () (res-with-take-over (sample-upgrade) t))))
+               (list 'x #f "taker"))
+          (list (refusal (lambda () (res-with-take-over 'x other-taker)))
+                (refusal (lambda () (res-with-take-over 'x 'x)))
+                (let ((r (make-res 200 '() #f)))
+                  (tagged (refusal (lambda () (res-with-take-over r 'x))) r 'the-response)))))
 
 (test-end "response")
 

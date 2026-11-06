@@ -111,10 +111,10 @@ hello
     (let ((res (handler req)))
       (if (res-upgrade-body? (res-body res))
           (let ((take-over (res-upgrade-body-take-over (res-body res))))
-            (make-upgrade-res (res-headers res)
-                              (lambda (t retained)
-                                (display "taken over\n")
-                                (take-over t retained))))
+            (res-with-take-over res
+                                (lambda (t retained)
+                                  (display "taken over\n")
+                                  (take-over t retained))))
           res))))
 ```
 
@@ -131,8 +131,10 @@ taken over
 - `res-set-header`, `res-add-header` and `res-remove-header` keep an upgrade
   an upgrade. `res-with-status`, `res-with-body`, `res-wrap-body` and
   `res-tap-body` refuse one.
-- To wrap the take-over, get it with `res-upgrade-body-take-over`, and make
-  a new upgrade around yours with `make-upgrade-res`.
+- To wrap the take-over, get it with `res-upgrade-body-take-over`, and put
+  yours in its place with `res-with-take-over`. It keeps the response's
+  headers and [keys](requests.md); `make-upgrade-res` would make one with
+  none.
 - Answer what the wrapped take-over answers: it goes to the server. Drop
   it, and the 101 still goes out, but a WebSocket's procedure never runs.
 - `wrap-catch` passes an upgrade through. `wrap-log` logs it as

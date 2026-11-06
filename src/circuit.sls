@@ -4,10 +4,10 @@
 ;;;   (import (rnrs) (circuit) (circuit http-server))
 ;;;
 ;;; The request's accessors, its keys and req-with- helpers,
-;;; req-on-done!, and the body's cap; the response's constructor, accessors
-;;; and helpers, the sized body, the wrap, and the upgrade, with
+;;; req-on-done!, and the body's cap; the response's constructor, accessors,
+;;; keys and helpers, the sized body, the wrap, and the upgrade, with
 ;;; res-upgrade-body? so middleware can pass one by, and
-;;; res-upgrade-body-take-over so it can make one around a wrapped
+;;; res-upgrade-body-take-over and res-with-take-over so it can wrap a
 ;;; take-over; the header helpers; wrap and wrap-body-cap. Each is the
 ;;; binding its home library exports, so a program that imports that
 ;;; library too doesn't clash.
@@ -31,7 +31,9 @@
     make-res res? res-status res-headers res-body res-header res-set-header res-add-header
     res-remove-header
     res-with-status res-with-body make-sized-body res-wrap-body res-tap-body res-body-length
-    make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
+    make-upgrade-res res-upgrade-body? res-upgrade-body-take-over res-with-take-over
+    ;; middleware's data on it
+    make-res-key res-key? res-ref res-set
     ;; header lists
     header-value header-values header-set header-add header-remove header-names-downcase
     ;; composing middleware
