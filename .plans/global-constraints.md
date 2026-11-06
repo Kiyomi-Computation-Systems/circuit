@@ -17,11 +17,11 @@ provisional. They bind until that record is accepted or amended.
 ## Dependency
 
 - **chez-http-server is a submodule at `vendor/chez-http-server`, pinned at a release
-  tag**, now v0.9.1 (`b7381a0`). Circuit uses the pins the server carries and pins none
+  tag**, now v0.10.0 (`5c16f64`). Circuit uses the pins the server carries and pins none
   itself. Move the gitlink and `SERVER_PIN` on one commit, `SERVER_PIN` naming the tag's
   commit; `make check-pins` holds them (ADR-0003).
 - **chez-websocket is a second submodule, at `vendor/chez-websocket`, pinned at a release
-  tag**, now v0.4.1 (`579c118`). Its own gitlink for the server must equal `SERVER_PIN`,
+  tag**, now v0.5.1 (`4b70f22`). Its own gitlink for the server must equal `SERVER_PIN`,
   and circuit doesn't clone that server: circuit's is the one on the path. Move its
   gitlink and `WEBSOCKET_PIN` on one commit; `make check-pins` holds them (ADR-0003).
 - **No Akku dependency on the server**, nor on chez-websocket, while they aren't on the
@@ -32,7 +32,8 @@ provisional. They bind until that record is accepted or amended.
 - **hashing 1.4.0, from the Akku index, is circuit's one runtime dependency from Akku.**
   `Akku.manifest`'s `depends` names it, `Akku.lock` pins its archive and sha256, and
   `make submodules` fetches it on the host into `vendor/akku`, git-ignored, on the library
-  path last, and kept by `make clean`. `make deps` fails without it. A move of the lock is
+  path last, and kept by `make clean`. `make deps` fails without it, or on another than
+  the lock's, and `make check-pins` holds it to its archive. A move of the lock is
   tried first: hashing's own suites, and circuit's rows holding RFC 4231's cases through
   the pin, pass on it before it lands (ADR-0008).
 

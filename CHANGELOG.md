@@ -85,12 +85,15 @@ release before 1.0.
 - **`make submodules` also downloads `hashing` 1.4.0**, circuit's first dependency from
   the Akku index, into `vendor/akku`, its sha256 checked against `Akku.lock`, which now
   pins it. It needs curl or wget, `sha256sum` or `shasum`, `diff`, and with GNU tar
-  `xz`. `vendor/akku` is on the library path, `make deps` fails without it, and
+  `xz`. `vendor/akku` is on the library path, `make deps` fails without it or on
+  another than the lock's, `make check-pins` holds it to its archive, and
   `make clean` keeps it. Only `(circuit session)` imports it, and `make check-imports`
   holds that.
 - **`scripts/fetch-akku-lock` holds a tree to its archive:** one that records the lock's
-  sha256 is compared with its archive under `dl/`, and unpacked again from it, with no
-  download, when a file was deleted, changed or added. `make site-deps` takes it too.
+  sha256 is compared with its archive under `dl/`, and unpacked again from it when a
+  file was deleted, changed or added. An archive missing from `dl/`, or with another
+  sha256, is downloaded again first. `make site-deps` takes it too. With `--check` it
+  downloads and changes nothing, and fails unless each tree is its archive, unpacked.
 - **`wrap-log`'s line ends with the client's address**, `req-remote-address`, or `-` for
   none, as the server's `request-refused` line does:
   `request GET /users 200 written 0 127.0.0.1`. A program that reads the milliseconds as

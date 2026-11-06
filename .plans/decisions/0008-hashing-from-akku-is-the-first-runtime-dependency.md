@@ -3,6 +3,9 @@
 - **Status:** Accepted, 2026-11-06, in slice 10b, which brings it in (the design §6); the
   owner chose `hashing` and approved the sessions design on 2026-11-01
 - **Date:** 2026-11-01
+- **Amended:** 2026-11-06, after slice 10b: the fetch downloads an archive missing from
+  `dl/` again, `make deps` refuses a tree that records another sum, and `make check-pins`
+  holds the tree to its archive (items 2 and 3)
 - **Scope:** HMAC-SHA-256 for `(circuit session)`, and how a runtime dependency from Akku
   reaches the build, the container, CI and an app
 - **Plan:** [the sessions design](../2026-11-01-sessions-design.md) §4, §7, §8 item 1
@@ -26,14 +29,17 @@ will name then.
    its archive and sha256, as it pins chez-cmark-gfm's.
 2. **It is fetched on the host,** by `scripts/fetch-akku-lock hashing` into
    `vendor/akku/`, which checks the sha256, and holds a tree already there to its
-   archive under `dl/`, unpacking it again when it differs. `make submodules` runs it,
+   archive under `dl/`, unpacking it again when it differs: an archive missing from
+   `dl/`, or with another sha256, is downloaded again first. `make submodules` runs it,
    so a fresh clone needs one host step before `make deps`. `vendor/akku/` is
    git-ignored and outside `build/`, so `make clean` keeps it. The container and
    `make test` never fetch.
 3. **`vendor/akku` is on the library path,** in make, CI and the container, last, so it
    stands in for no other directory's libraries. It holds nothing but `hashing/`, the
    archive under `dl/`, and `hashing.sha256`, the fetch's record of the lock's sum.
-   `make deps` fails, naming `make submodules`, when `hashing/sha-2.scm` is missing.
+   `make deps` fails, naming `make submodules`, when `hashing/sha-2.scm` is missing, or
+   `hashing.sha256` isn't the lock's sum. `make check-pins` fails unless the tree is
+   its archive under `dl/`, unpacked, so an edit there is found.
 4. **Only `(circuit session)` imports it, only `(hashing sha-2)`, through `only`.**
    `make check-imports` holds that (its rule (k)), holds `(hashing sha-2)`'s own closure
    to `(rnrs ...)` and its two sibling libraries as Chez's own library search resolves

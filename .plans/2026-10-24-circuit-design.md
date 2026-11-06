@@ -35,7 +35,8 @@ Circuit's pin moved to v0.9.0 (§15.7). This design was revised against the
 server's main at 9195305, whose `src/` and `docs/` the tag carries
 unchanged. On 2026-10-29 the pin moved to v0.9.1, at b7381a0, which fixes
 three issues circuit filed after the revision: #241, #243 and #245 (§7,
-§12).
+§12). On 2026-10-30 it moved to v0.10.0, at 5c16f64, with chez-websocket's
+v0.5.1.
 
 ## 2. The contract
 
@@ -1108,9 +1109,9 @@ clock, and ADR-0006 allows two impure libraries, not a third. Slice 6c's
 `(circuit websocket)` is a library of a third kind: it imports chez-websocket's
 facade, `(websocket)`, which imports the server, and nothing of the server's
 itself, and no library imports it (ADR-0006, amended). chez-http-server is a pinned submodule under
-`vendor/`, as it is in chez-websocket, at v0.9.1 (§15.7). It isn't on the
+`vendor/`, as it is in chez-websocket, at v0.10.0 (§15.7). It isn't on the
 Akku index, so it can't be an Akku dependency yet (ADR-0003). chez-websocket
-is one too, at v0.4.1, its own server pin circuit's (ADR-0003, amended).
+is one too, at v0.5.1, its own server pin circuit's (ADR-0003, amended).
 
 ## 12. Upstream asks: all landed
 
@@ -1121,9 +1122,10 @@ at d928e41, and circuit's pin moved to it that day (§15.7). v0.9.0 also
 drops `(http-server request)`'s `request-body`, which circuit never used.
 No workaround was built, so there is no probe to remove. The names in
 this table are the server's. Three issues filed later are fixed in the
-server's v0.9.1, circuit's pin since 2026-10-29: #241, below; #243, the
-test host logging `handler-failed` for a `&body-failed` let out, which
-`serve` doesn't; and #245, a `req-on-done!` procedure's cost (§7).
+server's v0.9.1, circuit's pin from 2026-10-29 until v0.10.0 on
+2026-10-30: #241, below; #243, the test host logging `handler-failed` for
+a `&body-failed` let out, which `serve` doesn't; and #245, a
+`req-on-done!` procedure's cost (§7).
 
 | # | Issue | Landed as | Circuit uses it for |
 |:--|:--|:--|:--|

@@ -12,9 +12,10 @@
 # server's test clients; `make check-pins` holds them where the pins say.
 # One dependency comes from Akku: hashing, for (circuit session), which
 # `make submodules` also fetches into vendor/akku as Akku.lock pins it, its
-# sha256 checked (ADR-0008). Both need git or the network, so they run on
-# the host: the container has neither. `make deps` builds chez-libuv's shim
-# and links SRFI-64, and never fetches.
+# sha256 checked (ADR-0008), and `make check-pins` holds it to its archive.
+# Both need git or the network, so they run on the host: the container has
+# neither. `make deps` builds chez-libuv's shim and links SRFI-64, and never
+# fetches: it fails unless vendor/akku holds the hashing the lock pins.
 
 # The Chez binary. In the container, scripts/guix-env-enter exports the
 # profile's real `scheme` binary. Elsewhere, scripts/require-chez --find
@@ -184,8 +185,9 @@ check-guix-inside: ## (inside the container) Assert the pinned toolchain, isolat
 # vendor/akku by scripts/fetch-akku-lock, which needs curl or wget, tar,
 # sha256sum or shasum, and diff, and xz with GNU tar, which reads the
 # archive through it: bsdtar, macOS's, reads it itself. A tree that already
-# records the lock's sha256 is held to its archive under vendor/akku/dl and
-# unpacked again if it differs, with no download.
+# records the lock's sha256 is held to its archive under vendor/akku/dl, the
+# archive downloaded again first if dl/ lacks it or holds another, and the
+# tree unpacked again if it differs.
 FETCH_TOOL = $(if $(shell command -v curl 2>/dev/null),curl,$(if $(shell command -v wget 2>/dev/null),wget,"curl or wget"))
 SHA256_TOOL = $(if $(shell command -v sha256sum 2>/dev/null),sha256sum,$(if $(shell command -v shasum 2>/dev/null),shasum,"sha256sum or shasum"))
 XZ_TOOL = $(if $(findstring GNU,$(shell tar --version 2>/dev/null)),xz)
@@ -200,9 +202,11 @@ submodules: ## (host) Clone the pinned server, the pins it carries, and chez-web
 # Each checkout is asked for its own .git first: in a submodule that was
 # never cloned, `git -C` would climb to the repository around it and answer
 # that one's commit: for chez-websocket's server, circuit's own gitlink.
-# Read-only.
-check-pins: ## (host) Fail unless the server and chez-websocket sit at their pins, chez-websocket's server pin is SERVER_PIN, and each pin the server carries sits where it records
-	@scripts/require-tools "$(GOAL)" git
+# vendor/akku is held by scripts/fetch-akku-lock --check, which downloads
+# nothing: hashing's tree must record Akku.lock's sha256 and be the archive
+# under vendor/akku/dl, with that sha256, unpacked. Read-only.
+check-pins: ## (host) Fail unless the server and chez-websocket sit at their pins, chez-websocket's server pin is SERVER_PIN, each pin the server carries sits where it records, and vendor/akku holds hashing as Akku.lock pins it
+	@scripts/require-tools "$(GOAL)" git tar $(XZ_TOOL) $(SHA256_TOOL) diff
 	@fail=0; \
 	check_pin() { \
 	  got=; [ -e "$$1/.git" ] && got=$$(git -C "$$1" rev-parse HEAD 2>/dev/null); \
@@ -233,6 +237,9 @@ check-pins: ## (host) Fail unless the server and chez-websocket sit at their pin
 	  if [ -e "$$d/.git" ] && [ -n "$$(git -C $$d status --porcelain --untracked-files=no 2>/dev/null)" ]; then \
 	    echo "PIN DIRTY: $$d has local edits to tracked files" >&2; fail=1; fi; \
 	done; \
+	if ! AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock --check hashing; then \
+	  echo "PIN MISMATCH: $(AKKU_DIR) doesn't hold hashing as Akku.lock pins it. Run 'make submodules', which fetches it again: an edit there is lost." >&2; fail=1; \
+	fi; \
 	exit $$fail
 
 # The server's tests/fetch-oha.sh pins oha's version and each platform's
@@ -286,6 +293,10 @@ deps: check-chez ## Build chez-libuv's shim and link SRFI-64 into build/scheme-l
 	done
 	@if [ ! -e $(AKKU_DIR)/hashing/sha-2.scm ]; then \
 	  echo "deps: $(AKKU_DIR)/hashing/sha-2.scm not found, so hashing, which Akku.lock pins, isn't fetched. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
+	  exit 1; \
+	fi
+	@if ! AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock --check-record hashing > /dev/null; then \
+	  echo "deps: so $(AKKU_DIR) holds another hashing than the one Akku.lock pins. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
 	  exit 1; \
 	fi
 	@$(MAKE) --no-print-directory -C $(LIBUV_DIR) build
