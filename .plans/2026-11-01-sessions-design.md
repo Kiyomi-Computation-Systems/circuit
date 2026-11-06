@@ -63,6 +63,11 @@ the cryptography R6RS can reach (§7):
   `res-tap-body`. `make-res` and `make-upgrade-res` make a response with none. `res-set`
   on an upgrade keeps it one, its take-over kept, as the header helpers do; on a port
   body it closes nothing.
+- **`res-with-take-over : Res TakeOver -> Res`, added in 10a after its review:** an
+  upgrade with another take-over, its headers and keys kept. The upgrades page's
+  middleware rebuilt the 101 with `make-upgrade-res`, which makes a response with no
+  keys, so a session handed back on a 101 inside it was dropped (the circuit design
+  §15.34).
 - **Keys never reach the wire.** The adapter and the test host ignore them.
 - **ADR-0005 gains the response's keys** in its fourth decision, amended in 10a.
 
@@ -74,7 +79,9 @@ the cryptography R6RS can reach (§7):
 - **The gate measures it.** G3's latest readings are 306 to 314 B against its 384 B
   bound; G3 and G7 should move by about 16 B, and the gates that difference two paths
   shouldn't move. 10a reports G3 and G5 to G10 before and after. A held gate that fails
-  stops the slice for the owner's call.
+  stops the slice for the owner's call. In 10a, G3 moved 13 B, GET and POST alike, and G7
+  not at all: it differences two of circuit's paths, each making one response, so it is
+  one of the gates that difference two paths (10a's close-out).
 
 ### Testing (10a)
 

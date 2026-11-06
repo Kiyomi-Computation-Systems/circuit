@@ -121,6 +121,58 @@ hello, guest
 - To parse the body, as a form or JSON, read it once and keep what you
   parsed under a key: the body can be read only once.
 
+## Pass data up
+
+```scheme
+(import (rnrs) (circuit) (circuit http-server))
+
+(define cache-key (make-res-key 'cache))
+
+;; res-cache-for : Res Nat -> Res — lets a cache keep the response that long
+(define (res-cache-for res seconds) (res-set res cache-key seconds))
+
+;; wrap-cache : Middleware — cache-control as the handler asked, else no-store
+(define (wrap-cache handler)
+  (lambda (req)
+    (let* ((res (handler req))
+           (seconds (res-ref res cache-key)))
+      (res-set-header res "cache-control"
+                      (if seconds
+                          (string-append "max-age=" (number->string seconds))
+                          "no-store")))))
+
+(define (app req)
+  (let ((res (make-res 200 '(("content-type" . "text/plain")) "hello\n")))
+    (if (string=? (req-path req) "/news") (res-cache-for res 60) res)))
+
+(run-server (wrap app wrap-cache))
+```
+
+```text
+$ curl -i http://127.0.0.1:8080/news
+HTTP/1.1 200 OK
+Date: Fri, 06 Nov 2026 14:51:42 GMT
+content-type: text/plain
+cache-control: max-age=60
+Content-Length: 6
+
+hello
+$ curl -i http://127.0.0.1:8080/
+HTTP/1.1 200 OK
+Date: Fri, 06 Nov 2026 14:51:42 GMT
+content-type: text/plain
+cache-control: no-store
+Content-Length: 6
+
+hello
+```
+
+- `make-res-key` makes a key of the response's own: a request's key won't
+  do.
+- `res-set` hands the value back on the response, and every helper's copy
+  keeps it, so a middleware further out still reads it.
+- Export a writer, here `res-cache-for`, and keep the key to yourself.
+
 ## Change the request and the response
 
 ```scheme

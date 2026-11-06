@@ -6,8 +6,13 @@
   `awaiting`, which a take-over answers to wait, join the re-exports, so an app that
   upgrades needs only circuit's libraries (the owner's decisions, design §15.17 and
   §15.18)
-- **Scope:** circuit's public names, and how middleware adds data to a request
-- **Plan:** [the design](../2026-10-24-circuit-design.md) §3, §5, §9, §15 items 1 and 3
+- **Amended:** 2026-11-06, in slice 10a: responses get keys of their own, for a
+  handler's data to the middleware around it (the sessions design §3, which the owner
+  approved on 2026-11-01, design §15.33)
+- **Scope:** circuit's public names, and how middleware adds data to a request, and a
+  handler to a response
+- **Plan:** [the design](../2026-10-24-circuit-design.md) §3, §5, §9, §15 items 1 and 3, and
+  [the sessions design](../2026-11-01-sessions-design.md) §3
 
 ## Context
 
@@ -31,10 +36,16 @@ request as map keys, and two libraries can collide on one.
    together, with no `only` or `rename`, holds it.
 4. **Middleware's data goes under unique keys**: `(make-req-key name)` makes one,
    `(req-ref req key [default])` reads it, and `(req-set req key value)` gives a new
-   request. A library exports accessors for its own keys, not the keys' names.
+   request. A handler's data for the middleware around it goes on the response the
+   same way: `(make-res-key name)`, `(res-ref res key [default])` and
+   `(res-set res key value)`. Every response helper keeps a response's keys, and none
+   reaches the wire. A key's kind says where its data lives: each side refuses the
+   other's. A library exports accessors for its own keys, not the keys' names.
 
 ## Consequences
 
 - **Two libraries can't collide on a key**, and a key's name is for printing only.
+- **Every response costs 16 B more** for its keys: the record holds four fields, 48 B
+  on Chez 10.4.1, where three took 32 B (the sessions design §3).
 - **An app imports circuit and the server together freely.**
 - **Names that read like Ring's are not Ring's**: `res-` and `req-` throughout.

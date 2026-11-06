@@ -71,7 +71,8 @@
     res-sized-body-inner res-wrap-body res-wrapped-body? res-wrapped-body-inner
     res-wrapped-body-proc res-tap-body res-tapped-body? res-tapped-body-inner
     res-tapped-body-proc make-upgrade-res res-upgrade-body?
-    res-upgrade-body-take-over res-body-length res-body-port res-body-stream))
+    res-upgrade-body-take-over res-with-take-over make-res-key res-key? res-ref res-set
+    res-body-length res-body-port res-body-stream))
 
 (define header-names
   '(header-value header-values header-set header-add header-remove header-names-downcase))
@@ -84,9 +85,9 @@
     req-path-param req-path-params req-route req-mount-path))
 
 ;; What an app uses: the request's accessors, keys and req-with- helpers,
-;; req-on-done!, the body's cap; the response's constructors, accessors and
-;; helpers, the upgrade's predicate and its take-over among them; the header
-;; helpers; wrap and wrap-body-cap.
+;; req-on-done!, the body's cap; the response's constructors, accessors, keys
+;; and helpers, the upgrade's predicate and its take-over among them; the
+;; header helpers; wrap and wrap-body-cap.
 (define facade-names
   '(req? req-method req-scheme req-host req-path req-query req-http-version req-header
     req-header-values req-headers req-body req-remote-address req-remote-port
@@ -97,7 +98,8 @@
     make-res res? res-status res-headers res-body res-header res-set-header res-add-header
     res-remove-header res-with-status res-with-body make-sized-body res-wrap-body res-tap-body
     res-body-length
-    make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
+    make-upgrade-res res-upgrade-body? res-upgrade-body-take-over res-with-take-over
+    make-res-key res-key? res-ref res-set
     header-value header-values header-set header-add header-remove header-names-downcase
     wrap wrap-body-cap))
 

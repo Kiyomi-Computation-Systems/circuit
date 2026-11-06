@@ -40,6 +40,14 @@ release before 1.0.
   host can hold, such as `localhost:8080`, `SameSite=None` without `Secure`, or a
   `__Secure-` or `__Host-` name without what its prefix needs. A response sets each
   name once: a second `set-cookie` of one name is refused, as RFC 6265bis asks.
+- **Keys on a response: `make-res-key`, `res-ref` and `res-set`**, with `res-key?`, in
+  `(circuit)`. A handler hands a value back to the middleware around it, as `req-set`
+  hands one down. Every response helper keeps the keys, `make-res` makes a response with
+  none, and none is sent. A request's key and a response's are two kinds: each side
+  refuses the other's.
+- **`res-with-take-over`**, in `(circuit)`, puts another take-over in an upgrade's place,
+  its headers and keys kept, so a middleware can wrap a take-over without dropping what
+  the handler set on the response. Upgrades' page uses it.
 - **`wrap-catch-with` and `wrap-log-with`**, in `(circuit middleware waits)`.
   `(wrap-catch-with on-raise)` and `(wrap-log-with clock)` each make a middleware, so
   `wrap` takes them as it takes `(wrap-timeout ms)`:

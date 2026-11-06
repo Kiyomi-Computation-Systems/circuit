@@ -142,8 +142,13 @@ close-out under **Close-outs**, newest first.
   its close-out is below. The owner's answers are design §15.33: 10a response keys, then
   10b `(circuit session)`, a signed cookie store, with `hashing` from Akku (ADR-0008,
   Proposed).
-- **Next:** slice 10a, response keys (the sessions design §3). A release after 9c is the
-  owner's call (the slice 9 design §1).
+- **Slice 10a, response keys, is merged**, squashed from
+  [PR #39](https://github.com/Kiyomi-Computation-Systems/circuit/pull/39) on 2026-11-06;
+  its close-out is below. `make-res-key`, `res-ref` and `res-set` carry a handler's data
+  to the middleware around it, and `res-with-take-over` keeps them through a wrapped
+  take-over: the owner's answer in it is design §15.34.
+- **Next:** slice 10b, `(circuit session)`, with `hashing` from Akku (the sessions design
+  §4 and §5, ADR-0008). A release after 10b is the owner's call (the sessions design §1).
 
 ## Open
 
@@ -206,6 +211,96 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-06: slice 10a, response keys, in PR #39
+
+On the owner's "start slice 10a". Commits on `open/slice-10a`: the code, tests and docs
+(a457402), this close-out (12e09ff), and its CI run named here. `make test` passes 23
+suites, and `make check-site` passes. CI passed on the PR (run 42255293093, 4m23s), on
+amd64, arm64 and the site job.
+
+- **Response keys:** `make-res-key`, `res-key?`, `res-ref` and `res-set` in
+  `(circuit response)` and the facade, as the sessions design's §3 has them. A response's
+  keys are an alist, newest first, that `res-set` conses onto a copy; `make-res` and
+  `make-upgrade-res` make a response with none, and every helper's copy keeps them. A
+  response key is its own kind: `res-ref` and `res-set` refuse a request's, and
+  `req-ref` and `req-set` a response's, which their check already did. No path in `src/`
+  rebuilds a handler's response from its parts: each `make-res` there makes a fresh one;
+- **`res-with-take-over`, beyond the design and in it now** (§3, the circuit design
+  §15.34): an upgrade with another take-over, its headers and keys kept. The review found
+  that the upgrades page's middleware rebuilt the 101 with `make-upgrade-res`, dropping
+  every key, so a session handed back on a 101 inside it would be lost; the owner chose
+  the helper over a line on the page. The page's middleware uses it, run over loopback in
+  the container around the page's echo, curl sending one message;
+- **the record** holds four fields, 48 B, where three took 32 B, so every response costs
+  16 B more;
+- **the gate**, its worst readings on `main` (3b5fb5d), then on the branch, twice before
+  `res-with-take-over` and once after:
+  - G3 GET +309 B, then +321, +322 and +325 B, against 384 B; G3 POST +276 B, then +289,
+    +289 and +292 B, against 352 B: 12 to 16 B more;
+  - G7 +308 B, then +304, +304 and +309 B: it differences two of circuit's paths, each
+    making one response, so it doesn't move. The design's §3 said it would, and says now
+    it didn't;
+  - the rest, in the same order: G4 one +81, +81, +81, +81 B; G4 five +405, +404, +404,
+    +404 B; G5 +383, +384, +382, +382 B; G5 park +341, +348, +332, +347 B; G8 own +338,
+    +340, +340, +342 B; G9 +602, +612, +609, +606 B; G9 park +595, +617, +597, +598 B;
+    G10 word +85, +86, +84, +86 B; G10 param +162, +164, +169, +161 B; G10 miss
+    +5, +2, +6, +2 B. None differences a response's size, and none moved past its
+    spread: G9 park's +617 B came back to +597 B on the next run. G1 and G2, printed,
+    moved from +1,443 to +1,459, +1,454 and +1,465 B, and from +1,432 to +1,450, +1,452 and
+    +1,458 B;
+- **the rows:**
+  - `tests/test-response.sps`, 22: the default and a given one, on a response and an
+    upgrade; a key set twice; two keys of one name; `#f` and `'()` as values; `res-set`
+    keeping the status, the headers and the body, a port open and an upgrade one;
+    `res-key?`; the refusals, a value of every other kind, a request key among them, and
+    a non-response before the key; each of the seven helpers, and `res-set`, keeping
+    three pairs in order over a body of every kind, and the header helpers and
+    `res-with-take-over` on an upgrade; and `res-with-take-over`'s own three;
+  - `tests/test-request.sps`, 2: `#f` and `'()` as values, and the refusals, a value of
+    every kind, a response key among them;
+  - `tests/test-http-server.sps`, 3: a response and an upgrade with keys send the bytes
+    one without sends, and a middleware outside one that wraps a take-over with
+    `res-with-take-over` reads the handler's key;
+  - `tests/test-names.sps`'s lists take the five names;
+- **watched failing:**
+  - a stub that exports the four key names and does nothing failed 15 of the first 18
+    response rows, and one whose `res-with-take-over` answers its response failed 3 of
+    that helper's 4 rows and its wire row. The rows they passed were watched failing by
+    mutants;
+  - 59 mutants, 13 of them the reviewer's: on the record's copy in each helper, `res-set`,
+    `res-ref`, `res-with-take-over`, the refusals and their order, and the request's
+    check. All 59 killed, each by a failing row, and every one of the 27 new rows failed
+    at least once. The reviewer's, made before `res-with-take-over`, died of a load error
+    once it was in, and were remade on the final code. They are in `build/s10a/m/` and
+    `build/s10a/rv/`, git-ignored;
+- **the docs:**
+  - the reference's five entries and its `ResKey`;
+  - Requests and responses' "Keep values on a response", its snippet run in the
+    container;
+  - Middleware's "Pass data up", its program run over loopback in the container;
+  - Upgrades and WebSockets' middleware, on `res-with-take-over`;
+  - the CHANGELOG's Unreleased;
+- **the records:** ADR-0005's fourth decision, amended; the global constraints; the
+  circuit design's §5, §15.34 and §17 item 10; the sessions design's §3, on G7 and
+  `res-with-take-over`;
+- **the review**, read-only on Opus, found five things:
+  - the upgrades page's middleware dropped every key (above): `res-with-take-over`;
+  - the keeping rows used a string body alone, so `res-with-body`'s branch for a port,
+    and a wrap over any other body, could drop the keys unseen: two survivors. The rows
+    run over a body of every kind now;
+  - no row set a key to `#f`, so a reader that took `#f` for unset, and a `res-set` that
+    refused it, survived. The request's rows had the same gap: a row on each side;
+  - the key check was held against a symbol and a request key alone: two survivors took
+    `#f` and a string. A row on each side holds it against a value of every kind;
+  - nits: the requests page didn't point to Middleware's writer, and the library's
+    comment said `(circuit test)` reads a response's status and headers, where it reads
+    the body. Both fixed. The aliases `Key` and `ResKey` are uneven, left as the design
+    names them;
+  - everything else it checked held: it probed a key through `wrap-cors`,
+    `wrap-default-headers`, `wrap-hsts`, `wrap-catch`, `wrap-log`, `wrap-body-cap`,
+    `wrap-form-params`, the router's routes, mounts, 404 and 405, and the cookie writers;
+- **agents:** the reviewer, Opus, 158,743 tokens and 9.6 min. The build was mine.
 
 ### 2026-11-01: the sessions design, in PR #38
 

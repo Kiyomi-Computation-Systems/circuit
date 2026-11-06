@@ -11,7 +11,8 @@
 (import (rnrs)
         (srfi :64)
         (circuit-testing)
-        (circuit request))
+        (circuit request)
+        (only (circuit response) make-res-key))
 
 (define runner (test-runner-simple))
 (test-runner-current runner)
@@ -352,6 +353,34 @@
     (list (raised (lambda () (req-ref r 'session)))
           (raised (lambda () (req-ref r 'session 'default)))
           (raised (lambda () (req-set r 'session 1))))))
+
+(test-equal "req-set takes any value: a key set to #f or '() over an older value reads it, not the default nor the older"
+  '((answer #f) (answer ()))
+  (let* ((key (make-req-key 'k))
+         (r (req-set (make-req (full-view) host) key 'older)))
+    (list (answer (lambda () (req-ref (req-set r key #f) key 'default)))
+          (answer (lambda () (req-ref (req-set r key '()) key 'default))))))
+
+;; not-req-keys : (Listof Any)
+;; A value of every kind that is no request key, a response key among them.
+(define not-req-keys
+  (list #f #t 0 "session" 'session #\k '() '(k) #vu8(1) car (make-res-key 'session)
+        (make-req (full-view) host)))
+
+(test-equal "req-key? answers #f for a response key, and req-ref and req-set refuse a value of every kind that is no request key"
+  (cons #f
+        (map (lambda (v)
+               (list (list 'assertion-violation 'req-ref (list v))
+                     (list 'assertion-violation 'req-ref (list v))
+                     (list 'assertion-violation 'req-set (list v))))
+             not-req-keys))
+  (let ((r (make-req (full-view) host)))
+    (cons (req-key? (make-res-key 'session))
+          (map (lambda (v)
+                 (list (raised (lambda () (req-ref r v)))
+                       (raised (lambda () (req-ref r v 'default)))
+                       (raised (lambda () (req-set r v 1)))))
+               not-req-keys))))
 
 ;; --- the req-with- helpers ------------------------------------------------------
 

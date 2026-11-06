@@ -28,14 +28,24 @@
 ;;; (make-upgrade-res headers take-over) is a 101 whose body is an upgrade:
 ;;; no bytes, but the take-over, which the adapter hands the server, and the
 ;;; server calls with its transport once the 101 is written (design §8). An
-;;; upgrade body sits only in a 101 that make-upgrade-res made: make-res and
-;;; res-with-body refuse one; res-with-body, res-with-status, res-wrap-body
-;;; and res-tap-body refuse an upgrade response; res-set-header,
-;;; res-add-header and res-remove-header keep it one. res-body-length and
-;;; res-body-port answer #f for it, and res-body-stream refuses it: after
-;;; the 101 the stream is the taker's. make-res with 101 and any other body is still a response, which
-;;; the server answers 500. What a take-over answers goes to the server, so
-;;; a middleware that wraps one answers what it answers (TakeOver, below).
+;;; upgrade body sits only in a 101 that make-upgrade-res made, or
+;;; res-with-take-over made from one: make-res and res-with-body refuse one;
+;;; res-with-body, res-with-status, res-wrap-body and res-tap-body refuse an
+;;; upgrade response; res-set-header, res-add-header and res-remove-header
+;;; keep it one, and res-with-take-over puts another take-over in its place.
+;;; res-body-length and res-body-port answer #f for it, and res-body-stream
+;;; refuses it: after the 101 the stream is the taker's. make-res with 101
+;;; and any other body is still a response, which the server answers 500.
+;;; What a take-over answers goes to the server, so a middleware that wraps
+;;; one answers what it answers (TakeOver, below).
+;;;
+;;; A response also holds keys, middleware's data on it, as a request does:
+;;; an alist, newest first, that res-set conses onto a copy of the record.
+;;; make-res and make-upgrade-res make a response with none, and every
+;;; helper's copy keeps them. A response key is its own kind, from
+;;; make-res-key: res-ref and res-set refuse a request's, as req-ref and
+;;; req-set refuse a response's. The keys never reach the wire: the adapter
+;;; sends the status, the headers and the body alone.
 ;;;
 ;;; Also exported for the adapter and the tests, and left out of the
 ;;; (circuit) facade: the res-sized-body-, res-wrapped-body- and
@@ -48,7 +58,8 @@
           make-sized-body res-sized-body? res-sized-body-length res-sized-body-inner
           res-wrap-body res-wrapped-body? res-wrapped-body-inner res-wrapped-body-proc
           res-tap-body res-tapped-body? res-tapped-body-inner res-tapped-body-proc
-          make-upgrade-res res-upgrade-body? res-upgrade-body-take-over
+          make-upgrade-res res-upgrade-body? res-upgrade-body-take-over res-with-take-over
+          make-res-key res-key? res-ref res-set
           res-body-length res-body-port res-body-stream)
   (import (rnrs) (only (circuit headers) header-value header-set header-add header-remove))
 
@@ -66,10 +77,13 @@
   ;; res-status : Res -> Integer
   ;; res-headers : Res -> (Listof (Pair String String))
   ;; res-body : Res -> (U Body UpgradeBody)
+  ;; Four fields, 48 B: the keys took it from three, 32 B (the sessions
+  ;; design §3).
   (define-record-type (res %make-res res?)
     (fields (immutable status res-status)
             (immutable headers res-headers)
-            (immutable body res-body))
+            (immutable body res-body)
+            (immutable keys res-keys))
     (sealed #t)
     (opaque #t))
 
@@ -111,7 +125,7 @@
     (check-status 'make-res status)
     (check-headers 'make-res headers)
     (check-body 'make-res body)
-    (%make-res status headers body))
+    (%make-res status headers body '()))
 
   ;; make-upgrade-res : Headers TakeOver -> Res
   ;; A 101 with HEADERS, checked as make-res checks them, and an upgrade
@@ -120,11 +134,27 @@
   ;; TAKE-OVER that is no procedure is an assertion violation.
   (define (make-upgrade-res headers take-over)
     (check-headers 'make-upgrade-res headers)
+    (check-take-over 'make-upgrade-res take-over)
+    (%make-res 101 headers (%make-upgrade take-over) '()))
+
+  ;; res-with-take-over : Res TakeOver -> Res
+  ;; R, an upgrade response, with TAKE-OVER in place of its own: its status,
+  ;; headers and keys kept, so a middleware that wraps a take-over keeps
+  ;; what the handler set on the response. It checks R, then that R is an
+  ;; upgrade, then TAKE-OVER: what is no response, a response that is no
+  ;; upgrade, which it leaves as it was, and a TAKE-OVER that is no
+  ;; procedure are each an assertion violation.
+  (define (res-with-take-over r take-over)
+    (check-res 'res-with-take-over r)
+    (unless (res-upgrade-body? (res-body r))
+      (assertion-violation 'res-with-take-over "only an upgrade response has a take-over to replace" r))
+    (check-take-over 'res-with-take-over take-over)
+    (%make-res (res-status r) (res-headers r) (%make-upgrade take-over) (res-keys r)))
+
+  (define (check-take-over who take-over)
     (unless (procedure? take-over)
-      (assertion-violation 'make-upgrade-res
-                           "a take-over is a procedure of a transport and the bytes read past the request"
-                           take-over))
-    (%make-res 101 headers (%make-upgrade take-over)))
+      (assertion-violation who "a take-over is a procedure of a transport and the bytes read past the request"
+                           take-over)))
 
   (define (check-headers who headers)
     (unless (list? headers)
@@ -174,14 +204,14 @@
   ;; An upgrade response stays one, its take-over kept.
   (define (res-set-header r name value)
     (check-res 'res-set-header r)
-    (%make-res (res-status r) (header-set (res-headers r) name value) (res-body r)))
+    (%make-res (res-status r) (header-set (res-headers r) name value) (res-body r) (res-keys r)))
 
   ;; res-add-header : Res String String -> Res
   ;; R with a field appended, the name in lower case. An upgrade response
   ;; stays one, its take-over kept.
   (define (res-add-header r name value)
     (check-res 'res-add-header r)
-    (%make-res (res-status r) (header-add (res-headers r) name value) (res-body r)))
+    (%make-res (res-status r) (header-add (res-headers r) name value) (res-body r) (res-keys r)))
 
   ;; res-remove-header : Res String -> Res
   ;; R without any field named NAME, in any case, the rest in order. The
@@ -189,7 +219,7 @@
   ;; stays one, its take-over kept.
   (define (res-remove-header r name)
     (check-res 'res-remove-header r)
-    (%make-res (res-status r) (header-remove (res-headers r) name) (res-body r)))
+    (%make-res (res-status r) (header-remove (res-headers r) name) (res-body r) (res-keys r)))
 
   ;; res-with-status : Res Integer -> Res
   ;; R with STATUS. A 1xx status is an assertion violation: the server sends
@@ -201,7 +231,7 @@
     (check-status 'res-with-status status)
     (when (and (>= status 100) (<= status 199))
       (assertion-violation 'res-with-status "a 1xx status is the server's to send" status))
-    (%make-res status (res-headers r) (res-body r)))
+    (%make-res status (res-headers r) (res-body r) (res-keys r)))
 
   ;; res-with-body : Res Body -> Res
   ;; R with BODY, checked as make-res checks it, so an upgrade body is an
@@ -216,7 +246,7 @@
     (let ((old (body-port (res-body r))))
       (when (and old (not (eq? old (body-port body))))
         (close-port old)))
-    (%make-res (res-status r) (res-headers r) body))
+    (%make-res (res-status r) (res-headers r) body (res-keys r)))
 
   ;; make-sized-body : Nat (U Producer BinaryInputPort) -> SizedBody
   ;; BODY, a producer or a port, declared to hold N bytes, sent with that
@@ -241,7 +271,7 @@
     (check-not-upgrade 'res-wrap-body r)
     (unless (procedure? f)
       (assertion-violation 'res-wrap-body "a wrap's f is a procedure from producer to producer" f))
-    (%make-res (res-status r) (res-headers r) (%make-wrap (res-body r) f)))
+    (%make-res (res-status r) (res-headers r) (%make-wrap (res-body r) f) (res-keys r)))
 
   ;; res-tap-body : Res (Bytevector -> Any) -> Res
   ;; R with its body tapped: when the body is sent, ON-PIECE is handed each
@@ -263,7 +293,42 @@
     (check-not-upgrade 'res-tap-body r)
     (unless (procedure? on-piece)
       (assertion-violation 'res-tap-body "a tap's on-piece is a procedure of a piece" on-piece))
-    (%make-res (res-status r) (res-headers r) (%make-tap (res-body r) on-piece)))
+    (%make-res (res-status r) (res-headers r) (%make-tap (res-body r) on-piece) (res-keys r)))
+
+  ;; --- keys ---------------------------------------------------------------------
+
+  ;; make-res-key : Any -> ResKey
+  ;; A key no other call makes, whatever NAME is: NAME is for a reader.
+  ;; res-key? : Any -> Boolean
+  (define-record-type (res-key make-res-key res-key?)
+    (fields name)
+    (sealed #t))
+
+  ;; res-ref : Res ResKey [Any] -> Any
+  ;; The newest value KEY was set to, or DEFAULT, #f unless given.
+  (define res-ref
+    (case-lambda
+      ((r key) (key-ref 'res-ref r key #f))
+      ((r key default) (key-ref 'res-ref r key default))))
+
+  (define (key-ref who r key default)
+    (check-res who r)
+    (check-key who key)
+    (let ((hit (assq key (res-keys r))))
+      (if hit (cdr hit) default)))
+
+  ;; res-set : Res ResKey Any -> Res
+  ;; A copy of R with KEY set to VALUE: one record and two pairs. The body
+  ;; is kept as it is, so it closes nothing, and an upgrade response stays
+  ;; one, its take-over kept.
+  (define (res-set r key value)
+    (check-res 'res-set r)
+    (check-key 'res-set key)
+    (%make-res (res-status r) (res-headers r) (res-body r) (cons (cons key value) (res-keys r))))
+
+  (define (check-key who key)
+    (unless (res-key? key)
+      (assertion-violation who "not a response key from make-res-key" key)))
 
   ;; --- what a body holds ---------------------------------------------------------
 

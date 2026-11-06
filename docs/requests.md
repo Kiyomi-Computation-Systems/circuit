@@ -142,8 +142,8 @@ created
   `transfer-encoding` itself, a `connection` other than `close`, or a
   status outside 200 to 599.
 - `res-status`, `res-headers` and `res-body` read a response. `req?`,
-  `res?` and `req-key?` tell a request, a response and a key from any other
-  value.
+  `res?`, `req-key?` and `res-key?` tell a request, a response and each
+  kind of key from any other value.
   `res-with-status` and `res-with-body` answer a copy with a new status or
   body.
 
@@ -172,6 +172,32 @@ created
   `header-values`, `header-set`, `header-add` and `header-remove`.
   `header-names-downcase` puts every name in lower case.
 
+## Keep values on a response
+
+A handler passes values back to the middleware around it on the response,
+under a key of the response's own.
+
+```scheme
+(define note-key (make-res-key 'note))
+
+(define res (res-set (make-res 200 '() "hi\n") note-key "seen"))
+
+(res-ref res note-key)                              ; => "seen"
+(res-ref (res-set-header res "x-a" "1") note-key)   ; => "seen"
+(res-ref (make-res 200 '() "hi\n") note-key "none") ; => "none"
+```
+
+- `make-res-key`, `res-set` and `res-ref` work as a request's keys do.
+- Every helper's copy keeps the keys, so a value reaches each middleware
+  the response passes on its way out. `make-res` makes a response with
+  none.
+- The keys stay in the program: the server sends the status, the headers
+  and the body alone.
+- A request's key and a response's are two kinds: each side refuses the
+  other's.
+- A library exports a writer, such as `res-cache-for`, and keeps its key to
+  itself. [Middleware](middleware.md) has one.
+
 ## The body kinds
 
 | Body | What goes out |
@@ -186,5 +212,6 @@ created
 `res-wrap-body` changes a body on its way out, and `res-tap-body` watches
 it. [Bodies and streaming](bodies.md) has each one.
 
-See [`make-res`](reference.md#make-res) and
-[`make-req-key`](reference.md#make-req-key) for the signatures.
+See [`make-res`](reference.md#make-res),
+[`make-req-key`](reference.md#make-req-key) and
+[`make-res-key`](reference.md#make-res-key) for the signatures.
