@@ -248,7 +248,8 @@ where a FIN only tells the request's code. `test-client-reset!` hands that core
 `(read-error ECONNRESET)`, as libuv reports a reset on a read, so a real reset should
 take the test host's path. Read, not run: the item stays open, and names the probe that
 would settle it. Design §6 and §9 keep their "unverified". Commits on
-`ledger/reset-note`: the line, Now and this close-out, and its CI run named here. No
+`ledger/reset-note`: the line, Now and this close-out (7cc7ddf), and its CI run named
+here: it passed on the PR (run 42322554285, 4m22s), on amd64, arm64 and the site job. No
 suite reads the ledger, so none was run. No agents ran.
 
 ### 2026-11-07: v0.2.0 tagged, released and published, recorded in PR #43
