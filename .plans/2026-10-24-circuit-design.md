@@ -1710,6 +1710,16 @@ The owner's answer in slice 10a (2026-11-06), after its review:
     `make-upgrade-res`, which makes a response with no keys, so a session handed back on
     a 101 inside that middleware was dropped without a word. Weighed: a line on the page
     saying the pattern drops keys; leaving it to 10b.
+35. **`wrap-form-params` takes no limit on pairs:** the byte cap it requires bounds them.
+    A body of `n` bytes holds at most `n/2` pairs, `a&a&…`, and takes about 25 times `n`
+    parsed (1 MiB of `a&` was 524,288 pairs and 25,142,936 bytes in slice 9b), which the
+    params page says. The 1,000-field limits of PHP's `max_input_vars` and Jetty's
+    `maxFormKeys` came after the 2011 hash-collision attacks on tables keyed by field
+    names; circuit's pairs are a list, so their cost is linear in `n`. Weighed:
+    Express's `parameterLimit`, 1,000 by default and a `413`, as an option. It pays only
+    for an app that needs a large `n`, such as a long text field, whose worst case it
+    would bring from about 25 to about 5 times `n`, and it can come later, after `n`, as
+    `make-router`'s options did, with no call changed. The owner agreed on 2026-11-06.
 
 ## 16. Open
 

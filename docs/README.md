@@ -75,7 +75,7 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 
 ## Status
 
-v0.1.2, the latest release. The API may change in any release before 1.0;
+v0.2.0, the latest release. The API may change in any release before 1.0;
 the [changelog](../CHANGELOG.md) says what each release has.
 
 ## Read next
