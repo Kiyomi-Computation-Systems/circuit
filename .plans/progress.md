@@ -162,10 +162,11 @@ close-out under **Close-outs**, newest first.
   [PR #42](https://github.com/Kiyomi-Computation-Systems/circuit/pull/42) on 2026-11-07;
   its close-out is below. `[0.2.0]` takes Unreleased whole. With it, design §15.35:
   `wrap-form-params` takes no limit on pairs, so the Open list loses it.
-- **Next,** each when the owner asks: the signed tag `v0.2.0` on #42's squash once
-  main's CI passes on it, whose push redeploys the docs site; a GitHub Release from
-  `[0.2.0]`; a fresh clone of the tag, as Installing says. If the tag lands after
-  2026-11-07, `[0.2.0]`'s date moves to its day first.
+- **v0.2.0 is tagged, released and published**, recorded in
+  [PR #43](https://github.com/Kiyomi-Computation-Systems/circuit/pull/43), squashed on
+  2026-11-07; its close-out is below. The tag is on 486cab3, #42's squash, the
+  Release is the repository's latest, and the docs site names v0.2.0.
+- **Next:** the owner's call. The Open list below holds what is known.
 
 ## Open
 
@@ -225,6 +226,44 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-07: v0.2.0 tagged, released and published, recorded in PR #43
+
+On the owner's "do the tag and release", then "do the clone check". This PR holds this
+close-out alone (0de9e45); CI passed on it (run 42318698817, 4m11s), on amd64, arm64 and
+the site job.
+
+- **CI on the tagged commit:** main's run on 486cab3, #42's squash, 42316495372, passed
+  on amd64, arm64 and the site job, every job completed;
+- **the tag:** `v0.2.0` (tag object 3b1a2c5) on 486cab3, annotated and signed with the
+  Kiyomi release key (`git tag -v`: a good signature), checked absent locally and on
+  origin first, then pushed alone. Its message: "circuit v0.2.0 — cookies, sessions,
+  forms, CORS and security headers", then a paragraph from `[0.2.0]`'s intro. The
+  tag's day is `[0.2.0]`'s date;
+- **the site:** the tag's push ran the Pages workflow (42317376959): its build in 1m32s
+  and its deploy in 10s. Live, each of the 15 pages answers 200, one for each page in
+  `docs/`; links to circuit's files name `blob/v0.2.0/` (11), to the server's
+  `blob/v0.10.0/` (31) and to chez-websocket's `blob/v0.5.1/` (3), and none names
+  `blob/main/` or a v0.1 tag; the home page says v0.2.0, and Installing clones
+  `--branch v0.2.0`;
+- **the GitHub Release:** that title, from the tag with `--verify-tag`, not a draft or a
+  prerelease, and the repository's latest (`releases/latest` answers v0.2.0). Its notes
+  are `[0.2.0]` as the tag holds it, intro to last bullet, 10,279 bytes, and the
+  published body is those notes, byte for byte, read from the API's JSON: `gh -q` adds
+  a line feed of its own. The recipe first rebuilt v0.1.2's published notes, 1,799
+  bytes, byte for byte;
+- **GitHub's source tarball** for the tag: 490 entries, `vendor/`'s two directories
+  empty, neither `.plans/` nor `AGENTS.md`, the 15 docs pages in it, and
+  `Akku.manifest` naming 0.2.0;
+- **a fresh clone of the tag**, as Installing says: `git clone --branch v0.2.0` from
+  GitHub (HEAD 486cab3). git 2.54.0 warns that `refs/tags/v0.2.0` "is not a commit",
+  naming the tag object, and gives v0.1.2's tag the same warning. Then `make submodules`,
+  which downloaded hashing into `vendor/akku`; `make check-pins`, which held it to its
+  archive; `make site-deps`; and in its own Guix container `make test`, 25 suites, none
+  failed or hung, `make check-site` and `make check-help`. The first container run
+  wrote its output outside the clone, which the container doesn't mount, so it was run
+  again for its counts; both passed. The clone's tracked files were unchanged after;
+- **no agents ran.**
 
 ### 2026-11-06: v0.2.0, and `wrap-form-params`'s pairs, in PR #42
 
