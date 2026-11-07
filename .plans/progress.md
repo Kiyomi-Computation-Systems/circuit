@@ -166,6 +166,10 @@ close-out under **Close-outs**, newest first.
   [PR #43](https://github.com/Kiyomi-Computation-Systems/circuit/pull/43), squashed on
   2026-11-07; its close-out is below. The tag is on 486cab3, #42's squash, the
   Release is the repository's latest, and the docs site names v0.2.0.
+- **The Open item on a client that resets while the app waits** says what the server's
+  code shows, read and not run, squashed from
+  [PR #44](https://github.com/Kiyomi-Computation-Systems/circuit/pull/44) on
+  2026-11-07; its close-out is below. It stays open, on the owner's word.
 - **Next:** the owner's call. The Open list below holds what is known.
 
 ## Open
@@ -196,7 +200,14 @@ close-out under **Close-outs**, newest first.
   the app waited (design §6, §9), and the test host drops `f`'s raise. Over a real socket,
   a FIN is heard at once, but the request stays open until its response is written: `f`
   reads its port, and the write fails, logged `read-error EPIPE` (slice 5, reproduced).
-  Whether a reset makes `f` meet a closed port is unverified: curl can't send one.
+  Whether a reset makes `f` meet a closed port is unverified: curl can't send one. Read
+  in the server's `connection.sls` at v0.10.0, not run: a read error while a request is
+  handled closes the connection at once and ends the request `client-closed`, where a
+  FIN only tells the request's code. libuv reports a reset as `ECONNRESET` on a read,
+  and `test-client-reset!` hands the same core the same `(read-error ECONNRESET)`, so a
+  reset over a real socket should make `f` meet a closed port, as in the test host. A
+  probe would settle it: a C client, built with the container's gcc, that closes with
+  `SO_LINGER` at 0 while the app waits.
 - **Left from the owner's `/code-review` of slice 4, not fixed:**
   - a procfs file such as `/proc/self/status` reports a length of 0, so it is measured at
     0 and goes out empty (design §5 says to read such a file whole yourself). Taking a
@@ -226,6 +237,19 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-07: the reset item's reading of the server, in PR #44
+
+On the owner's "leave the item open", then "add the line", after "what's the open question
+about a client that resets mid-request". The Open item on a wrap's `f` meeting a closed
+port gains a line: in the server's `connection.sls` at v0.10.0, a read error while a
+request is handled closes the connection at once and ends the request `client-closed`,
+where a FIN only tells the request's code. `test-client-reset!` hands that core
+`(read-error ECONNRESET)`, as libuv reports a reset on a read, so a real reset should
+take the test host's path. Read, not run: the item stays open, and names the probe that
+would settle it. Design §6 and §9 keep their "unverified". Commits on
+`ledger/reset-note`: the line, Now and this close-out, and its CI run named here. No
+suite reads the ledger, so none was run. No agents ran.
 
 ### 2026-11-07: v0.2.0 tagged, released and published, recorded in PR #43
 
