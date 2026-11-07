@@ -230,7 +230,8 @@ close-out under **Close-outs**, newest first.
 ### 2026-11-07: v0.2.0 tagged, released and published, recorded in PR #43
 
 On the owner's "do the tag and release", then "do the clone check". This PR holds this
-close-out alone; its CI run is named here.
+close-out alone (0de9e45); CI passed on it (run 42318698817, 4m11s), on amd64, arm64 and
+the site job.
 
 - **CI on the tagged commit:** main's run on 486cab3, #42's squash, 42316495372, passed
   on amd64, arm64 and the site job, every job completed;
