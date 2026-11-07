@@ -159,13 +159,13 @@ close-out under **Close-outs**, newest first.
   `SERVER_PIN` and `WEBSOCKET_PIN`; `make deps` refuses a hashing that isn't the lock's,
   and the fetch downloads an archive missing from `dl/` again.
 - **v0.2.0's release is merged**, squashed from
-  [PR #42](https://github.com/Kiyomi-Computation-Systems/circuit/pull/42) on 2026-11-06;
+  [PR #42](https://github.com/Kiyomi-Computation-Systems/circuit/pull/42) on 2026-11-07;
   its close-out is below. `[0.2.0]` takes Unreleased whole. With it, design §15.35:
   `wrap-form-params` takes no limit on pairs, so the Open list loses it.
 - **Next,** each when the owner asks: the signed tag `v0.2.0` on #42's squash once
   main's CI passes on it, whose push redeploys the docs site; a GitHub Release from
   `[0.2.0]`; a fresh clone of the tag, as Installing says. If the tag lands after
-  2026-11-06, `[0.2.0]`'s date moves to its day first.
+  2026-11-07, `[0.2.0]`'s date moves to its day first.
 
 ## Open
 
@@ -233,7 +233,8 @@ into the release" and the recommendation on `wrap-form-params`. Commits on
 `release/v0.2.0`: the release and the decision (a4c5c93), this close-out (62128ec), and
 its CI run named here. In the container, `make test` passes 25 suites, and
 `make check-site` and `make check-help` pass. CI passed on the PR (run 42314209561,
-4m36s), on amd64, arm64 and the site job.
+4m36s), on amd64, arm64 and the site job. The ritual ran on 2026-11-07, so a fourth
+commit moved `[0.2.0]`'s date and Now's to that day, its CI green before the merge.
 
 - **`[0.2.0]`:** Unreleased whole, from #26 to #41, under an intro: the fourth release,
   its libraries, `hashing` from Akku and `make submodules` again in an older checkout,

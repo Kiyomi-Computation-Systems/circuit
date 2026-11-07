@@ -7,7 +7,7 @@ release before 1.0.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-11-06
+## [0.2.0] - 2026-11-07
 
 The fourth release: cookies, sessions, the query and urlencoded forms, CORS and security
 headers, each a library of its own, and keys on a response, so a handler can hand a value
