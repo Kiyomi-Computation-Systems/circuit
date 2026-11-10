@@ -58,11 +58,13 @@ after the others, and jsonparse's next release is on 0.9.0 too.
   bounded by the cap `wrap-json-body` requires, and its tree by its depth and digit
   limits. The owner measured its tree builder at 33 to 200 MB/s, on the owner's NUC.
 - **A body that isn't JSON holds its request until the 16 KiB holding its bad byte, or
-  the body's end, is in.** The owner keeps `read-json` as it is (design §15.36,
-  Kiyomi-Computation-Systems/jsonparse#17 declined). `wrap-timeout` outside
-  `wrap-json-body` bounds the wait. Nothing in jsonparse promises that a port's raise
-  passes through `read-json`, so circuit's rows hold what `wrap-json-body`'s guard
-  relies on: a body past the cap is a `413`, and a stall under `wrap-timeout` a `504`.
+  the body's end, is in.** The owner keeps `read-json`'s reads as they are (design
+  §15.36). `wrap-timeout` outside `wrap-json-body` bounds the wait. jsonparse v0.1.0
+  promises nothing of a port's raise, so circuit's rows hold what `wrap-json-body`'s
+  guard relies on: a body past the cap is a `413`, and a stall under `wrap-timeout` a
+  `504`. Kiyomi-Computation-Systems/jsonparse#18, open on 2026-11-10, adds the promise,
+  and rows of jsonparse's own, for its next release. The pin move that takes it says so
+  here, and circuit's rows stay.
 - **The next server release on byte-machine 0.9.0 waits for jsonparse's on it too,**
   and the reverse: circuit can't take either alone.
 - **An app working from a checkout runs `make submodules`,** as it does for the server.

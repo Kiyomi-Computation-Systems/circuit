@@ -249,9 +249,9 @@ close-out under **Close-outs**, newest first.
 On the owner's brief and answers (design §15.36). Commits on `open/slice-11`: the code,
 tests and docs (bc8abda), this close-out (f35eede), and its CI run named here. `make test`
 passes 26 suites, `make check-site` passes, and `make gate` passes every held gate. CI
-passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job. A fourth
-commit records the owner's decline of jsonparse#17, and a fifth the fixes the owner's
-M1 run called for, both below.
+passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job. Later
+commits record the owner's decline of jsonparse#17 and jsonparse#18's answer, the fixes
+the owner's M1 run called for, and that run, all below.
 
 - **`(circuit json)`**, the twelfth public library: `wrap-json-body`, `req-json?`,
   `req-json` and `make-json-res`. `(wrap-json-body n [options])` reads a request whose one
@@ -359,11 +359,17 @@ M1 run called for, both below.
   - filed as Kiyomi-Computation-Systems/jsonparse#17: `read-json`'s refusal waits for
     16 KiB, where its stream readers use `get-bytevector-some`; and its docs and rows
     don't promise that a port's raise passes through it, as they do for `write-json` and
-    `read-json-sequence`, though circuit's rows rely on it. The owner declined it the
-    same day, as too much overhead for jsonparse: design §15.36 and ADR-0009's
-    consequences record it, and the Open list doesn't carry it. Circuit's rows hold the
-    pass-through: on a copy of jsonparse whose `read-json` turns a port's raise into a
-    `&json-error`, the 413, smallest-cap and `wrap-timeout` rows fail;
+    `read-json-sequence`, though circuit's rows rely on it. The owner declined the read
+    the same day, as too much overhead for jsonparse, and jsonparse's session answered
+    with Kiyomi-Computation-Systems/jsonparse#18, open: `read-json`'s code unchanged, its
+    cost measured (`get-bytevector-some` allocates 8 KiB a call, and took 179 ms/MB
+    against 33 at a byte a read), and the wait and the pass-through documented and held
+    by rows, for jsonparse's next release. Design §15.36 and ADR-0009's consequences
+    record both, and the Open list doesn't carry them: the pin move takes #18. My issue
+    had cited ADR-0020's 5% more allocation, measured on ports that give 8 KiB a read.
+    Circuit's rows hold the pass-through: on a copy of jsonparse whose `read-json` turns
+    a port's raise into a `&json-error`, the 413, smallest-cap and `wrap-timeout` rows
+    fail;
 - **`(circuit params)`'s gaps, folded in on the owner's word:** `(circuit json)` copied
   its code, and three mutants of it passed every row of `tests/test-params.sps`: a cap of
   0 refused, 3/2 taken as a cap, and `media-type` without its leading trim, which no

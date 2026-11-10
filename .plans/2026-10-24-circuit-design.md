@@ -1752,12 +1752,16 @@ on the server's byte-machine (ADR-0009):
       the defaults alone; a `400` for a key sent twice, by a walk of circuit's own.
     - **`make-json-res` comes with it:** the value as JSON, `application/json`,
       under the options given. Weighed: the one line in the docs alone.
-    - **jsonparse's `read-json` stays as it is** (2026-11-10): it reads 16 KiB at a
-      time, so a body that is no JSON is refused once the 16 KiB holding its bad byte,
-      or the body's end, is in. Weighed, and declined as too much overhead for
-      jsonparse: Kiyomi-Computation-Systems/jsonparse#17's asks, a `read-json` that
-      reads a port as its bytes come, as jsonparse's stream readers do, and docs and rows
-      promising that a port's raise passes through it.
+    - **jsonparse's `read-json` keeps reading 16 KiB at a time** (2026-11-10), so a
+      body that is no JSON is refused once the 16 KiB holding its bad byte, or the
+      body's end, is in. Weighed, and declined as too much overhead for jsonparse: a
+      `read-json` that reads a port as its bytes come, as jsonparse's stream readers do,
+      Kiyomi-Computation-Systems/jsonparse#17's first ask.
+      Kiyomi-Computation-Systems/jsonparse#18, open, measured it: Chez's
+      `get-bytevector-some` allocates 8 KiB a call, so through a port giving a byte a
+      read it took 179 ms/MB against 33. #18 takes #17's second ask: it documents the
+      wait and promises that a port's raise passes through `read-json`, with rows, for
+      jsonparse's next release.
 
 ## 16. Open
 
