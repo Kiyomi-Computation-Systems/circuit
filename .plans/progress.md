@@ -176,7 +176,12 @@ close-out under **Close-outs**, newest first.
   third submodule, on the server's byte-machine (ADR-0009). The owner's answers are
   design §15.36. Twelve public libraries, and `(circuit params)` gains the rows its copy
   showed it lacked.
-- **Next:** the owner's call. The Open list below holds what is known.
+- **v0.3.0's release is merged**, squashed from
+  [PR #46](https://github.com/Kiyomi-Computation-Systems/circuit/pull/46) on 2026-11-10;
+  its close-out is below. `[0.3.0]` takes Unreleased whole: `(circuit json)` and the
+  jsonparse submodule.
+- **Next:** v0.3.0's tag on #46's squash, once main's CI on it passes, then its Release
+  and its site.
 
 ## Open
 
@@ -243,6 +248,31 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-10: v0.3.0, in PR #46
+
+On the owner's "tag it", after PR #45's closing ritual, and their answer to the version,
+0.3.0. Commits on `release/v0.3.0`: the release (77880a6), this close-out, and its
+CI run named here. In the container, `make test` passes 26 suites, and
+`make check-site` and `make check-help` pass.
+
+- **`[0.3.0]`:** Unreleased whole, from #45, under an intro: the fifth release,
+  `(circuit json)` by jsonparse v0.1.0, a third submodule on the server's byte-machine,
+  `make submodules` again in an older checkout, no name joining or leaving an existing
+  library, and the pins as v0.2.0 had them, so 0.3.0. The links gain `[0.3.0]`, and
+  Unreleased compares from v0.3.0;
+- **checked for the notes:** each public library's exports at v0.2.0 and on main,
+  loaded by Chez, v0.2.0's `src/` from `git archive` on main's pins. The eleven
+  libraries v0.2.0 has export the same names on both. `(circuit json)`, unloadable from
+  v0.2.0's `src/`, exports four on main: `make-json-res`, `req-json`, `req-json?` and
+  `wrap-json-body`. `SERVER_PIN`, `WEBSOCKET_PIN` and their gitlinks are as v0.2.0 had
+  them, and `vendor/jsonparse` is the one gitlink added;
+- **the version:** 0.3.0 in `Akku.manifest`; README.org's status, the home page's and
+  Installing's clone of the tag name v0.3.0. No check holds those four to one another;
+- **minor, not a patch:** the owner's answer. A patch would have followed v0.1.2's
+  reasoning: no name an app imports changes, and no v0.2.0 program breaks. Minor marks
+  the new library, and the step an upgrade needs, `make submodules` again for jsonparse;
+- **Agents:** none.
 
 ### 2026-11-10: slice 11, a JSON body, in PR #45
 
