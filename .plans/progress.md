@@ -254,8 +254,8 @@ close-out under **Close-outs**, newest first.
 
 ### 2026-11-10: v0.3.0 tagged, released and published, recorded in PR #47
 
-On the owner's "Do ritual and then tag & release". This PR holds this close-out alone,
-and its CI run is named here.
+On the owner's "Do ritual and then tag & release". This PR holds this close-out alone
+(519b2f5); CI passed on it (run 42861183222, 4m44s), on amd64, arm64 and the site job.
 
 - **CI on the tagged commit:** main's run on b08e422, #46's squash, 42859839694, passed
   on amd64, arm64 and the site job, every job completed;
