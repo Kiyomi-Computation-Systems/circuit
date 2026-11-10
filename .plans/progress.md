@@ -254,9 +254,9 @@ close-out under **Close-outs**, newest first.
 ### 2026-11-10: slice 11, a JSON body, in PR #45
 
 On the owner's brief and answers (design §15.36). Commits on `open/slice-11`: the code,
-tests and docs (bc8abda), this close-out, and its CI run named here. `make test` passes
-26 suites, `make check-site` passes, and `make gate` passes every held gate. CI on the PR
-is named here once it passes.
+tests and docs (bc8abda), this close-out (f35eede), and its CI run named here. `make test`
+passes 26 suites, `make check-site` passes, and `make gate` passes every held gate. CI
+passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job.
 
 - **`(circuit json)`**, the twelfth public library: `wrap-json-body`, `req-json?`,
   `req-json` and `make-json-res`. `(wrap-json-body n [options])` reads a request whose one
