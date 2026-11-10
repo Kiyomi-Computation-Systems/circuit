@@ -1,13 +1,13 @@
 #!r6rs
 ;;; (circuit cookies), by property: cookies, options and cookie fields
-;;; generated from a fixed seed (the slice 9 design §6).
+;;; generated from a fixed seed.
 ;;;
 ;;; Oracles, written here apart from the library: a browser's model of a
 ;;; set-cookie field, from RFC 6265bis (draft-ietf-httpbis-rfc6265bis-22)
 ;;; §5.6's parsing and §5.7's storage steps, the request taken as https from
-;;; the cookie's own domain; the design's refusals, as rules over what a
-;;; case drew; and the design's reading of a cookie field, over lists of
-;;; characters.
+;;; the cookie's own domain; the library's documented refusals, as rules
+;;; over what a case drew; and its documented reading of a cookie field,
+;;; over lists of characters.
 ;;;
 ;;; The rows:
 ;;;   - P1 a cookie res-add-cookie takes, a browser stores, with its name,
@@ -28,7 +28,7 @@
 ;;;     hold a set-cookie field of the name already, as res-add-cookie
 ;;;     writes one or as a hand might, spaced, in a field named in any case,
 ;;;     beside ones that hold the name where it sets no cookie;
-;;;   - P3 req-cookies reads any cookie fields as the design's rules do, and
+;;;   - P3 req-cookies reads any cookie fields as the documented rules do, and
 ;;;     req-cookie answers the first of each name: fields drawn from ;, =,
 ;;;     spaces, tabs, quotes, letters, controls, Latin-1 and characters
 ;;;     past 255, in cookie fields named in any case, and fields of other
@@ -631,7 +631,7 @@
           (and (setting 'cookie-secure) #t) (and (setting 'cookie-http-only) #t)
           (case (setting 'cookie-same-site) ((strict) "Strict") ((lax) "Lax") ((none) "None") (else "Default")))))
 
-;; --- the rules: what the design refuses, in its order ---------------------------------
+;; --- the rules: what the library refuses, in its order --------------------------------
 
 (define (refusal who message . irritants) (list 'refused who message irritants))
 
@@ -915,7 +915,7 @@
     (reverse (drop (reverse (drop cs))))))
 
 ;; read-cookies : (Listof (Pair String String)) -> (Listof (Pair String String))
-;; The design's reading of FIELDS: each cookie field, each piece between ;,
+;; The documented reading of FIELDS: each cookie field, each piece between ;,
 ;; split at its first =, the name and value trimmed, an empty name skipped.
 (define (read-cookies fields)
   (concat-map
@@ -948,7 +948,7 @@
                                     (map (lambda (v) (replace-at fields i (cons (car f) v))) (string-shrinks (cdr f)))))
                       (iota (length fields)))))
 
-(test-equal "P3: req-cookies reads any cookie fields by the design's rules, and req-cookie answers each name's first"
+(test-equal "P3: req-cookies reads any cookie fields by the documented rules, and req-cookie answers each name's first"
   '()
   (property-failures 'P3 (* 3000 multiplier) p3-case p3-check fields-shrinks p3-tally))
 

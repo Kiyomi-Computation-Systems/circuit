@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit middleware headers): fields every response should carry, and
-;;; HSTS (the slice 9 design §4).
+;;; HSTS.
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit middleware headers))
 ;;;   (wrap app (wrap-default-headers security-headers) (wrap-hsts 31536000))

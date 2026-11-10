@@ -1,6 +1,5 @@
 #!r6rs
-;;; (circuit session): sessions read from a signed cookie and written back
-;;; (the sessions design §5).
+;;; (circuit session): sessions read from a signed cookie and written back.
 ;;;
 ;;; Oracles: RFC 4231's HMAC-SHA-256 cases 1 to 7, for the pinned (hashing
 ;;; sha-2), each confirmed by openssl; and two whole set-cookie fields

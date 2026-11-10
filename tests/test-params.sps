@@ -1,7 +1,6 @@
 #!r6rs
 ;;; (circuit params): the urlencoded parser and serializer, the query and
-;;; form readers, param-value and param-values, and their refusals (the
-;;; slice 9 design §5).
+;;; form readers, param-value and param-values, and their refusals.
 ;;;
 ;;; Oracles: the web-platform-tests' urlencoded vectors, from
 ;;; url/urlencoded-parser.any.js and the URLSearchParams constructor, get,
@@ -341,7 +340,7 @@
         (value-of (bytevector-append #vu8(#xFF #xFE) bom-bytes))
         (value-of (bytevector-append #vu8(#xFE #xFF) bom-bytes))))
 
-(test-equal "the design's three, where Chez's utf8->string reads otherwise: an overlong / is two U+FFFD, a surrogate three, and a BOM is kept"
+(test-equal "three where Chez's utf8->string reads otherwise: an overlong / is two U+FFFD, a surrogate three, and a BOM is kept"
   (list (string-append replacement replacement)
         (string-append replacement replacement replacement)
         "\xFEFF;A")

@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit cookies): the request's cookies read, set-cookie fields
-;;; written, and their refusals (the slice 9 design §6).
+;;; written, and their refusals.
 ;;;
 ;;; Oracles: RFC 6265bis (draft-ietf-httpbis-rfc6265bis-22), its §4.1.1
 ;;; grammar, cookie-octet and av-octet as its ranges, with token from RFC
@@ -13,9 +13,9 @@
 ;;;     it; quotes kept; every character beside a name and a value, only a
 ;;;     space and a tab trimmed; a Latin-1 byte; characters not checked;
 ;;;   - req-cookie: the first of a name, matched exactly;
-;;;   - res-add-cookie and res-expire-cookie: the RFC's and the design's
-;;;     examples, whole fields; one attribute order for every order of the
-;;;     options; the response's own fields kept;
+;;;   - res-add-cookie and res-expire-cookie: the RFC's examples and
+;;;     docs/cookies.md's, whole fields; one attribute order for every
+;;;     order of the options; the response's own fields kept;
 ;;;   - one set-cookie field a name: a second refused, by either writer,
 ;;;     whatever its path; a held field's name read before its first =,
 ;;;     less spaces and tabs, every character tried at each end of it;
@@ -284,7 +284,7 @@
                                             (cookie-path "/") (cookie-domain "site.example"))))
         (written (lambda () (res-expire-cookie base "lang")))))
 
-(test-equal "the design's example"
+(test-equal "docs/cookies.md's example"
   (one "__Host-theme=dark; Path=/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax")
   (written (lambda ()
              (res-add-cookie base "__Host-theme" "dark"

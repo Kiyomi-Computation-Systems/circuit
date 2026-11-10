@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit json): wrap-json-body, req-json? and req-json, and
-;;; make-json-res (design §15.36, ADR-0009).
+;;; make-json-res.
 ;;;
 ;;; jsonparse is the oracle for what a document is. The values and the
 ;;; refusals' reasons and byte offsets below are its, from its docs and a

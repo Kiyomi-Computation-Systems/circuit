@@ -1,7 +1,7 @@
 #!r6rs
 ;;; (circuit router), by property: tables and paths generated from a fixed
-;;; seed, checked against an oracle written from the slice 6 design's §5
-;;; alone (design §15.22), before the router's source was read.
+;;; seed, checked against an oracle written from the routing rules alone,
+;;; not from the router's source.
 ;;;
 ;;; The oracle is naive on purpose. It joins a table's group prefixes into
 ;;; flat templates, tests every template against the split path, keeps the
@@ -10,13 +10,13 @@
 ;;; router.
 ;;;
 ;;; The rows:
-;;;   - sanity: §5's own examples and sentences, each against the oracle and
-;;;     the router, so a wrong oracle fails here first;
+;;;   - sanity: the rules' own examples and sentences, each against the
+;;;     oracle and the router, so a wrong oracle fails here first;
 ;;;   - P1 the router answers as the oracle does: the handler, what it and
 ;;;     each middleware and not-found, 400 and 405 handler read of the
 ;;;     request, the response, and the middleware that ran. Groups'
 ;;;     middleware may also rewrite the path, hand on a request it made, or
-;;;     be a router of its own (design §15.23); an option's handler may be
+;;;     be a router of its own; an option's handler may be
 ;;;     wrapped or a router, and the 405's may answer another status, or set
 ;;;     an Allow of its own;
 ;;;   - P2 reordering and regrouping a table, and reordering its options,
@@ -219,11 +219,11 @@
 ;; --- characters ----------------------------------------------------------------
 
 (define alpha-digit "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-;; §5: a word holds RFC 3986 pchar without pct-encoded.
+;; A word holds RFC 3986 pchar without pct-encoded.
 (define word-char-list (string->list (string-append alpha-digit "-._~!$&'()*+,;=:@")))
-;; §5: a name is ASCII letters, digits, - and _.
+;; A name is ASCII letters, digits, - and _.
 (define name-char-list (string->list (string-append alpha-digit "-_")))
-;; RFC 9110's tchar, upper case only: §5's METHOD takes a token in upper case.
+;; RFC 9110's tchar, upper case only: METHOD takes a token in upper case.
 (define method-char-list (string->list "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'*+-.^_`|~"))
 (define hex-upper "0123456789ABCDEF")
 (define hex-lower "0123456789abcdef")
@@ -310,7 +310,7 @@
 (define (mna-response hm) (list (mna-status hm) (mna-headers hm) (make-bytevector 0)))
 
 ;; with-allow : Response String -> Response
-;; §5: on a 405 the 405 handler answers, the router's allow, where the
+;; On a 405 the 405 handler answers, the router's allow, where the
 ;; first allow of any case stood, the others gone, or last; any other
 ;; answer as it is.
 (define (with-allow resp allow)
@@ -325,7 +325,7 @@
       resp))
 
 ;; =================================================================================
-;; The oracle, from §5.
+;; The oracle, from the routing rules.
 ;; =================================================================================
 
 ;; --- templates ------------------------------------------------------------------
@@ -362,7 +362,7 @@
              (for-all (lambda (c) (memv c name-char-list)) (string->list text))))))
 
 ;; template-problem : String (U 'route 'mount) -> (U Symbol #f)
-;; What §5 refuses in a joined template, or #f.
+;; What the rules refuse in a joined template, or #f.
 (define (template-problem joined kind)
   (if (not (starts-with-slash? joined))
       'joined-template-not-slash
@@ -415,7 +415,7 @@
     (and (pair? cs) (for-all (lambda (c) (memv c method-char-list)) cs) #t)))
 
 ;; router-refusal : (Listof Entry) -> (U Symbol #f)
-;; Why §5 refuses one router's own table, or #f.
+;; Why the rules refuse one router's own table, or #f.
 (define (router-refusal entries)
   (let ((flat (flatten entries "" '())))
     (cond ((not (for-all (lambda (t) (or (string=? t "") (starts-with-slash? t))) (given-templates entries)))
@@ -448,7 +448,8 @@
                   (exists (lambda (o) (handler-refusal (cadr o))) (router-opts hm))))))
 
 ;; options-refusal : HM -> (U Symbol #f)
-;; §5: two options for one answer, the bare not-found handler on-not-found's.
+;; Refused: two options for one answer, the bare not-found handler
+;; on-not-found's.
 (define (options-refusal hm)
   (and (has-duplicates? (append (if (caddr hm) '(onf) '()) (map car (router-opts hm))))
        'option-twice))
@@ -668,8 +669,7 @@
 ;; middleware around a mount carries the mount's match, and the mount's
 ;; handler is given the rest of the path the router matched, under that
 ;; mount. A request the middleware hands on without it, one it made or
-;; one a router of its own matched, reaches the handler as it is (design
-;; §15.23).
+;; one a router of its own matched, reaches the handler as it is.
 (define-record-type (ostate make-ostate ostate?)
   (fields method path query match mbase marker))
 
@@ -696,7 +696,7 @@
 (define (oracle-in-event tag st)
   (list 'in tag (ostate-method st) (ostate-path st) (st-mp st) (ostate-query st) (st-route st)
         (st-params st)))
-;; §5: the not-found handler gets the request as it came to the router.
+;; The not-found handler gets the request as it came to the router.
 (define (oracle-nf-event id st) (cons 'nf (cdr (oracle-leaf-event id st))))
 
 ;; --- the oracle's answer ------------------------------------------------------------
@@ -715,7 +715,7 @@
     ((leaf) (cons (list (oracle-leaf-event (cadr hm) st)) (leaf-response (cadr hm))))
     ((nf) (cons (list (oracle-nf-event (cadr hm) st)) (leaf-response (cadr hm))))
     ;; The 400's and the 405's handlers note what they read, as a leaf does;
-    ;; their callers give them the request §5 says.
+    ;; their callers give them the request the rules say.
     ((br) (cons (list (cons 'br (cdr (oracle-leaf-event (cadr hm) st)))) (leaf-response (cadr hm))))
     ((mna) (cons (list (cons 'mna (cdr (oracle-leaf-event (cadr hm) st)))) (mna-response hm)))
     ((next) (next st))
@@ -732,7 +732,7 @@
 (define (oracle-router entries nf opts st next)
   (unless (equal? nf '(next)) (set! routers-passed (+ routers-passed 1)))
   (let ((path (ostate-path st)))
-    ;; §5: the 400 handler gets the request as it came to the router.
+    ;; The 400 handler gets the request as it came to the router.
     (define (bad-request)
       (let ((br (opt-handler opts 'br)))
         (if br
@@ -790,7 +790,7 @@
                 (run-stack (list-ref item 4) (lambda (s) (oracle-handler h s next))
                            (make-ostate (ostate-method st) (ostate-path st) (ostate-query st) match
                                         (ostate-mbase st) #f)))
-              ;; §5: the 405 handler gets the request with the route's match, as
+              ;; The 405 handler gets the request with the route's match, as
               ;; the route's handler would, but no group's middleware runs; the
               ;; router sets allow on a 405 it answers.
               (let ((mna (opt-handler opts 'mna)) (allow (allow-of (cadddr item))))
@@ -1452,7 +1452,7 @@
 
 ;; A word with one character escaped: "%6Eew" is not the word new.
 ;; gen-escaped : String -> Gen String
-;; W, not empty, with one of its characters escaped. §5 matches the path
+;; W, not empty, with one of its characters escaped. A path is matched
 ;; undecoded, so it no longer matches the word W.
 (define (gen-escaped w)
   (lambda (s)
@@ -1806,7 +1806,7 @@
      (map (lambda (p) (list method p query)) (path-shrinks path)))))
 
 ;; =================================================================================
-;; Sanity: §5's examples, against the oracle and the router
+;; Sanity: the rules' examples, against the oracle and the router
 ;; =================================================================================
 
 (define (leaf-ev id method path mp query rt params)
@@ -1819,7 +1819,7 @@
 
 ;; sanity : HM (Listof (Pair Req (Pair Events Response))) -> (List (Listof Answer) (Listof Answer))
 ;; Each request's answer from the oracle and from the router, beside what
-;; §5 says.
+;; the rules say.
 (define (sanity hm rows)
   (let loop ((rows rows) (oracle '()) (real '()) (said '()))
     (if (null? rows)
@@ -1892,7 +1892,7 @@
         (draw* s ((x (g-int 20000)))
           (loop (+ i 1) (if (< x 12768) (+ below 1) below) s)))))
 
-(sanity-row "sanity: §5's example app: a parameter, a group's middleware, a mount, HEAD by GET"
+(sanity-row "sanity: the example app: a parameter, a group's middleware, a mount, HEAD by GET"
   example-app
   (list (list '(GET "/users/7" #f) (list (leaf-ev 'show-user 'GET "/users/7" "" #f "/users/:id" '(("id" . "7"))))
               (leaf-response 'show-user))
@@ -2121,7 +2121,7 @@
               (list (in-ev 'm 'GET "/p/q" "" #f "/p" '()) (leaf-ev 'x 'GET "/q" "/p" #f "/p" '()) (out-ev 'm))
               (leaf-response 'x))))
 
-(test-equal "sanity: §5's refusals refused, and its controls accepted, by the oracle and by make-router, two options for one answer among them"
+(test-equal "sanity: the rules' refusals refused, and their controls accepted, by the oracle and by make-router, two options for one answer among them"
   '((refused refused) (refused refused) (refused refused) (refused refused) (refused refused)
     (refused refused) (refused refused) (refused refused) (refused refused) (refused refused)
     (refused refused) (refused refused) (refused refused) (refused refused) (refused refused)
@@ -2228,7 +2228,7 @@
     (case (car hm)
       ((leaf nf br mna) (cons hm s))
       ((wrapped) (draw* s ((inner (gen-transform (caddr hm)))) (cons (list 'wrapped (cadr hm) inner) s)))
-      ;; §5: the options come in any order; their handlers are transformed too.
+      ;; The options come in any order; their handlers are transformed too.
       ((router) (draw* s ((es (gen-transform-entries (cadr hm)))
                           (inside (gen-transform-opts (router-opts hm)))
                           (opts (g-shuffle inside)))
@@ -2321,7 +2321,7 @@
 (define bad-route-templates
   '("/a//b" "//" "/*r/a" "/*r/" "/:x/:x" "/:x/*x" "/a/." "/.." "/." "/:" "/*" "/:a.b" "/*a:b" "/a%20"
     "/a%" "/\xE9;" "/a b" "/a?" "/a#" "/:\xE9;" "" "a" "a/b" "/a/" "/a" "/:id/new" "/users/*rest"))
-;; §5: a route lists one method entry or more, each method once.
+;; A route lists one method entry or more, each method once.
 (define method-lists
   '(()
     ((GET short (leaf h)) (GET short (leaf h)))
@@ -2395,7 +2395,7 @@
 
 ;; gen-spoiled : HM -> Gen HM
 ;; The spoiler applied to the top router, or now and then to a router
-;; mounted in it; or one more option on the top router, which §5 refuses
+;; mounted in it; or one more option on the top router, which the rules refuse
 ;; when an option, or a bare not-found handler, gives its answer already.
 (define (gen-spoiled hm)
   (lambda (s)

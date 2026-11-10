@@ -8,7 +8,7 @@
 ;;; websocket-res hands chez-websocket's websocket-handshake what it reads of
 ;;; the request: req-method, every line of a field by req-header-values, and
 ;;; req-host. The handshake decides, and this library maps its answer onto
-;;; circuit's responses (slice 6 design §6). Accepted, the answer is
+;;; circuit's responses. Accepted, the answer is
 ;;; make-upgrade-res's 101, of the handshake's headers and its take-over,
 ;;; which runs the procedure with the WebSocket once the 101 is written.
 ;;; Refused, it is make-res's response of the handshake's status and
@@ -16,13 +16,15 @@
 ;;;
 ;;; The take-over answers the server, and a middleware that wraps it must
 ;;; answer what it answers: dropped, the 101 is written and the procedure
-;;; never runs (chez-websocket's ADR-0009).
+;;; never runs.
 ;;;
 ;;; An app imports (websocket) for the rest: websocket-receive,
 ;;; websocket-send!, websocket-close!, make-handshake-settings and the
 ;;; limits. This library imports (websocket), which imports the server, and
 ;;; neither (http-server) nor (chezscheme), nor any other (websocket ...)
-;;; library: ADR-0006's third library that depends on the server.
+;;; library, and no other library imports it: make check-imports holds
+;;; both. It is the third library that depends on the server, with
+;;; (circuit http-server) and (circuit middleware waits).
 (library (circuit websocket)
   (export websocket-res)
   (import (rnrs)

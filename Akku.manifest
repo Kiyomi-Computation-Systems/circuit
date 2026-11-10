@@ -2,11 +2,11 @@
 (import (akku format manifest))
 
 ;; One runtime dependency from Akku: hashing, whose (hashing sha-2) signs a
-;; session's cookie in (circuit session) (ADR-0008). `make submodules`
+;; session's cookie in (circuit session). `make submodules`
 ;; fetches it as Akku.lock pins it into vendor/akku/, on the library path.
 ;; chez-http-server and chez-websocket aren't on the Akku index, so they are
-;; submodules under vendor/, and circuit is not installed through Akku yet
-;; (ADR-0003). Development only: chez-cmark-gfm renders docs/ into the docs
+;; submodules under vendor/, and circuit is not installed through Akku yet.
+;; Development only: chez-cmark-gfm renders docs/ into the docs
 ;; site (`make site`). Akku.lock is `akku lock`'s output for this file.
 ;; .akkuignore keeps `akku install` from installing circuit's own libraries.
 (akku-package ("circuit" "0.3.0")

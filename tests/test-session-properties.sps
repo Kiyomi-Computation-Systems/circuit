@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit session), by property: sessions, cookie names, secrets and
-;;; clocks generated from a fixed seed (the sessions design §5).
+;;; clocks generated from a fixed seed.
 ;;;
 ;;; The rows:
 ;;;   - S1 a session handed back with res-with-session, written by

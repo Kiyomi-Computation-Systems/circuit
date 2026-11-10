@@ -1,7 +1,7 @@
 #!r6rs
 ;;; (circuit http-server): the adapter, run through the server's test host,
 ;;; (http-server testing), with (circuit->handler app env) as its handler and
-;;; the same env as its settings (design §9, §10).
+;;; the same env as its settings.
 ;;;
 ;;;   - the view: every req- accessor through the adapter, HTTP/1.0 and 1.2
 ;;;     included, the four addresses #f in the test host;

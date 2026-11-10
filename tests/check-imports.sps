@@ -50,8 +50,7 @@
 ;;;       (websocket private ...) among them. (websocket) imports the server,
 ;;;       so no library imports (circuit websocket), as none imports an
 ;;;       impure one; and (circuit websocket) imports neither (chezscheme)
-;;;       nor an (http-server ...) library, as a core library doesn't
-;;;       (ADR-0006);
+;;;       nor an (http-server ...) library, as a core library doesn't;
 ;;;   (j) each LIBDIR named after the directory, a directory on a library
 ;;;       path, holds nothing named circuit or circuit.<anything>, in any
 ;;;       case, as a Mac's disk finds one: a directory Chez would look in
@@ -67,7 +66,7 @@
 ;;;       (circuit ...) libraries, is no directory on a path;
 ;;;   (k) (circuit session) is a core library that may also import
 ;;;       (hashing sha-2), weinholt's hashing from Akku, for HMAC-SHA-256,
-;;;       and no other library may import a (hashing ...) library (ADR-0008).
+;;;       and no other library may import a (hashing ...) library.
 ;;;       It imports no other (hashing ...) library, and that one only through
 ;;;       an only right around it, or around (library ...), naming at least
 ;;;       one identifier, as rule (d) reads an only: so its header names all
@@ -95,7 +94,7 @@
 ;;;   (n) (circuit json) is a core library that may also import
 ;;;       (jsonparse easy), jsonparse's whole-document layer, to read and
 ;;;       write JSON, and no other library may import a (jsonparse ...)
-;;;       library (ADR-0009). It imports no other (jsonparse ...) library,
+;;;       library. It imports no other (jsonparse ...) library,
 ;;;       and that one only through an only right around it, or around
 ;;;       (library ...), naming at least one identifier, as rule (k) holds
 ;;;       (circuit session) to (hashing sha-2). The machine jsonparse
@@ -170,7 +169,7 @@
 ;; websocket-library : (Listof Symbol)
 ;; The one library that may import (websocket), chez-websocket's facade,
 ;; which imports the server: so no library may import it. Changing it is a
-;; reviewed change to the architecture (ADR-0006).
+;; reviewed change to the architecture (AGENTS.md).
 (define websocket-library '(circuit websocket))
 
 ;; websocket-facade : (Listof Symbol)
@@ -179,7 +178,7 @@
 ;; session-library : (Listof Symbol)
 ;; The one library that may import a (hashing ...) library: weinholt's
 ;; hashing, from Akku, signs its cookies. Changing it is a reviewed change to
-;; the architecture (ADR-0006, ADR-0008).
+;; the architecture (AGENTS.md).
 (define session-library '(circuit session))
 
 ;; hashing-library : (Listof Symbol)
@@ -188,13 +187,13 @@
 
 ;; hashing-siblings : (Listof (Listof Symbol))
 ;; The (hashing ...) libraries hashing-library's closure may import beside
-;; the (rnrs ...) ones. A pin that adds one is a reviewed change (ADR-0008).
+;; the (rnrs ...) ones. A pin that adds one is a reviewed change (AGENTS.md).
 (define hashing-siblings '((hashing fixnums) (hashing hmac)))
 
 ;; json-library : (Listof Symbol)
 ;; The one library that may import a (jsonparse ...) library: jsonparse
 ;; reads and writes its JSON. Changing it is a reviewed change to the
-;; architecture (ADR-0006, ADR-0009).
+;; architecture (AGENTS.md).
 (define json-library '(circuit json))
 
 ;; jsonparse-library : (Listof Symbol)
@@ -205,7 +204,7 @@
 ;; The libraries jsonparse-library's closure may import beside the (rnrs
 ;; ...) ones: jsonparse's others, the machine it generates, and the
 ;; byte-machine runtime that runs it, with the two it imports. A pin that
-;; adds one is a reviewed change (ADR-0009).
+;; adds one is a reviewed change (AGENTS.md).
 (define jsonparse-siblings
   '((jsonparse error) (jsonparse options) (jsonparse parser) (jsonparse sequence)
     (jsonparse string) (jsonparse tree) (jsonparse writer) (generated jsonparse)
@@ -227,14 +226,14 @@
 ;; chez-names : (Listof Symbol)
 ;; What an impure library may take from (chezscheme). None of them can import,
 ;; evaluate or load: a name that could would let a library's body reach what
-;; its header may not import. Adding one is a reviewed change (ADR-0006).
+;; its header may not import. Adding one is a reviewed change (AGENTS.md).
 ;; getenv is the adapter's default environment, as it is `serve`'s;
 ;; port-has-port-length? and port-length size a port body from Chez's own
-;; length of it, which plain R6RS can't ask (design §5, §15.8). real-time
+;; length of it, which plain R6RS can't ask. real-time
 ;; is request logging's default clock: R6RS has none, and it counts
 ;; milliseconds from the process's start in a fixnum. display-condition
 ;; shows a condition in the catch helper's default line as the server's log
-;; shows it, which R6RS can't (design §6); print-record, under
+;; shows it, which R6RS can't; print-record, under
 ;; parameterize, shows a record inside it by its type alone, as the
 ;; server's log does: R6RS has neither.
 (define chez-names '(getenv port-has-port-length? port-length real-time display-condition

@@ -2,14 +2,14 @@
 /build/
 
 # hashing, as Akku.lock pins it, which `make submodules` fetches; outside
-# build/, so `make clean` keeps it (ADR-0008)
+# build/, so `make clean` keeps it
 /vendor/akku/
 
 # Chez compiled objects / whole-program optimization outputs
 *.so
 *.wpo
 
-# plugin scratch, not the ledger (AGENTS.md)
+# plugin scratch
 /.superpowers/
 
 # linked worktrees made under the checkout

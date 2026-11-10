@@ -590,7 +590,7 @@
          "rule (h): a library with no #!r6rs line, otherwise legal"
          (refused (no-header (at "header-missing" "circuit.sls") (root "header-missing"))))
    (list "header-chezscheme"
-         "rule (h): the review's library, headed #!chezscheme, reading a repeat vector and an fxvector literal and importing only (rnrs)"
+         "rule (h): a library headed #!chezscheme, reading a repeat vector and an fxvector literal and importing only (rnrs)"
          (refused (no-header (at "header-chezscheme" "circuit.sls") (root "header-chezscheme"))))
    (list "header-later"
          "rule (h): the #!r6rs line, and #!chezscheme on a later line, turning Chez's syntax back on"

@@ -2,7 +2,7 @@
 ;;; (circuit websocket): websocket-res, called on (circuit test)'s requests
 ;;; and on a request whose reads it observes, and run through the server's
 ;;; test host, (http-server testing), with (circuit->handler app env) as its
-;;; handler (slice 6 design §6, "Circuit's side (6c)").
+;;; handler.
 ;;;
 ;;;   - RFC 6455 §1.3's handshake: the 101's whole head, a masked text frame
 ;;;     echoed through the take-over, the client's close answered; a
@@ -44,8 +44,8 @@
 ;;;     closed after it, Connection: close (connections.md); an absolute-form
 ;;;     target's authority is the request's host, whatever Host says
 ;;;     (reference.md, request-host);
-;;;   - chez-websocket's ADR-0009: a take-over wrapped with its answer
-;;;     dropped writes the 101, and the procedure never runs;
+;;;   - a take-over wrapped with its answer dropped writes the 101, and the
+;;;     procedure never runs (chez-websocket's reference.md, handlers.md);
 ;;;   - (websocket handshake)'s header, which its docs leave out: when
 ;;;     X-Forwarded-Proto names http or https, a same-host Origin's scheme
 ;;;     must be the one its leftmost element names; and RFC 9110 §5.3: a

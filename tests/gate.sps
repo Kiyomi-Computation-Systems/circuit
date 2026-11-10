@@ -1,9 +1,8 @@
 #!r6rs
-;;; The cost gate (design §15.6): what circuit costs over the raw server, in
+;;; The cost gate: what circuit costs over the raw server, in
 ;;; bytes a request, with the parts circuit controls held to a bound.
 ;;;
-;;; Spike S2's method (.plans/research/s2-coroutine-cost.md, and its program
-;;; .plans/research/spike/s2-coroutine-cost.sps). One server in this
+;;; The method: one server in this
 ;;; process, started as `serve` starts one, under the default limits, whose
 ;;; handler is whichever variant is current, so every variant runs in the
 ;;; same build as its baseline. oha runs in a process of its own, spawned on
@@ -38,10 +37,10 @@
 ;;; parked once inside it and not; through
 ;;; the adapter as a bytevector body, and
 ;;; as a bytevector port body, which the adapter reads whole, a port of
-;;; one piece or less (design §5); a 13-byte POST read raw, by
+;;; one piece or less; a 13-byte POST read raw, by
 ;;; read-whole-body, and from an `awaiting` thunk and through the adapter,
-;;; each by get-bytevector-n of its declared length, the cheapest read
-;;; (design §4), so G3 POST is circuit's work over the same read; and,
+;;; each by get-bytevector-n of its declared length, the cheapest read,
+;;; so G3 POST is circuit's work over the same read; and,
 ;;; through the adapter, a router of twenty routes asked a word route, a
 ;;; one-parameter route, and a path no route takes, which its not-found
 ;;; handler answers, each over an app that reads the path at the same URL
@@ -85,11 +84,9 @@
         (only (circuit http-server) circuit->handler))
 
 ;;; ------------------------------------------------------------------------
-;;; The counts and the gates: design §15.6. The bounds are slice 4's,
-;;; measured through the real adapter, each with headroom over the worst
-;;; figure eight runs read and under what a known regression reads
-;;; (ADR-0007). G10's are 6b's, over the worst of three runs (design
-;;; §15.24).
+;;; The counts and the gates. Each bound was measured through the real
+;;; adapter, with headroom over the worst figure eight runs read and under
+;;; what a known regression reads; G10's over the worst of three runs.
 
 ;; Fixed: 5,000 against 25,000 requests, two rounds, at 1 and 50 keep-alive
 ;; connections, which reads a gate's worst figure to within about 10 B from
@@ -673,7 +670,7 @@
 ;; gate-table : -> (Listof Gate) — prints each gate's figure, bound and
 ;; headroom, and answers the held gates that failed.
 (define (gate-table)
-  (printf "\nThe gates, design §15.6. Worst is over the rounds and both connection counts; a held gate fails over its bound.\n")
+  (printf "\nThe gates. Worst is over the rounds and both connection counts; a held gate fails over its bound.\n")
   (printf "\n| gate | figure | 1 conn | 50 conns | worst | bound | headroom | |\n")
   (printf "|:--|:--|--:|--:|--:|--:|--:|:--|\n")
   (fold-left
@@ -780,7 +777,7 @@
             rps-seconds rounds)
     (table vs "req/s" "of" / percent)
     (let ((ratios (paired "get-adapter" "get-raw" 50 /)))
-      (printf "\nG6, the smoke (design §15.6): get-adapter answered ~a of get-raw's rate at 50 connections, against a floor of ~a; ~a. It never fails.\n"
+      (printf "\nG6, the smoke: get-adapter answered ~a of get-raw's rate at 50 connections, against a floor of ~a; ~a. It never fails.\n"
               (span ratios percent) (percent rps-floor)
               (if (for-all (lambda (r) (>= r rps-floor)) ratios) "above it" "BELOW it")))
     (exit 0)))

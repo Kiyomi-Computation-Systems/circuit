@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit middleware cors): CORS, for a browser's script on another
-;;; origin (the slice 9 design §3).
+;;; origin.
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit middleware cors))
 ;;;   (wrap router
