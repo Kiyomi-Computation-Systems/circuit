@@ -9,7 +9,7 @@
 ;; (ADR-0003). Development only: chez-cmark-gfm renders docs/ into the docs
 ;; site (`make site`). Akku.lock is `akku lock`'s output for this file.
 ;; .akkuignore keeps `akku install` from installing circuit's own libraries.
-(akku-package ("circuit" "0.2.0")
+(akku-package ("circuit" "0.3.0")
   (synopsis "An HTTP layer in the manner of Ring, for R6RS Scheme")
   (authors "Kiyomi Computation Systems LLC")
   (homepage "https://github.com/Kiyomi-Computation-Systems/circuit")
