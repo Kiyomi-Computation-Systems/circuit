@@ -38,7 +38,8 @@
 ;;;   - the cap through the server's test host, (http-server testing), which
 ;;;     enforces it: a body at the cap read, one past it refused 413 with no
 ;;;     handler run, declared or chunked; the request's own cap, the
-;;;     server's and the middleware's, the smallest winning; a bignum cap;
+;;;     server's and the middleware's, the smallest winning; a cap of 0
+;;;     from both sides; a bignum cap;
 ;;;   - the read waits as the body does: a form that arrives in two pieces
 ;;;     is read whole, and wrap-timeout outside it answers 504 to a client
 ;;;     that stalls, the handler never run.
@@ -695,11 +696,12 @@
   '((assertion-violation wrap-form-params (-1))
     (assertion-violation wrap-form-params (1.5))
     (assertion-violation wrap-form-params (4.))
+    (assertion-violation wrap-form-params (3/2))
     (assertion-violation wrap-form-params ("4"))
     (assertion-violation wrap-form-params (#f))
     (assertion-violation wrap-form-params (not-a-handler))
     "a cap is a count of bytes")
-  (append (map (lambda (cap) (raised (lambda () (wrap-form-params cap)))) (list -1 1.5 4. "4" #f))
+  (append (map (lambda (cap) (raised (lambda () (wrap-form-params cap)))) (list -1 1.5 4. 3/2 "4" #f))
           (list (raised (lambda () ((wrap-form-params 4) 'not-a-handler)))
                 (raised-message (lambda () (wrap-form-params #f))))))
 
@@ -812,6 +814,11 @@
         (ran-exchange (form-echo (wrap-form-params 4) (wrap-body-cap 100)) (form-post "a=bcd"))
         (ran-exchange (form-echo (wrap-form-params 100) (wrap-body-cap #f)) (chunked-form-post "a=b" "cd")
                       (settings "CHEZ_HTTP_MAX_BODY_BYTES" "4"))))
+
+(test-equal "a cap of 0: an empty form is read, no pairs, and one byte is past it, 413"
+  (list (echoed "") too-large)
+  (list (ran-exchange (form-echo (wrap-form-params 0)) (form-post ""))
+        (ran-exchange (form-echo (wrap-form-params 0)) (form-post "a"))))
 
 (test-equal "a bignum cap reads a form, and a query and a form are read apart"
   (list (echoed "a=bcd")

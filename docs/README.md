@@ -55,6 +55,7 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 | `(circuit http-server)` | `run-server`, and the server's waits, such as `sleep-ms` |
 | `(circuit router)` | `make-router`: routes by the path, then the method |
 | `(circuit params)` | `req-query-params` and `wrap-form-params`: the query and a form, as pairs |
+| `(circuit json)` | `wrap-json-body` and `make-json-res`: a JSON body in, JSON out |
 | `(circuit cookies)` | `req-cookies` and `res-add-cookie`: read, set and remove cookies |
 | `(circuit session)` | `wrap-session`: a session kept in a signed cookie |
 | `(circuit middleware waits)` | `wrap-catch`, `wrap-timeout` and `wrap-log` |
@@ -90,6 +91,7 @@ the [changelog](../CHANGELOG.md) says what each release has.
   sending one as it is made.
 - [Query strings and forms](params.md): reading the query and a form's
   fields.
+- [JSON](json.md): reading a JSON body as a value, and answering with JSON.
 - [Cookies](cookies.md): reading the request's cookies, and setting and
   removing them.
 - [Sessions](sessions.md): remembering a visitor between requests, in a

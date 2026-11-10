@@ -52,10 +52,11 @@ It has no network and no git, so run `make submodules` on the host first.
 
 ## The pinned dependencies
 
-chez-http-server v0.10.0 and chez-websocket v0.5.1 are git submodules under
-`vendor/`, pinned at their release tags, and `make check-pins` checks them.
-Neither is on the Akku package index yet, so Akku can't install circuit:
-the checkout is the way in.
+chez-http-server v0.10.0, chez-websocket v0.5.1 and jsonparse v0.1.0 are
+git submodules under `vendor/`, pinned at their release tags, and
+`make check-pins` checks them. None is on the Akku package index yet, so
+Akku can't install circuit: the checkout is the way in. `(circuit json)`
+reads JSON with jsonparse, and no other library uses it.
 
 `hashing` 1.4.0, Gwen Weinholt's SHA-2 and HMAC, comes from the Akku
 package index: `Akku.lock` pins its archive and sha256,

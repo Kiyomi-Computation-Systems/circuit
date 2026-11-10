@@ -21,7 +21,10 @@
   2026-11-06, in slice 10b: one core library, `(circuit session)`, may import hashing's
   `(hashing sha-2)` through `only`, and the audit reads that library's closure from
   `vendor/akku` (item 5; [ADR-0008](0008-hashing-from-akku-is-the-first-runtime-dependency.md),
-  the sessions design §4)
+  the sessions design §4); 2026-11-10, in slice 11: another core library,
+  `(circuit json)`, may import jsonparse's `(jsonparse easy)` through `only`, and the audit
+  reads that library's closure from byte-machine's `src/` and jsonparse's (item 6;
+  [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md), design §15.36)
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
@@ -50,7 +53,8 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
 
 1. **The core is plain R6RS**: every circuit library but the three below imports only
    `(rnrs ...)` libraries other than `(rnrs eval)`, and core circuit libraries, and
-   `(circuit session)` `(hashing sha-2)` too (item 5).
+   `(circuit session)` `(hashing sha-2)` too (item 5), and `(circuit json)`
+   `(jsonparse easy)` (item 6).
 2. **`(circuit http-server)`, the adapter, and `(circuit middleware waits)`**, which holds
    `wrap-timeout`, the catch helper `wrap-catch` and request logging `wrap-log`, may also
    import the server's libraries, but none of
@@ -88,6 +92,22 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
    directory on the library path but `src` and `vendor/akku` holds anything named
    `hashing` or `hashing.<anything>`, in any case, so no other copy stands in for the one
    read (rule (m)); `vendor/akku` is still held to rule (j).
+6. **`(circuit json)`, a core library, may also import `(jsonparse easy)`**, jsonparse's
+   whole-document layer, through an `only` right around it naming at least one
+   identifier, as `(circuit session)` imports `(hashing sha-2)`. It imports no other
+   `(jsonparse ...)` library, and no other circuit library imports any (the audit's rule
+   (n)); rule (c) still refuses `(generated ...)` and `(byte-machine ...)` to every core
+   library. The audit reads `(jsonparse easy)`'s closure as data, by rule (l)'s reader,
+   from byte-machine's `src/` then jsonparse's, the library path's order, named by
+   `--byte-machine` and `--jsonparse`: the closure imports only the `(rnrs ...)` libraries other than
+   `(rnrs eval)`, jsonparse's seven other libraries, `(generated jsonparse)`, and
+   `(byte-machine runtime)` with the `(byte-machine private conditions)` and
+   `(byte-machine private names)` it imports, and fails closed as rule (l) does (rule
+   (o)). No directory on the library path but `src` and jsonparse's `src/` holds anything
+   named `jsonparse` or `jsonparse.<anything>`, in any case, nor does a `generated`
+   directory in it; and none but `src` and byte-machine's `src/` holds a `byte-machine`
+   or `byte-machine.<anything>`: the path holds one jsonparse and one byte-machine (rule
+   (p)).
 
 ## Consequences
 
@@ -107,6 +127,11 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
   does: `(rnrs ...)` without `eval`. A pin of hashing that adds a library to the closure,
   or imports anything else, fails the audit until it is reviewed, and the audit's
   "through make" row holds the closure's size, 3 libraries, on the pin.
+- **`(jsonparse easy)`'s body reaches only what its imports give,** and so does
+  byte-machine's runtime: `(rnrs ...)` without `eval`. A pin of jsonparse or of the
+  server that adds a library to the closure, or imports anything else, fails the audit
+  until it is reviewed, and the audit's "through make" row holds the closure's size, 12
+  libraries, on the pins.
 - **Taking another name from `(chezscheme)` is a reviewed change** to the audit's
   allowlist, and the name must not be one that can import, evaluate or load.
 - **The allowlist took `port-has-port-length?` and `port-length` in slice 4**, for the

@@ -15,6 +15,7 @@
       ("requests.md"      . "Requests and responses")
       ("bodies.md"        . "Bodies and streaming")
       ("params.md"        . "Query strings and forms")
+      ("json.md"          . "JSON")
       ("cookies.md"       . "Cookies")
       ("sessions.md"      . "Sessions")
       ("middleware.md"    . "Middleware")

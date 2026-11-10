@@ -16,6 +16,8 @@ An HTTP layer in the manner of [[https://github.com/ring-clojure/ring][Ring]] fo
 - *Bodies as ports, both ways.* A request's body is a port, read as it
   arrives and capped where you say. A response streams from a port or a
   producer, server-sent events included (see [[file:docs/bodies.md][docs/bodies.md]]).
+- *JSON in and out.* ~wrap-json-body~ reads a JSON body as a value, and
+  ~make-json-res~ answers with one (see [[file:docs/json.md][docs/json.md]]).
 - *Handlers that wait.* Each request runs on a coroutine of its own, so a
   handler can sleep, wait for another request, or give up at a deadline (see
   [[file:docs/waiting.md][docs/waiting.md]]).
@@ -60,13 +62,14 @@ You need Linux or macOS, on x86-64 or arm64, with:
 - libuv 1.48 or later that ~pkg-config~ can see, and a C compiler: the
   server's libuv binding builds a small C shim
 
-Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], and takes WebSockets from
-[[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]], both pinned under ~vendor/~.
+Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], takes WebSockets from
+[[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]] and reads JSON with
+[[https://github.com/Kiyomi-Computation-Systems/jsonparse][jsonparse]], all pinned under ~vendor/~.
 
 #+begin_src sh
 git clone https://github.com/Kiyomi-Computation-Systems/circuit.git
 cd circuit
-make submodules   # clones the pinned server, what it needs, and chez-websocket
+make submodules   # clones the pinned server, what it needs, chez-websocket and jsonparse
 make test         # builds the libuv shim, then runs every tests/test-*.sps
 #+end_src
 

@@ -91,21 +91,72 @@
 ;;;       there could stand in for the closure rule (l) reads. It holds
 ;;;       whether --akku is named or not, and with no --akku, every LIBDIR
 ;;;       holding one is named. AKKU is still a LIBDIR to rule (j), and a
-;;;       LIBDIR it cannot list is rule (j)'s to name.
+;;;       LIBDIR it cannot list is rule (j)'s to name;
+;;;   (n) (circuit json) is a core library that may also import
+;;;       (jsonparse easy), jsonparse's whole-document layer, to read and
+;;;       write JSON, and no other library may import a (jsonparse ...)
+;;;       library (ADR-0009). It imports no other (jsonparse ...) library,
+;;;       and that one only through an only right around it, or around
+;;;       (library ...), naming at least one identifier, as rule (k) holds
+;;;       (circuit session) to (hashing sha-2). The machine jsonparse
+;;;       generates and the byte-machine that runs it are no core library's
+;;;       to import: rule (c) refuses each (generated ...) and
+;;;       (byte-machine ...) library;
+;;;   (o) when (circuit json) imports (jsonparse easy) as rule (n) lets it,
+;;;       the JSONPARSE and BYTE-MACHINE that --jsonparse and --byte-machine
+;;;       name are read as data for that library's closure, by rule (l)'s
+;;;       reader: each library found by Chez's own library search handler
+;;;       over its own library extensions, with BYTE-MACHINE and then
+;;;       JSONPARSE the library directories, in the library path's order as
+;;;       the Makefile builds it, so that where both hold a library the one
+;;;       read is the one Chez loads, and each read once, so a cycle ends.
+;;;       The closure imports only the (rnrs ...) libraries except
+;;;       (rnrs eval), and jsonparse's seven other libraries, the
+;;;       (generated jsonparse) machine, and (byte-machine runtime) and the
+;;;       (byte-machine private conditions) and (byte-machine private names)
+;;;       it imports. It fails closed as rule (l) does: no --jsonparse, no
+;;;       --byte-machine, a library Chez finds no source for, a compiled
+;;;       object Chez could load in place of the source unread, a source it
+;;;       cannot read as data, a file that is not exactly one library form of
+;;;       the library's name, and an import spec it cannot read are each
+;;;       named. Rule (h) does not hold these files;
+;;;   (p) as rule (m) holds hashing, the path holds one jsonparse and one
+;;;       byte-machine: each LIBDIR but the directory and JSONPARSE holds
+;;;       nothing named jsonparse or jsonparse.<anything>, in any case, nor
+;;;       does a generated directory in it, in any case: Chez takes
+;;;       (generated jsonparse) from the first LIBDIR whose generated/ has
+;;;       it, and chez-httparse's and uriparse's src/ hold generated/
+;;;       directories of their own, of other names. A generated directory it
+;;;       cannot list is named, as what it holds is unknown. Each LIBDIR but
+;;;       the directory and BYTE-MACHINE holds nothing named byte-machine or
+;;;       byte-machine.<anything>, in any case. So BYTE-MACHINE, named among
+;;;       the LIBDIRs, holds no jsonparse, and JSONPARSE no byte-machine: a
+;;;       jsonparse in BYTE-MACHINE, which rule (o) reads first, is named as
+;;;       the copy this check reads. It holds whether --jsonparse and
+;;;       --byte-machine are named or not, and with one absent, every LIBDIR
+;;;       holding its library is named. JSONPARSE and BYTE-MACHINE are still
+;;;       LIBDIRs to rules (j) and (m).
 ;;;
 ;;; The lists are allowlists: a library that is not on one is refused, so a
 ;;; route nobody thought of is closed until a reviewer opens it. Exports are
 ;;; not read: a library cannot import by exporting.
 ;;;
-;;;   usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [LIBDIR ...]
+;;;   usage: scheme --program tests/check-imports.sps DIR [--akku AKKU]
+;;;            [--jsonparse JSONPARSE] [--byte-machine BYTE-MACHINE] [LIBDIR ...]
 ;;;
-;;; A --akku with no directory after it, or one that is no directory, is
-;;; named. On a pass it prints one line to stdout, naming how many libraries
-;;; it checked; when it was named LIBDIRs, a second, naming how many of them
-;;; rule (j) looked in; when it read the closure, a third, naming AKKU and
-;;; how many libraries it read; and when it was named --akku, a last, naming
-;;; how many LIBDIRs rule (m) looked in. It exits 0 or 1, never a count.
-;;; tests/test-check-imports.sps runs it on a tree for each rule.
+;;; Each flag is optional, and given at most once, in any order, after DIR
+;;; and before the LIBDIRs. A flag with no directory after it, one that is
+;;; no directory, and one given twice are each named. On a pass it prints one
+;;; line to stdout, naming how many libraries it checked; when it was named
+;;; LIBDIRs, a second, naming how many of them rule (j) looked in; when it
+;;; read hashing's closure, a third, naming AKKU and how many libraries it
+;;; read; when it was named --akku, a fourth, naming how many LIBDIRs rule
+;;; (m) looked in; when it read jsonparse's closure, a fifth, naming
+;;; JSONPARSE, BYTE-MACHINE and how many libraries it read; and when it was
+;;; named --jsonparse, and when it was named --byte-machine, a line each,
+;;; naming how many LIBDIRs rule (p) looked in for that library. It exits 0
+;;; or 1, never a count. tests/test-check-imports.sps runs it on a tree for
+;;; each rule.
 (import (rnrs)
         (circuit-testing)
         (only (chezscheme) directory-list file-directory? library-extensions
@@ -139,6 +190,26 @@
 ;; The (hashing ...) libraries hashing-library's closure may import beside
 ;; the (rnrs ...) ones. A pin that adds one is a reviewed change (ADR-0008).
 (define hashing-siblings '((hashing fixnums) (hashing hmac)))
+
+;; json-library : (Listof Symbol)
+;; The one library that may import a (jsonparse ...) library: jsonparse
+;; reads and writes its JSON. Changing it is a reviewed change to the
+;; architecture (ADR-0006, ADR-0009).
+(define json-library '(circuit json))
+
+;; jsonparse-library : (Listof Symbol)
+;; The one (jsonparse ...) library json-library may import, through only.
+(define jsonparse-library '(jsonparse easy))
+
+;; jsonparse-siblings : (Listof (Listof Symbol))
+;; The libraries jsonparse-library's closure may import beside the (rnrs
+;; ...) ones: jsonparse's others, the machine it generates, and the
+;; byte-machine runtime that runs it, with the two it imports. A pin that
+;; adds one is a reviewed change (ADR-0009).
+(define jsonparse-siblings
+  '((jsonparse error) (jsonparse options) (jsonparse parser) (jsonparse sequence)
+    (jsonparse string) (jsonparse tree) (jsonparse writer) (generated jsonparse)
+    (byte-machine runtime) (byte-machine private conditions) (byte-machine private names)))
 
 ;; rnrs-libraries : (Listof (Listof Symbol))
 ;; The standard libraries a library under the directory may import: R6RS's, but
@@ -204,6 +275,14 @@
   (fold-left (lambda (text s) (string-append text separator s))
              (car strings)
              (cdr strings)))
+
+;; listed : (Pairof String (Listof String)) -> String
+;; "a", "a and b", "a, b and c".
+(define (listed strings)
+  (if (null? (cdr strings))
+      (car strings)
+      (string-append (joined ", " (reverse (cdr (reverse strings))))
+                     " and " (list-ref strings (- (length strings) 1)))))
 
 ;; without-slashes : String -> String
 ;; DIR without the slashes it ends with: a name is appended to it after one.
@@ -276,13 +355,7 @@
 ;; line-list : (Pairof Natural (Listof Natural)) -> String
 ;; "line 3", "lines 3 and 5", "lines 2, 6 and 7".
 (define (line-list lines)
-  (let ((names (map number->string lines)))
-    (cond
-      ((null? (cdr names)) (string-append "line " (car names)))
-      (else
-       (let ((last (list-ref names (- (length names) 1)))
-             (rest (reverse (cdr (reverse names)))))
-         (string-append "lines " (joined ", " rest) " and " last))))))
+  (string-append (if (null? (cdr lines)) "line " "lines ") (listed (map number->string lines))))
 
 ;; walk : String -> (Listof (Pair String (U 'file 'directory-link)))
 ;; Everything under DIR, as paths: the files, and the symbolic links to
@@ -341,10 +414,11 @@
 (define (narrow-chez? spec)
   (narrowed? spec (lambda (ids) (for-all (lambda (id) (memq id chez-names)) ids))))
 
-;; narrow-hashing? : Any -> Boolean
-;; Whether SPEC, which imports hashing-library, names what it takes from it,
-;; through an only that names at least one identifier and nothing else.
-(define (narrow-hashing? spec)
+;; narrow-dependency? : Any -> Boolean
+;; Whether SPEC, which imports hashing-library or jsonparse-library, names
+;; what it takes from it, through an only that names at least one
+;; identifier and nothing else.
+(define (narrow-dependency? spec)
   (narrowed? spec (lambda (ids) (and (pair? ids) (for-all symbol? ids)))))
 
 ;; headed? : Symbol Any -> Boolean
@@ -381,6 +455,33 @@
                       '())))
               reads)))
 
+;; dependency-complaints : (Listof Symbol) (Listof Symbol) (Listof Symbol) (Listof Symbol) Any
+;;                         ((Listof Symbol) String -> (Listof String)) -> (Listof String)
+;; Rules (k) and (n): what is wrong with the library NAME importing
+;; IMPORTED, of DEPENDENCY's family, through SPEC. Only OWNER may import one
+;; of the family, and only DEPENDENCY, through only. REFUSE words a
+;; complaint about IMPORTED from its reason.
+(define (dependency-complaints name owner dependency imported spec refuse)
+  (let ((family (string-append "(" (symbol->string (car dependency)) " ...) library")))
+    (cond ((not (equal? name owner))
+           (refuse imported (string-append "only " (written owner) " may import a " family)))
+          ((not (equal? imported dependency))
+           (refuse imported
+                   (string-append (written owner) " may import no " family " but " (written dependency))))
+          ((narrow-dependency? spec) '())
+          (else
+           (refuse imported
+                   (string-append (written owner) " imports " (written dependency)
+                                  " only through only, right around it, naming at least one identifier: so its header names all it takes from code circuit didn't write"))))))
+
+;; owner-reason : (Listof Symbol) (Listof Symbol) -> String
+;; Why OWNER, a core library that may also import DEPENDENCY, may import no
+;; other library than a core one may.
+(define (owner-reason owner dependency)
+  (string-append (written owner)
+                 " may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and "
+                 (written dependency) " through only"))
+
 ;; import-complaints : String String (Listof Symbol) Boolean Any (Listof (Listof Symbol))
 ;;                     -> (Listof String)
 ;; What is wrong with the import spec SPEC of the library NAME, read from PATH:
@@ -390,7 +491,8 @@
   (let ((imported (spec-name spec '()))
         (library (written name))
         (websocket? (equal? name websocket-library))
-        (session? (equal? name session-library)))
+        (session? (equal? name session-library))
+        (json? (equal? name json-library)))
     (define (refuse imported reason)
       (list (string-append path ": " library " imports " (written imported)
                            ", but " reason)))
@@ -424,19 +526,9 @@
                       (string-append "only " (written websocket-library) " may import "
                                      (written websocket-facade) ", chez-websocket's facade")))))
       ((eq? (car imported) (car hashing-library))
-       (cond ((not session?)
-              (refuse imported
-                      (string-append "only " (written session-library)
-                                     " may import a (hashing ...) library")))
-             ((not (equal? imported hashing-library))
-              (refuse imported
-                      (string-append (written session-library) " may import no (hashing ...) library but "
-                                     (written hashing-library))))
-             ((narrow-hashing? spec) '())
-             (else
-              (refuse imported
-                      (string-append (written session-library) " imports " (written hashing-library)
-                                     " only through only, right around it, naming at least one identifier: so its header names all it takes from code circuit didn't write")))))
+       (dependency-complaints name session-library hashing-library imported spec refuse))
+      ((eq? (car imported) (car jsonparse-library))
+       (dependency-complaints name json-library jsonparse-library imported spec refuse))
       ((and impure? (equal? imported '(chezscheme)))
        (if (narrow-chez? spec)
            '()
@@ -459,11 +551,8 @@
                (string-append (written websocket-library)
                               " may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and "
                               (written websocket-facade))))
-      (session?
-       (refuse imported
-               (string-append (written session-library)
-                              " may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and "
-                              (written hashing-library) " through only")))
+      (session? (refuse imported (owner-reason session-library hashing-library)))
+      (json? (refuse imported (owner-reason json-library jsonparse-library)))
       (else
        (refuse imported
                "a core library may import only the (rnrs ...) libraries except (rnrs eval), and core (circuit ...) libraries")))))
@@ -537,54 +626,65 @@
                            (list (string-append path ": it cannot be read as data: " (cadr found))))
                    0)))))))
 
-;; imports-hashing? : (Listof (Pair String Read)) -> Boolean
-;; Whether a library form named session-library, in the files read, imports
-;; hashing-library as rule (k) lets it, so rule (l) reads its closure.
-(define (imports-hashing? reads)
+;; imports-dependency? : (Listof (Pair String Read)) (Listof Symbol) (Listof Symbol) -> Boolean
+;; Whether a library form named OWNER, in the files read, imports DEPENDENCY
+;; as rule (k) or (n) lets it, so rule (l) or (o) reads its closure.
+(define (imports-dependency? reads owner dependency)
   (exists (lambda (entry)
             (let ((found (cdr entry)))
               (and (eq? (car found) 'data)
                    (exists (lambda (form)
-                             (and (equal? (reference-name (cadr form)) session-library)
+                             (and (equal? (reference-name (cadr form)) owner)
                                   (exists (lambda (spec)
-                                            (and (equal? (spec-name spec '()) hashing-library)
-                                                 (narrow-hashing? spec)))
+                                            (and (equal? (spec-name spec '()) dependency)
+                                                 (narrow-dependency? spec)))
                                           (cdr (cadddr form)))))
                            (filter library-form? (cadr found))))))
           reads))
 
-;; resolved : String (Listof Symbol) -> (List (U String #f) (U String #f) Boolean)
-;; Where Chez finds the library NAME with AKKU its one library directory, for
-;; sources and objects both: by Chez's own search handler, over its own
-;; library extensions, so the file named is the one Chez would load. The
-;; source, or #f; the object file's path, or #f; whether that object exists.
-(define (resolved akku name)
+;; resolved : (Pairof String (Listof String)) (Listof Symbol)
+;;            -> (List (U String #f) (U String #f) Boolean)
+;; Where Chez finds the library NAME with DIRS its library directories, in
+;; order, for sources and objects both: by Chez's own search handler, over
+;; its own library extensions, so the file named is the one Chez would load.
+;; The source, or #f; the object file's path, or #f; whether that object
+;; exists.
+(define (resolved dirs name)
   (call-with-values
-    (lambda () ((library-search-handler) 'import name (list (cons akku akku)) (library-extensions)))
+    (lambda () ((library-search-handler) 'import name (map (lambda (dir) (cons dir dir)) dirs)
+                                         (library-extensions)))
     list))
 
-;; closure-import-complaints : String String Any -> (Listof String)
-;; What is wrong with the import spec SPEC of the closure's library LIBRARY,
-;; written, read from SOURCE: none, or one.
-(define (closure-import-complaints source library spec)
+;; closure-allows : (Pairof (Listof Symbol) (Listof (Listof Symbol))) -> String
+;; What a closure whose siblings are SIBLINGS may import, in its complaints
+;; and its pass line.
+(define (closure-allows siblings)
+  (string-append "the (rnrs ...) libraries except (rnrs eval), " (listed (map written siblings))))
+
+;; closure-import-complaints : (Listof Symbol) (Listof (Listof Symbol)) String String Any
+;;                             -> (Listof String)
+;; What is wrong with the import spec SPEC of the library LIBRARY, written,
+;; read from SOURCE, in the closure of TOP, which may import SIBLINGS: none,
+;; or one.
+(define (closure-import-complaints top siblings source library spec)
   (let ((imported (spec-name spec '())))
     (cond
       ((not imported)
        (list (string-append source ": " library " has an import it cannot read: " (abbreviated spec))))
-      ((or (member imported rnrs-libraries) (member imported hashing-siblings)) '())
+      ((or (member imported rnrs-libraries) (member imported siblings)) '())
       (else
        (list (string-append source ": " library " imports " (written imported)
-                            ", but the closure of " (written hashing-library)
-                            " may import only the (rnrs ...) libraries except (rnrs eval), "
-                            (joined " and " (map written hashing-siblings))))))))
+                            ", but the closure of " (written top)
+                            " may import only " (closure-allows siblings)))))))
 
-;; closure-library : String (Listof Symbol) -> (Pair (Listof String) (Listof (Listof Symbol)))
-;; Rule (l) for the library NAME, found in AKKU: its complaints, and the
-;; hashing-siblings it imports, which the closure reads next. A file that is
-;; not exactly one library form of NAME is named, and its imports are not
-;; read: what Chez would make of it is unknown.
-(define (closure-library akku name)
-  (let* ((where (resolved akku name))
+;; closure-library : (Listof Symbol) (Listof (Listof Symbol)) (Pairof String (Listof String))
+;;                   (Listof Symbol) -> (Pair (Listof String) (Listof (Listof Symbol)))
+;; Rule (l) or (o) for the library NAME, found in DIRS, in TOP's closure:
+;; its complaints, and the SIBLINGS it imports, which the closure reads
+;; next. A file that is not exactly one library form of NAME is named, and
+;; its imports are not read: what Chez would make of it is unknown.
+(define (closure-library top siblings dirs name)
+  (let* ((where (resolved dirs name))
          (source (car where))
          (library (written name))
          (compiled (if (caddr where)
@@ -592,8 +692,9 @@
                                             " from it in place of its source, which this check reads"))
                        '())))
     (if (not source)
-        (cons (cons (string-append akku ": Chez finds no source for " library
-                                   " in it, so this check cannot read what it imports")
+        (cons (cons (string-append (listed dirs) ": Chez finds no source for " library
+                                   (if (null? (cdr dirs)) " in it" " in them")
+                                   ", so this check cannot read what it imports")
                     compiled)
               '())
         (let ((found (read-data source)))
@@ -614,22 +715,24 @@
              (let ((specs (cdr (cadddr (car (cadr found))))))
                (cons (append compiled
                              (apply append
-                                    (map (lambda (spec) (closure-import-complaints source library spec))
+                                    (map (lambda (spec)
+                                           (closure-import-complaints top siblings source library spec))
                                          specs)))
-                     (filter (lambda (imported) (member imported hashing-siblings))
+                     (filter (lambda (imported) (member imported siblings))
                              (map (lambda (spec) (spec-name spec '())) specs))))))))))
 
-;; closure-result : String -> (Pair (Listof String) Natural)
-;; Rule (l): the complaints about hashing-library's closure in AKKU, in the
-;; order read, and how many libraries it read. Each is read once, however
-;; often it is imported, so a cycle ends.
-(define (closure-result akku)
-  (let loop ((todo (list hashing-library)) (seen '()) (complaints '()))
+;; closure-result : (Listof Symbol) (Listof (Listof Symbol)) (Pairof String (Listof String))
+;;                  -> (Pair (Listof String) Natural)
+;; Rules (l) and (o): the complaints about TOP's closure, which may import
+;; SIBLINGS, found in DIRS, in the order read, and how many libraries it
+;; read. Each is read once, however often it is imported, so a cycle ends.
+(define (closure-result top siblings dirs)
+  (let loop ((todo (list top)) (seen '()) (complaints '()))
     (cond
       ((null? todo) (cons complaints (length seen)))
       ((member (car todo) seen) (loop (cdr todo) seen complaints))
       (else
-       (let ((found (closure-library akku (car todo))))
+       (let ((found (closure-library top siblings dirs (car todo))))
          (loop (append (cdr todo) (cdr found))
                (cons (car todo) seen)
                (append complaints (car found))))))))
@@ -650,8 +753,11 @@
 ;; circuit-entry? : String -> Boolean
 (define (circuit-entry? name) (family-entry? "circuit" name))
 
-;; hashing-entry? : String -> Boolean
-(define (hashing-entry? name) (family-entry? "hashing" name))
+;; generated-entry? : String -> Boolean
+;; Whether NAME, an entry of a directory on a library path, is generated in
+;; any case: where Chez looks for (generated jsonparse), as a Mac's disk
+;; finds it.
+(define (generated-entry? name) (string=? (string-downcase name) "generated"))
 
 ;; path-dirs : String (Listof String) -> (Listof String)
 ;; The LIBDIRS rule (j) looks in, each without the slashes it ends with: not
@@ -679,30 +785,102 @@
                            (list-sort string<? (filter circuit-entry? names))))))
               dirs)))
 
-;; hashing-path-complaints : (U String #f) (Listof String) -> (Listof String)
-;; Rule (m): each entry of each of DIRS that hashing-entry? takes, sorted.
-;; DIRS are rule (j)'s, but AKKU, when --akku names one. A directory it
+;; could-load : String String (U String #f) String (Listof String) -> String
+;; How a complaint of rule (m) or (p) about an entry of DIR ends: Chez could
+;; load WHAT from it in place of HOLDER's, the one directory FLAG names, or
+;; no FLAG names one. HOLDER's is the copy this check reads, unless DIR is
+;; one of AHEAD, which its closure reads before HOLDER: then DIR's is.
+(define (could-load what flag holder dir ahead)
+  (cond
+    ((not holder)
+     (string-append ", so Chez could load " what " from it, and no " flag
+                    " names the one directory that may hold one"))
+    ((member dir ahead)
+     (string-append " beside " holder ", so Chez could load " what " from it in place of "
+                    holder "'s, and this check reads " dir " before " holder
+                    ", in the library path's order; only " holder " may hold one"))
+    (else
+     (string-append " beside " holder ", so Chez could load " what " from it in place of "
+                    holder "'s, which this check reads; only " holder " may hold one"))))
+
+;; family-path-complaints : String String (U String #f) (Listof String) (Listof String)
+;;                          -> (Listof String)
+;; Rules (m) and (p): each entry of each of DIRS that family-entry? takes
+;; for FAMILY, sorted. DIRS are rule (j)'s, but HOLDER, when FLAG names one,
+;; and AHEAD the directories a closure reads before HOLDER. A directory it
 ;; cannot list is passed over: rule (j) names it, as it looks in each.
-(define (hashing-path-complaints akku dirs)
+(define (family-path-complaints family flag holder ahead dirs)
   (apply append
          (map (lambda (dir)
                 (let ((names (guard (e (#t #f)) (directory-list dir))))
                   (map (lambda (name)
-                         (string-append dir "/" name
-                                        (if akku
-                                            (string-append ": its directory is on the library path beside " akku
-                                                           ", so Chez could load a (hashing ...) library from it in place of "
-                                                           akku "'s, which this check reads; only " akku " may hold one")
-                                            ": its directory is on the library path, so Chez could load a (hashing ...) library from it, and no --akku names the one directory that may hold one")))
-                       (list-sort string<? (filter hashing-entry? (or names '()))))))
+                         (string-append dir "/" name ": its directory is on the library path"
+                                        (could-load (string-append "a (" family " ...) library") flag holder
+                                                    dir ahead)))
+                       (list-sort string<? (filter (lambda (name) (family-entry? family name))
+                                                   (or names '()))))))
+              dirs)))
+
+;; generated-path-complaints : (U String #f) (Listof String) (Listof String) -> (Listof String)
+;; Rule (p): in each generated directory, in any case, of each of DIRS, each
+;; entry that family-entry? takes for jsonparse, sorted. DIRS are rule (j)'s,
+;; but JSONPARSE, when --jsonparse names one, and AHEAD the directories the
+;; closure reads before JSONPARSE. A generated directory it cannot list is
+;; named, failing closed as rule (j) does: rule (j) looks in none. A LIBDIR
+;; it cannot list is passed over, as rule (j) names it.
+(define (generated-path-complaints jsonparse ahead dirs)
+  (apply append
+         (map (lambda (dir)
+                (let ((names (guard (e (#t #f)) (directory-list dir))))
+                  (apply append
+                         (map (lambda (generated)
+                                (let* ((at (string-append dir "/" generated))
+                                       (inner (guard (e (#t (describe e))) (directory-list at))))
+                                  (if (string? inner)
+                                      (list (string-append at ": it is in " dir
+                                                           ", which is on the library path, and cannot be listed, so this check cannot tell whether it holds a (generated jsonparse ...) library: "
+                                                           inner))
+                                      (map (lambda (name)
+                                             (string-append at "/" name ": it is in " dir
+                                                            ", which is on the library path"
+                                                            (could-load "a (generated jsonparse ...) library"
+                                                                        "--jsonparse" jsonparse dir ahead)))
+                                           (list-sort string<? (filter (lambda (name) (family-entry? "jsonparse" name))
+                                                                       inner))))))
+                              (list-sort string<?
+                                         (filter (lambda (name)
+                                                   (and (generated-entry? name)
+                                                        (file-directory? (string-append dir "/" name))))
+                                                 (or names '())))))))
               dirs)))
 
 ;; usage : String
-(define usage "usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [LIBDIR ...]")
+(define usage
+  "usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [--jsonparse JSONPARSE] [--byte-machine BYTE-MACHINE] [LIBDIR ...]")
+
+;; flags : (Listof String)
+;; The flags the command line may give after DIR, each naming a directory.
+(define flags '("--akku" "--jsonparse" "--byte-machine"))
+
+;; parsed-flags : (Listof String) -> (U String (Pair (Listof (Pair String String)) (Listof String)))
+;; The flags at the head of ARGS, each with the directory it names, without
+;; the slashes it ends with, and then the LIBDIRs after them. Or the problem
+;; with the first flag that is wrong: one given twice, one with no
+;; directory after it, and one naming no directory.
+(define (parsed-flags args)
+  (let loop ((args args) (named '()))
+    (cond
+      ((or (null? args) (not (member (car args) flags))) (cons named args))
+      ((assoc (car args) named)
+       (string-append (car args) " is given twice, and a flag is given at most once"))
+      ((null? (cdr args)) (string-append (car args) " names no directory after it"))
+      ((not (file-directory? (cadr args)))
+       (string-append (car args) " " (cadr args) ": not a directory"))
+      (else (loop (cddr args) (cons (cons (car args) (without-slashes (cadr args))) named))))))
 
 ;; main : (Listof String) -> Unit
 (define (main args)
-  (let ((akku? (and (pair? args) (pair? (cdr args)) (string=? (cadr args) "--akku"))))
+  (let ((parsed (and (pair? args) (parsed-flags (cdr args)))))
     (cond
       ((null? args)
        (say (current-error-port) usage)
@@ -710,21 +888,42 @@
       ((not (file-directory? (car args)))
        (say (current-error-port) (string-append (car args) ": not a directory"))
        (exit 1))
-      ((and akku? (null? (cddr args)))
-       (say (current-error-port) "--akku names no directory after it")
-       (exit 1))
-      ((and akku? (not (file-directory? (caddr args))))
-       (say (current-error-port) (string-append "--akku " (caddr args) ": not a directory"))
+      ((string? parsed)
+       (say (current-error-port) parsed)
        (exit 1))
       (else
-       (check (without-slashes (car args))
-              (and akku? (without-slashes (caddr args)))
-              (if akku? (cdddr args) (cdr args)))))))
+       (let ((named (lambda (flag) (let ((found (assoc flag (car parsed)))) (and found (cdr found))))))
+         (check (without-slashes (car args))
+                (named "--akku")
+                (named "--jsonparse")
+                (named "--byte-machine")
+                (cdr parsed)))))))
 
-;; check : String (U String #f) (Listof String) -> Unit
-;; The rules, on the tree ROOT, with hashing's closure read from AKKU, and
-;; the LIBDIRS named.
-(define (check root akku libdirs)
+;; but : (Listof String) (U String #f) -> (Listof String)
+;; DIRS, but HOLDER, when a flag names one.
+(define (but dirs holder)
+  (filter (lambda (dir) (not (and holder (string=? dir holder)))) dirs))
+
+;; jsonparse-order : String String -> (List String String)
+;; The directories jsonparse-library's closure is found in, in the order
+;; Chez searches them on the library path the Makefile builds: LIBDIR_LIST
+;; puts byte-machine's src/ before jsonparse's. So where both hold a
+;; library, the one this check reads is the one Chez loads.
+(define (jsonparse-order jsonparse byte-machine) (list byte-machine jsonparse))
+
+;; ahead : (Listof String) (U String #f) -> (Listof String)
+;; The directories of DIRS, a closure's in the order it reads them, that
+;; come before HOLDER: none when HOLDER is not among them.
+(define (ahead dirs holder)
+  (if (and holder (member holder dirs))
+      (let loop ((dirs dirs))
+        (if (string=? (car dirs) holder) '() (cons (car dirs) (loop (cdr dirs)))))
+      '()))
+
+;; check : String (U String #f) (U String #f) (U String #f) (Listof String) -> Unit
+;; The rules, on the tree ROOT, with hashing's closure read from AKKU,
+;; jsonparse's from JSONPARSE and BYTE-MACHINE, and the LIBDIRS named.
+(define (check root akku jsonparse byte-machine libdirs)
   (let* ((entries (list-sort (lambda (a b) (string<? (car a) (car b))) (walk root)))
          (reads (map (lambda (entry) (cons (car entry) (read-data (car entry))))
                      (filter (lambda (entry)
@@ -733,10 +932,16 @@
          (defined (defined-libraries reads))
          (results (map (lambda (entry) (entry-result entry root reads defined)) entries))
          (checked (apply + (map cdr results)))
-         (hashing? (imports-hashing? reads))
-         (closure (and hashing? akku (closure-result akku)))
+         (hashing? (imports-dependency? reads session-library hashing-library))
+         (closure (and hashing? akku (closure-result hashing-library hashing-siblings (list akku))))
+         (json? (imports-dependency? reads json-library jsonparse-library))
+         (json-dirs (if (and jsonparse byte-machine) (jsonparse-order jsonparse byte-machine) '()))
+         (json-closure (and json? (pair? json-dirs)
+                            (closure-result jsonparse-library jsonparse-siblings json-dirs)))
          (dirs (path-dirs root libdirs))
-         (hashing-dirs (filter (lambda (dir) (not (and akku (string=? dir akku)))) dirs))
+         (hashing-dirs (but dirs akku))
+         (jsonparse-dirs (but dirs jsonparse))
+         (byte-machine-dirs (but dirs byte-machine))
          (complaints (append (apply append (map car results))
                              (if (= checked 0)
                                  (list (string-append "no library under " root))
@@ -748,8 +953,28 @@
                                 (list (string-append (written session-library) " imports "
                                                      (written hashing-library)
                                                      ", but no --akku names the directory this check reads its closure from"))))
+                             (cond
+                               ((not json?) '())
+                               (json-closure (car json-closure))
+                               (else
+                                (append
+                                 (if jsonparse
+                                     '()
+                                     (list (string-append (written json-library) " imports "
+                                                          (written jsonparse-library)
+                                                          ", but no --jsonparse names the directory this check reads its closure's (jsonparse ...) and (generated ...) libraries from")))
+                                 (if byte-machine
+                                     '()
+                                     (list (string-append (written json-library) " imports "
+                                                          (written jsonparse-library)
+                                                          ", but no --byte-machine names the directory this check reads its closure's (byte-machine ...) libraries from"))))))
                              (path-complaints root dirs)
-                             (hashing-path-complaints akku hashing-dirs))))
+                             (family-path-complaints "hashing" "--akku" akku '() hashing-dirs)
+                             (family-path-complaints "jsonparse" "--jsonparse" jsonparse
+                                                     (ahead json-dirs jsonparse) jsonparse-dirs)
+                             (generated-path-complaints jsonparse (ahead json-dirs jsonparse) jsonparse-dirs)
+                             (family-path-complaints "byte-machine" "--byte-machine" byte-machine
+                                                     (ahead json-dirs byte-machine) byte-machine-dirs))))
     (cond
       ((null? complaints)
        (say (current-output-port)
@@ -761,13 +986,25 @@
        (when closure
          (say (current-output-port)
               (string-append "ok, the closure of " (written hashing-library) " in " akku
-                             " imports only the (rnrs ...) libraries except (rnrs eval), "
-                             (joined " and " (map written hashing-siblings)) ": "
+                             " imports only " (closure-allows hashing-siblings) ": "
                              (number->string (cdr closure)) " libraries read")))
        (when akku
          (say (current-output-port)
               (string-append "ok, no other directory on the library path holds hashing: "
                              (number->string (length hashing-dirs)) " looked in")))
+       (when json-closure
+         (say (current-output-port)
+              (string-append "ok, the closure of " (written jsonparse-library) " in " jsonparse
+                             " and " byte-machine " imports only " (closure-allows jsonparse-siblings) ": "
+                             (number->string (cdr json-closure)) " libraries read")))
+       (when jsonparse
+         (say (current-output-port)
+              (string-append "ok, no other directory on the library path holds jsonparse: "
+                             (number->string (length jsonparse-dirs)) " looked in")))
+       (when byte-machine
+         (say (current-output-port)
+              (string-append "ok, no other directory on the library path holds byte-machine: "
+                             (number->string (length byte-machine-dirs)) " looked in")))
        (exit 0))
       (else
        (for-each (lambda (c) (say (current-error-port) c)) complaints)

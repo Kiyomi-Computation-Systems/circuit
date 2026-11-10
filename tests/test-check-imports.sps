@@ -14,9 +14,12 @@
 ;;; pass say so with the program's own pass lines, counts included. A case
 ;;; whose (circuit session) imports (hashing sha-2), so that rule (l) reads
 ;;; its closure, holds its tree in src/ beside the AKKUs it is run with, each
-;;; holding stand-ins for hashing's files, written for it. The fixture trees
-;;; are never suites: make test runs tests/test-*.sps only, which
-;;; check-suites reads.
+;;; holding stand-ins for hashing's files, written for it. So does a case
+;;; whose (circuit json) imports (jsonparse easy), so that rule (o) reads its
+;;; closure, beside the JSONPARSEs and BYTE-MACHINEs it is run with, each
+;;; holding stand-ins for jsonparse's or byte-machine's files, written for
+;;; it, never copied from vendor/. The fixture trees are never suites: make
+;;; test runs tests/test-*.sps only, which check-suites reads.
 ;;;
 ;;; make test runs every suite from the repository root, where tests/ is, with
 ;;; CHEZ exported. Without CHEZ nothing below can run: that fails here, by
@@ -142,6 +145,21 @@
 
 (define session-tail
   "but (circuit session) may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and (hashing sha-2) through only")
+
+;; Rule (n)'s, as rule (k)'s: a (jsonparse ...) library imported elsewhere,
+;; another one in (circuit json), (jsonparse easy) through anything but
+;; only, and the rest of what (circuit json) imports.
+(define jsonparse-elsewhere-tail
+  "but only (circuit json) may import a (jsonparse ...) library")
+
+(define jsonparse-other-tail
+  "but (circuit json) may import no (jsonparse ...) library but (jsonparse easy)")
+
+(define jsonparse-only-tail
+  "but (circuit json) imports (jsonparse easy) only through only, right around it, naming at least one identifier: so its header names all it takes from code circuit didn't write")
+
+(define json-tail
+  "but (circuit json) may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and (jsonparse easy) through only")
 
 ;; imports : String String String String String -> String
 ;; The complaint about the library LIB, in FILE of the tree CASE, importing
@@ -497,6 +515,76 @@
                   (undefined "hashing-session-core" "circuit/session.sls" "(circuit session)"
                              "(circuit nope)")))
 
+   ;; --- rule (n): jsonparse, through (circuit json) alone ---
+   ;; None of these trees imports (jsonparse easy) as rule (n) lets it, so
+   ;; rule (o) reads no closure. jsonparse-cases holds the trees that do.
+   (list "jsonparse-elsewhere"
+         "rule (n): a (jsonparse ...) library, through only or bare, in a core library, in each impure library, in (circuit websocket) and (circuit session), and in lookalikes of (circuit json), longer and plural, which are core; (jsonparse-extras), no family of it, is a core library's own refusal"
+         (refused (imports "jsonparse-elsewhere" "circuit.sls" "(circuit)" "(jsonparse easy)"
+                           jsonparse-elsewhere-tail)
+                  (imports "jsonparse-elsewhere" "circuit/http-server.sls" "(circuit http-server)"
+                           "(jsonparse easy)" jsonparse-elsewhere-tail)
+                  (imports "jsonparse-elsewhere" "circuit/json/extra.sls" "(circuit json extra)"
+                           "(jsonparse easy)" jsonparse-elsewhere-tail)
+                  (imports "jsonparse-elsewhere" "circuit/jsons.sls" "(circuit jsons)"
+                           "(jsonparse easy)" jsonparse-elsewhere-tail)
+                  (imports "jsonparse-elsewhere" "circuit/middleware/waits.sls" "(circuit middleware waits)"
+                           "(jsonparse)" jsonparse-elsewhere-tail)
+                  (imports "jsonparse-elsewhere" "circuit/request.sls" "(circuit request)"
+                           "(jsonparse-extras)" core-tail)
+                  (imports "jsonparse-elsewhere" "circuit/session.sls" "(circuit session)"
+                           "(jsonparse easy)" jsonparse-elsewhere-tail)
+                  (imports "jsonparse-elsewhere" "circuit/websocket.sls" "(circuit websocket)"
+                           "(jsonparse tree)" jsonparse-elsewhere-tail)))
+   (list "jsonparse-json-other"
+         "rule (n): (circuit json) importing a (jsonparse ...) library but (jsonparse easy), through only: each of jsonparse's seven others, (jsonparse) bare, a longer (jsonparse easy extra) and (jsonparse private x)"
+         (apply refused
+                (map (lambda (imported)
+                       (imports "jsonparse-json-other" "circuit/json.sls" "(circuit json)"
+                                imported jsonparse-other-tail))
+                     '("(jsonparse tree)" "(jsonparse parser)" "(jsonparse error)" "(jsonparse options)"
+                       "(jsonparse sequence)" "(jsonparse string)" "(jsonparse writer)" "(jsonparse)"
+                       "(jsonparse easy extra)" "(jsonparse private x)"))))
+   (list "jsonparse-json-bare"
+         "rule (n): (circuit json) importing (jsonparse easy) through anything but an only right around it that names identifiers: bare, with a version reference, library, prefix, except, rename, for, an only naming nothing, only around prefix, only around except, and an only naming a number"
+         (apply refused
+                (map (lambda (i)
+                       (imports "jsonparse-json-bare" "circuit/json.sls" "(circuit json)"
+                                "(jsonparse easy)" jsonparse-only-tail))
+                     (iota 11))))
+   (list "jsonparse-json-core"
+         "rule (n): (circuit json) is otherwise a core library: (chezscheme), bare and through only, the server, (rnrs eval), a third party's, chez-websocket's facade, an impure library, (circuit websocket), (hashing sha-2), (jsonparse-extras), (generated jsonparse), (byte-machine runtime) through only, (byte-machine private names) and a (circuit ...) library the tree does not define are each named"
+         (let ((named (lambda (imported tail)
+                        (imports "jsonparse-json-core" "circuit/json.sls" "(circuit json)" imported tail))))
+           (refused (named "(chezscheme)" edge-tail)
+                    (named "(chezscheme)" edge-tail)
+                    (named "(http-server)" edge-tail)
+                    (named "(rnrs eval)" json-tail)
+                    (named "(srfi :1)" json-tail)
+                    (named "(websocket)" facade-tail)
+                    (named "(circuit http-server)" (impure-import-tail "(circuit http-server)"))
+                    (named "(circuit websocket)" glue-import-tail)
+                    (named "(hashing sha-2)" hashing-elsewhere-tail)
+                    (named "(jsonparse-extras)" json-tail)
+                    (named "(generated jsonparse)" json-tail)
+                    (named "(byte-machine runtime)" json-tail)
+                    (named "(byte-machine private names)" json-tail)
+                    (undefined "jsonparse-json-core" "circuit/json.sls" "(circuit json)" "(circuit nope)"))))
+   (list "jsonparse-generated"
+         "rule (c): the machine jsonparse generates and the byte-machine that runs it are no core library's to import: (generated jsonparse), bare and through only and prefix, (generated httparse-message), (generated), (byte-machine runtime), bare and through only, (byte-machine private conditions), (byte-machine private names) through for, and (byte-machine)"
+         (let ((named (lambda (file lib imported)
+                        (imports "jsonparse-generated" file lib imported core-tail))))
+           (refused (named "circuit.sls" "(circuit)" "(generated jsonparse)")
+                    (named "circuit.sls" "(circuit)" "(generated jsonparse)")
+                    (named "circuit.sls" "(circuit)" "(generated httparse-message)")
+                    (named "circuit.sls" "(circuit)" "(generated)")
+                    (named "circuit.sls" "(circuit)" "(byte-machine runtime)")
+                    (named "circuit.sls" "(circuit)" "(byte-machine runtime)")
+                    (named "circuit.sls" "(circuit)" "(byte-machine private conditions)")
+                    (named "circuit.sls" "(circuit)" "(byte-machine)")
+                    (named "circuit/request.sls" "(circuit request)" "(generated jsonparse)")
+                    (named "circuit/request.sls" "(circuit request)" "(byte-machine private names)"))))
+
    ;; --- rule (h): the #!r6rs line ---
    (list "header-missing"
          "rule (h): a library with no #!r6rs line, otherwise legal"
@@ -565,31 +653,57 @@
 
 ;; --- rules (k) and (l): the trees whose closure is read ----------------------------------
 
+;; What the closure of (jsonparse easy) may import, as rule (o)'s pass line
+;; and its complaints say it.
+(define jsonparse-allows
+  "the (rnrs ...) libraries except (rnrs eval), (jsonparse error), (jsonparse options), (jsonparse parser), (jsonparse sequence), (jsonparse string), (jsonparse tree), (jsonparse writer), (generated jsonparse), (byte-machine runtime), (byte-machine private conditions) and (byte-machine private names)")
+
 ;; passed : Natural (U Natural #f) (U (Pair String Natural) #f) (U Natural #f)
+;;          [(U (List String String Natural) #f) (U Natural #f) (U Natural #f)]
 ;;          -> (List 0 String "")
 ;; A pass's whole answer: the tree's line, with how many libraries it
 ;; checked; rule (j)'s, with how many LIBDIRs it looked in, when it was
 ;; named any; rule (l)'s, naming AKKU and how many libraries it read, when
 ;; it read the closure; rule (m)'s, with how many LIBDIRs it looked in, when
-;; --akku was named.
-(define (passed libraries circuit-looked closure hashing-looked)
-  (list 0
-        (string-append
-         "check-imports: ok, libraries checked: " (number->string libraries) "\n"
-         (if circuit-looked
-             (string-append "check-imports: ok, no other directory on the library path holds circuit: "
-                            (number->string circuit-looked) " looked in\n")
-             "")
-         (if closure
-             (string-append "check-imports: ok, the closure of (hashing sha-2) in " (car closure)
-                            " imports only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac): "
-                            (number->string (cdr closure)) " libraries read\n")
-             "")
-         (if hashing-looked
-             (string-append "check-imports: ok, no other directory on the library path holds hashing: "
-                            (number->string hashing-looked) " looked in\n")
-             ""))
-        ""))
+;; --akku was named; rule (o)'s, naming JSONPARSE, BYTE-MACHINE and how many
+;; libraries it read, when it read that closure; and rule (p)'s, with how
+;; many LIBDIRs it looked in, for jsonparse when --jsonparse was named and
+;; for byte-machine when --byte-machine was.
+(define passed
+  (case-lambda
+    ((libraries circuit-looked closure hashing-looked)
+     (passed libraries circuit-looked closure hashing-looked #f #f #f))
+    ((libraries circuit-looked closure hashing-looked json-closure jsonparse-looked byte-machine-looked)
+     (list 0
+           (string-append
+            "check-imports: ok, libraries checked: " (number->string libraries) "\n"
+            (if circuit-looked
+                (string-append "check-imports: ok, no other directory on the library path holds circuit: "
+                               (number->string circuit-looked) " looked in\n")
+                "")
+            (if closure
+                (string-append "check-imports: ok, the closure of (hashing sha-2) in " (car closure)
+                               " imports only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac): "
+                               (number->string (cdr closure)) " libraries read\n")
+                "")
+            (if hashing-looked
+                (string-append "check-imports: ok, no other directory on the library path holds hashing: "
+                               (number->string hashing-looked) " looked in\n")
+                "")
+            (if json-closure
+                (string-append "check-imports: ok, the closure of (jsonparse easy) in " (car json-closure)
+                               " and " (cadr json-closure) " imports only " jsonparse-allows ": "
+                               (number->string (caddr json-closure)) " libraries read\n")
+                "")
+            (if jsonparse-looked
+                (string-append "check-imports: ok, no other directory on the library path holds jsonparse: "
+                               (number->string jsonparse-looked) " looked in\n")
+                "")
+            (if byte-machine-looked
+                (string-append "check-imports: ok, no other directory on the library path holds byte-machine: "
+                               (number->string byte-machine-looked) " looked in\n")
+                ""))
+           ""))))
 
 ;; Rule (l)'s complaints: no --akku, and for a library of the closure, no
 ;; source, a compiled object, a file that is no one library form of its
@@ -738,10 +852,248 @@
                       (closure-imports hmac "(hashing hmac)" "(hashing private compat)")
                       (closure-imports hmac "(hashing hmac)" "(hashing)")))))))
 
+;; --- rules (n) and (o): the trees whose jsonparse closure is read ------------------------
+
+;; Rule (o)'s complaints: no --jsonparse, no --byte-machine, a library of
+;; the closure with no source in either directory, and an import it may not
+;; make. The others are rule (l)'s words: compiled, misshapen, closure-spec
+;; and cannot-read.
+(define no-jsonparse
+  "(circuit json) imports (jsonparse easy), but no --jsonparse names the directory this check reads its closure's (jsonparse ...) and (generated ...) libraries from")
+
+(define no-byte-machine
+  "(circuit json) imports (jsonparse easy), but no --byte-machine names the directory this check reads its closure's (byte-machine ...) libraries from")
+
+;; not-found-in : String String String -> String
+;; The closure's directories are named in the order it searches them:
+;; BYTE-MACHINE, then JSONPARSE, as the library path has them.
+(define (not-found-in jsonparse byte-machine lib)
+  (string-append byte-machine " and " jsonparse ": Chez finds no source for " lib
+                 " in them, so this check cannot read what it imports"))
+
+;; jsonparse-imports : String String String -> String
+(define (jsonparse-imports source lib imported)
+  (string-append source ": " lib " imports " imported
+                 ", but the closure of (jsonparse easy) may import only " jsonparse-allows))
+
+;; on-jsonparse-path : String String (U String #f) -> String
+;; Rule (p)'s complaint about ENTRY, in the library directory DIR, when
+;; --jsonparse names JSONPARSE, or names none.
+(define (on-jsonparse-path dir entry jsonparse)
+  (string-append dir "/" entry
+                 (if jsonparse
+                     (string-append ": its directory is on the library path beside " jsonparse
+                                    ", so Chez could load a (jsonparse ...) library from it in place of "
+                                    jsonparse "'s, which this check reads; only " jsonparse " may hold one")
+                     ": its directory is on the library path, so Chez could load a (jsonparse ...) library from it, and no --jsonparse names the one directory that may hold one")))
+
+;; on-generated-path : String String String (U String #f) -> String
+;; Rule (p)'s complaint about ENTRY, in the directory GENERATED of the
+;; library directory DIR, when --jsonparse names JSONPARSE, or names none.
+(define (on-generated-path dir generated entry jsonparse)
+  (string-append dir "/" generated "/" entry ": it is in " dir
+                 (if jsonparse
+                     (string-append ", which is on the library path beside " jsonparse
+                                    ", so Chez could load a (generated jsonparse ...) library from it in place of "
+                                    jsonparse "'s, which this check reads; only " jsonparse " may hold one")
+                     ", which is on the library path, so Chez could load a (generated jsonparse ...) library from it, and no --jsonparse names the one directory that may hold one")))
+
+;; on-byte-machine-path : String String (U String #f) -> String
+;; Rule (p)'s complaint about ENTRY, in the library directory DIR, when
+;; --byte-machine names BYTE-MACHINE, or names none.
+(define (on-byte-machine-path dir entry byte-machine)
+  (string-append dir "/" entry
+                 (if byte-machine
+                     (string-append ": its directory is on the library path beside " byte-machine
+                                    ", so Chez could load a (byte-machine ...) library from it in place of "
+                                    byte-machine "'s, which this check reads; only " byte-machine " may hold one")
+                     ": its directory is on the library path, so Chez could load a (byte-machine ...) library from it, and no --byte-machine names the one directory that may hold one")))
+
+;; Rule (p)'s complaints about a jsonparse in BYTE-MACHINE, which rule (o)
+;; reads before JSONPARSE: there, BYTE-MACHINE's copy is the one it reads.
+
+;; on-jsonparse-path-ahead : String String String -> String
+;; About ENTRY in BYTE-MACHINE, when --jsonparse names JSONPARSE.
+(define (on-jsonparse-path-ahead byte-machine entry jsonparse)
+  (string-append byte-machine "/" entry ": its directory is on the library path beside " jsonparse
+                 ", so Chez could load a (jsonparse ...) library from it in place of " jsonparse
+                 "'s, and this check reads " byte-machine " before " jsonparse
+                 ", in the library path's order; only " jsonparse " may hold one"))
+
+;; on-generated-path-ahead : String String String String -> String
+;; About ENTRY in BYTE-MACHINE's directory GENERATED, when --jsonparse names
+;; JSONPARSE.
+(define (on-generated-path-ahead byte-machine generated entry jsonparse)
+  (string-append byte-machine "/" generated "/" entry ": it is in " byte-machine
+                 ", which is on the library path beside " jsonparse
+                 ", so Chez could load a (generated jsonparse ...) library from it in place of " jsonparse
+                 "'s, and this check reads " byte-machine " before " jsonparse
+                 ", in the library path's order; only " jsonparse " may hold one"))
+
+;; jsonparse-cases : (Listof (List String String (Listof String) Expected))
+;; As akku-cases: the fixture directory, which holds a tree in src/ and a
+;; JSONPARSE and a BYTE-MACHINE or more, what it holds, the command line,
+;; each path in it under the fixture directory, and the program's whole
+;; answer. Each src/ but the first case's and the last's holds (circuit
+;; json) alone, importing (jsonparse easy) through only, so the closure is
+;; read. Most read the small closure of seven libraries: (jsonparse easy),
+;; which imports (jsonparse parser) and (jsonparse tree); the parser, which
+;; imports (generated jsonparse) and (byte-machine runtime); the tree, which
+;; imports the parser; the machine, which imports the runtime; and the
+;; runtime, which imports (byte-machine private conditions) and
+;; (byte-machine private names).
+(define jsonparse-cases
+  (let ((dir (lambda (case d) (at case d)))
+        (file (lambda (case d name) (at case (string-append d "/" name))))
+        (whole '("src" "--jsonparse" "jsonparse" "--byte-machine" "byte-machine")))
+    (list
+     (list "jsonparse-json"
+           "rule (n): (circuit json) imports (jsonparse easy) through only right around it, around library, and inside prefix, rename, except and for, with a version reference, beside a core library; a core library imports (circuit json); the closure is read"
+           whole
+           (passed 3 #f #f #f
+                   (list (dir "jsonparse-json" "jsonparse") (dir "jsonparse-json" "byte-machine") 7) 0 0))
+     (list "jsonparse-legal"
+           "rule (o): the closure as the pin has it: (jsonparse easy) importing jsonparse's seven others, which import each other, (generated jsonparse) and (byte-machine runtime), the machine headed #!r6rs after a comment, and the runtime its two private libraries; jsonparse's and byte-machine's other files, which import (chezscheme), are not in it and are not read"
+           whole
+           (passed 1 #f #f #f
+                   (list (dir "jsonparse-legal" "jsonparse") (dir "jsonparse-legal" "byte-machine") 12) 0 0))
+     (list "jsonparse-legal"
+           "rule (o): a slash after JSONPARSE and BYTE-MACHINE changes nothing: the line names each without it"
+           '("src" "--jsonparse" "jsonparse/" "--byte-machine" "byte-machine//")
+           (passed 1 #f #f #f
+                   (list (dir "jsonparse-legal" "jsonparse") (dir "jsonparse-legal" "byte-machine") 12) 0 0))
+     (list "jsonparse-legal"
+           "rule (o): --byte-machine before --jsonparse changes nothing"
+           '("src" "--byte-machine" "byte-machine" "--jsonparse" "jsonparse")
+           (passed 1 #f #f #f
+                   (list (dir "jsonparse-legal" "jsonparse") (dir "jsonparse-legal" "byte-machine") 12) 0 0))
+     (list "jsonparse-legal"
+           "rule (o): (jsonparse easy) imported, and no --jsonparse named"
+           '("src" "--byte-machine" "byte-machine")
+           (refused no-jsonparse))
+     (list "jsonparse-legal"
+           "rule (o): (jsonparse easy) imported, and no --byte-machine named"
+           '("src" "--jsonparse" "jsonparse")
+           (refused no-byte-machine))
+     (list "jsonparse-legal"
+           "rule (o): (jsonparse easy) imported, and neither flag named"
+           '("src")
+           (refused no-jsonparse no-byte-machine))
+     (list "jsonparse-legal"
+           "rules (o) and (p): JSONPARSE and BYTE-MACHINE named as LIBDIRs alone: no closure is read, and rule (p) names their jsonparse, generated/jsonparse.sls and byte-machine"
+           '("src" "jsonparse" "byte-machine")
+           (refused no-jsonparse
+                    no-byte-machine
+                    (on-jsonparse-path (dir "jsonparse-legal" "jsonparse") "jsonparse" #f)
+                    (on-generated-path (dir "jsonparse-legal" "jsonparse") "generated" "jsonparse.sls" #f)
+                    (on-byte-machine-path (dir "jsonparse-legal" "byte-machine") "byte-machine" #f)))
+     (list "jsonparse-order"
+           "rule (o): BYTE-MACHINE is the first library directory, as the library path has it: its (jsonparse tree), which imports (chezscheme), is the one read, over JSONPARSE's legal one, and JSONPARSE's (byte-machine runtime), which imports (chezscheme), is not read"
+           whole
+           (refused (jsonparse-imports (file "jsonparse-order" "byte-machine" "jsonparse/tree.sls")
+                                       "(jsonparse tree)" "(chezscheme)")))
+     (list "jsonparse-order"
+           "rule (o): the flags' order on the command line is not the directories' order"
+           '("src" "--byte-machine" "byte-machine" "--jsonparse" "jsonparse")
+           (refused (jsonparse-imports (file "jsonparse-order" "byte-machine" "jsonparse/tree.sls")
+                                       "(jsonparse tree)" "(chezscheme)")))
+     (list "jsonparse-preferred"
+           "rule (o): a .chezscheme.sls beside (jsonparse tree)'s legal .sls, and a .ss beside (byte-machine runtime)'s, are the files Chez loads, and are read: each one's import is named"
+           whole
+           (refused (jsonparse-imports (file "jsonparse-preferred" "jsonparse" "jsonparse/tree.chezscheme.sls")
+                                       "(jsonparse tree)" "(chezscheme)")
+                    (jsonparse-imports (file "jsonparse-preferred" "byte-machine" "byte-machine/runtime.ss")
+                                       "(byte-machine runtime)" "(rnrs eval)")))
+     (list "jsonparse-cycle"
+           "rule (o): (jsonparse parser) and (jsonparse tree) import each other, and so do byte-machine's two private libraries, with version references on the libraries' names and imports: each is read once, and the closure ends"
+           whole
+           (passed 1 #f #f #f
+                   (list (dir "jsonparse-cycle" "jsonparse") (dir "jsonparse-cycle" "byte-machine") 7) 0 0))
+     (list "jsonparse-not-found"
+           "rule (o): no source for (jsonparse tree) in either directory, beside files Chez would not take for it: .guile.sls, .sls.bak, trees.sls and a directory tree/"
+           '("src" "--jsonparse" "jsonparse-no-tree" "--byte-machine" "byte-machine")
+           (refused (not-found-in (dir "jsonparse-not-found" "jsonparse-no-tree")
+                                  (dir "jsonparse-not-found" "byte-machine") "(jsonparse tree)")))
+     (list "jsonparse-not-found"
+           "rule (o): no source for (generated jsonparse), beside files Chez would not take for it: generated/jsonparse-machine.sls, generated/httparse-message.sls, a jsonparse.sls outside generated/, and jsonparse/generated.sls"
+           '("src" "--jsonparse" "jsonparse-no-generated" "--byte-machine" "byte-machine")
+           (refused (not-found-in (dir "jsonparse-not-found" "jsonparse-no-generated")
+                                  (dir "jsonparse-not-found" "byte-machine") "(generated jsonparse)")))
+     (list "jsonparse-not-found"
+           "rule (o): no source for (byte-machine private names), beside files Chez would not take for it: byte-machine/names.sls, a .scm.bak and private/name.sls"
+           '("src" "--jsonparse" "jsonparse" "--byte-machine" "byte-machine-no-names")
+           (refused (not-found-in (dir "jsonparse-not-found" "jsonparse")
+                                  (dir "jsonparse-not-found" "byte-machine-no-names")
+                                  "(byte-machine private names)")))
+     (list "jsonparse-unreadable"
+           "rule (o): a source in JSONPARSE that cannot be read as data, named with the running Chez's own words for it"
+           '("src" "--jsonparse" "jsonparse-broken" "--byte-machine" "byte-machine")
+           (refused (cannot-read (file "jsonparse-unreadable" "jsonparse-broken" "jsonparse/tree.sls"))))
+     (list "jsonparse-unreadable"
+           "rule (o): a directory in BYTE-MACHINE where the source would be, which Chez's search handler names, cannot be read as data"
+           '("src" "--jsonparse" "jsonparse" "--byte-machine" "byte-machine-directory")
+           (refused (cannot-read (file "jsonparse-unreadable" "byte-machine-directory" "byte-machine/runtime.sls"))))
+     (list "jsonparse-shape"
+           "rule (o): a library of another name where Chez finds (jsonparse tree), and a second library after (generated jsonparse)"
+           '("src" "--jsonparse" "jsonparse-a" "--byte-machine" "byte-machine")
+           (refused (misshapen (file "jsonparse-shape" "jsonparse-a" "jsonparse/tree.sls") "(jsonparse tree)")
+                    (misshapen (file "jsonparse-shape" "jsonparse-a" "generated/jsonparse.sls")
+                               "(generated jsonparse)")))
+     (list "jsonparse-shape"
+           "rule (o): a datum before (byte-machine private conditions), and a file of comments alone where Chez finds (byte-machine private names)"
+           '("src" "--jsonparse" "jsonparse" "--byte-machine" "byte-machine-b")
+           (refused (misshapen (file "jsonparse-shape" "byte-machine-b" "byte-machine/private/conditions.sls")
+                               "(byte-machine private conditions)")
+                    (misshapen (file "jsonparse-shape" "byte-machine-b" "byte-machine/private/names.sls")
+                               "(byte-machine private names)")))
+     (list "jsonparse-shape"
+           "rule (o): (jsonparse easy) with its import clause before its export clause, which is no library form: its imports, and so the rest of the closure, are not read"
+           '("src" "--jsonparse" "jsonparse-c" "--byte-machine" "byte-machine")
+           (refused (misshapen (file "jsonparse-shape" "jsonparse-c" "jsonparse/easy.sls") "(jsonparse easy)")))
+     (list "jsonparse-spec"
+           "rule (o): imports in the closure that name no library: (library (rnrs) extra) in JSONPARSE, 42 and (only) in BYTE-MACHINE; the (rnrs) beside them is not named"
+           whole
+           (refused (closure-spec (file "jsonparse-spec" "jsonparse" "jsonparse/tree.sls") "(jsonparse tree)"
+                                  "(library (rnrs) extra)")
+                    (closure-spec (file "jsonparse-spec" "byte-machine" "byte-machine/runtime.sls")
+                                  "(byte-machine runtime)" "42")
+                    (closure-spec (file "jsonparse-spec" "byte-machine" "byte-machine/runtime.sls")
+                                  "(byte-machine runtime)" "(only)")))
+     (list "jsonparse-imports"
+           "rule (o): the closure imports nothing but (rnrs ...) and its allowlist: (rnrs eval), plain and under prefix with a version reference, (jsonparse easy) itself, (jsonparse), (jsonparse private x), (jsonparse-extras), (chezscheme) through only, another generated machine, (generated), (hashing sha-2), a (circuit ...) library, byte-machine's compile, interpret, ir and verify libraries, (byte-machine) and a third party's are each named; (jsonparse tree), imported twice, is read once"
+           whole
+           (let ((easy (file "jsonparse-imports" "jsonparse" "jsonparse/easy.sls"))
+                 (parser (file "jsonparse-imports" "jsonparse" "jsonparse/parser.sls"))
+                 (runtime (file "jsonparse-imports" "byte-machine" "byte-machine/runtime.sls")))
+             (refused (jsonparse-imports easy "(jsonparse easy)" "(rnrs eval)")
+                      (jsonparse-imports easy "(jsonparse easy)" "(rnrs eval)")
+                      (jsonparse-imports easy "(jsonparse easy)" "(jsonparse easy)")
+                      (jsonparse-imports easy "(jsonparse easy)" "(jsonparse)")
+                      (jsonparse-imports easy "(jsonparse easy)" "(jsonparse private x)")
+                      (jsonparse-imports easy "(jsonparse easy)" "(jsonparse-extras)")
+                      (jsonparse-imports parser "(jsonparse parser)" "(chezscheme)")
+                      (jsonparse-imports parser "(jsonparse parser)" "(generated httparse-message)")
+                      (jsonparse-imports parser "(jsonparse parser)" "(generated)")
+                      (jsonparse-imports parser "(jsonparse parser)" "(hashing sha-2)")
+                      (jsonparse-imports parser "(jsonparse parser)" "(circuit json)")
+                      (jsonparse-imports runtime "(byte-machine runtime)" "(byte-machine compile)")
+                      (jsonparse-imports runtime "(byte-machine runtime)" "(byte-machine interpret)")
+                      (jsonparse-imports runtime "(byte-machine runtime)" "(byte-machine private ir)")
+                      (jsonparse-imports runtime "(byte-machine runtime)" "(byte-machine verify)")
+                      (jsonparse-imports runtime "(byte-machine runtime)" "(byte-machine)")
+                      (jsonparse-imports runtime "(byte-machine runtime)" "(srfi :1)"))))
+     (list "jsonparse-hashing"
+           "rules (l) and (o) together: (circuit session) imports (hashing sha-2) and (circuit json) imports (jsonparse easy), run with every flag, in another order, and with AKKU, JSONPARSE and BYTE-MACHINE as LIBDIRs: every pass line, each rule looking in all but its own directory"
+           '("src" "--byte-machine" "byte-machine" "--akku" "akku" "--jsonparse" "jsonparse"
+             "jsonparse" "byte-machine" "akku")
+           (passed 3 3 (cons (dir "jsonparse-hashing" "akku") 3) 2
+                   (list (dir "jsonparse-hashing" "jsonparse") (dir "jsonparse-hashing" "byte-machine") 7) 2 2)))))
+
 ;; akku-args : String (Listof String) -> (Listof String)
-;; ARGS, each path in them under the fixture directory CASE.
+;; ARGS, each path in them under the fixture directory CASE: all but the
+;; flags.
 (define (akku-args case args)
-  (map (lambda (arg) (if (string=? arg "--akku") arg (at case arg))) args))
+  (map (lambda (arg) (if (member arg '("--akku" "--jsonparse" "--byte-machine")) arg (at case arg))) args))
 
 (test-begin "check-imports")
 
@@ -769,7 +1121,7 @@
    (test-equal (string-append (car case) ", run with " (spaced (caddr case)) ": " (cadr case))
      (cadddr case)
      (run (akku-args (car case) (caddr case)))))
- akku-cases)
+ (append akku-cases jsonparse-cases))
 
 ;; unique : (Listof String) -> (Listof String)
 ;; NAMES, each once, in the order first named.
@@ -781,7 +1133,7 @@
 ;; A fixture nothing runs guards nothing, and a case with no fixture runs on a
 ;; missing directory.
 (test-equal "every fixture directory is a case above, and every case has its directory"
-  (list-sort string<? (unique (append (map car cases) (map car akku-cases))))
+  (list-sort string<? (unique (append (map car cases) (map car akku-cases) (map car jsonparse-cases))))
   (list-sort string<?
              (filter (lambda (name) (file-directory? (string-append fixtures "/" name)))
                      (directory-list fixtures))))
@@ -892,7 +1244,7 @@
   (run '("tests/check-suites.sps")))
 
 (define usage
-  (list 1 "" "check-imports: usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [LIBDIR ...]\n"))
+  (list 1 "" "check-imports: usage: scheme --program tests/check-imports.sps DIR [--akku AKKU] [--jsonparse JSONPARSE] [--byte-machine BYTE-MACHINE] [LIBDIR ...]\n"))
 
 (test-equal "no directory named: the usage line, exit 1" usage (run '()))
 
@@ -905,6 +1257,26 @@
         (refused "--akku tests/check-suites.sps: not a directory"))
   (list (run (list (root "legal") "--akku" "no-such-directory"))
         (run (list (root "legal") "--akku" "tests/check-suites.sps" "src"))))
+
+(test-equal "--jsonparse and --byte-machine with no directory after them are named, exit 1: alone, and after another flag"
+  (list (refused "--jsonparse names no directory after it")
+        (refused "--byte-machine names no directory after it"))
+  (list (run (list (root "legal") "--jsonparse"))
+        (run (list (root "legal") "--akku" "src" "--byte-machine"))))
+
+(test-equal "--jsonparse and --byte-machine naming no directory are named, exit 1: one that does not exist, after another flag, and a file before a LIBDIR"
+  (list (refused "--jsonparse no-such-directory: not a directory")
+        (refused "--byte-machine tests/check-suites.sps: not a directory"))
+  (list (run (list (root "legal") "--byte-machine" "src" "--jsonparse" "no-such-directory"))
+        (run (list (root "legal") "--byte-machine" "tests/check-suites.sps" "src"))))
+
+(test-equal "a flag given twice is named, exit 1: --akku, --jsonparse with another flag between, and --byte-machine naming two directories"
+  (list (refused "--akku is given twice, and a flag is given at most once")
+        (refused "--jsonparse is given twice, and a flag is given at most once")
+        (refused "--byte-machine is given twice, and a flag is given at most once"))
+  (list (run (list (root "legal") "--akku" "src" "--akku" "src"))
+        (run (list (root "legal") "--jsonparse" "src" "--byte-machine" "src" "--jsonparse" "src"))
+        (run (list (root "legal") "--byte-machine" "src" "--byte-machine" "tests"))))
 
 (test-equal "a directory that does not exist, named before LIBDIRs, is named"
   (refused "no-such-directory: not a directory")
@@ -1147,6 +1519,231 @@
             (got (run (list (root "legal") "--akku" akku akku))))
        (if (equal? got want) 'refused got)))))
 
+;; --- rule (o): compiled objects ---------------------------------------------------------
+;; As rule (l)'s: Git keeps no .so here, so these trees are jsonparse-legal's,
+;; copied, with objects beside them.
+
+;; with-jsonparse-copy : (String String String -> Any) -> Any
+;; PROC on a copy of the fixture jsonparse-legal, in a directory of its own:
+;; its src/, JSONPARSE and BYTE-MACHINE.
+(define (with-jsonparse-copy proc)
+  (call-with-temp-directory
+   (lambda (dir)
+     (let ((copy (string-append dir "/legal")))
+       (capture-command (list "cp" "-R" (root "jsonparse-legal") copy))
+       (proc (string-append copy "/src") (string-append copy "/jsonparse")
+             (string-append copy "/byte-machine"))))))
+
+(test-equal "rule (o): a compiled object beside a jsonparse library's source, beside (generated jsonparse)'s and beside a byte-machine library's is named, as Chez could load it unread; one beside a file the closure does not hold is not"
+  'refused
+  (with-jsonparse-copy
+   (lambda (src jsonparse byte-machine)
+     (let* ((made (begin (make-tree jsonparse '("jsonparse/easy.so" "generated/jsonparse.so"))
+                         (make-tree byte-machine '("byte-machine/runtime.so" "byte-machine/compile.so"))
+                         'made))
+            (want (refused (compiled (string-append jsonparse "/jsonparse/easy.so") "(jsonparse easy)")
+                           (compiled (string-append byte-machine "/byte-machine/runtime.so")
+                                     "(byte-machine runtime)")
+                           (compiled (string-append jsonparse "/generated/jsonparse.so")
+                                     "(generated jsonparse)")))
+            (got (run (list src "--jsonparse" jsonparse "--byte-machine" byte-machine))))
+       (if (and (eq? made 'made) (equal? got want)) 'refused got)))))
+
+(test-equal "rule (o): a compiled object with no source beside it is named, and so is the missing source"
+  'refused
+  (with-jsonparse-copy
+   (lambda (src jsonparse byte-machine)
+     (let* ((removed (capture-command (list "rm" (string-append byte-machine "/byte-machine/private/names.sls"))))
+            (made (begin (make-tree byte-machine '("byte-machine/private/names.so")) 'made))
+            (want (refused (not-found-in jsonparse byte-machine "(byte-machine private names)")
+                           (compiled (string-append byte-machine "/byte-machine/private/names.so")
+                                     "(byte-machine private names)")))
+            (got (run (list src "--jsonparse" jsonparse "--byte-machine" byte-machine))))
+       (if (and (= (car removed) 0) (eq? made 'made) (equal? got want)) 'refused (list removed got))))))
+
+(test-equal "rule (o): a compiled (generated jsonparse) in BYTE-MACHINE, which Chez looks in first, is the file Chez takes, over JSONPARSE's source, and both are named; a compiled (byte-machine runtime) in JSONPARSE, behind BYTE-MACHINE's source, is not"
+  'refused
+  (with-jsonparse-copy
+   (lambda (src jsonparse byte-machine)
+     (let* ((made (begin (make-tree byte-machine '("generated/jsonparse.so"))
+                         (make-tree jsonparse '("byte-machine/runtime.so"))
+                         'made))
+            (want (refused (not-found-in jsonparse byte-machine "(generated jsonparse)")
+                           (compiled (string-append byte-machine "/generated/jsonparse.so")
+                                     "(generated jsonparse)")))
+            (got (run (list src "--jsonparse" jsonparse "--byte-machine" byte-machine))))
+       (if (and (eq? made 'made) (equal? got want)) 'refused got)))))
+
+;; --- rule (p): one jsonparse and one byte-machine on the library path ------------------
+
+;; Every name Chez could take a (jsonparse ...) library from, and every one
+;; in a generated directory it could take (generated jsonparse) from: the
+;; directory, a library file under each extension, source and compiled, and
+;; a link to a directory, a generated one among them. Beside them, names
+;; that only begin with jsonparse's or generated's letters, and JSONPARSE
+;; and BYTE-MACHINE, named again among the LIBDIRs.
+(test-equal "rule (p): each library directory but DIR and JSONPARSE that holds jsonparse, or jsonparse.<anything>, or whose generated directory does, is named, entry by entry, in the order the directories are named"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("jp/jsonparse/easy.sls" "jp/generated/jsonparse.sls" "bm/byte-machine/runtime.sls"
+                      "a/jsonparse/easy.sls"
+                      "b/jsonparse.sls" "b/jsonparse.ss" "b/jsonparse.chezscheme.sls" "b/jsonparse.so"
+                      "b/jsonparse.scm" "b/jsonparse.sch"
+                      "b/generated/jsonparse.sls" "b/generated/jsonparse.so" "b/generated/jsonparse/x.sls"
+                      "c/jsonparser.sls" "c/jsonparse-extras.sls" "c/xjsonparse.sls" "c/jsonparses/x.sls"
+                      "c/easy.sls" "c/generated.sls" "c/generated/jsonparse-machine.sls"
+                      "c/generated/httparse-message.sls" "c/generators/jsonparse.sls"
+                      "d/linked/" "e/" "f/" "g/jsonparse.sls"))
+     (capture-command (list "ln" "-s" (string-append dir "/d/linked") (string-append dir "/e/jsonparse")))
+     (capture-command (list "ln" "-s" (string-append dir "/g") (string-append dir "/f/generated")))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (jp (at "jp"))
+            (want (refused (on-jsonparse-path (at "b") "jsonparse.chezscheme.sls" jp)
+                           (on-jsonparse-path (at "b") "jsonparse.sch" jp)
+                           (on-jsonparse-path (at "b") "jsonparse.scm" jp)
+                           (on-jsonparse-path (at "b") "jsonparse.sls" jp)
+                           (on-jsonparse-path (at "b") "jsonparse.so" jp)
+                           (on-jsonparse-path (at "b") "jsonparse.ss" jp)
+                           (on-jsonparse-path (at "a") "jsonparse" jp)
+                           (on-jsonparse-path (at "e") "jsonparse" jp)
+                           (on-generated-path (at "b") "generated" "jsonparse" jp)
+                           (on-generated-path (at "b") "generated" "jsonparse.sls" jp)
+                           (on-generated-path (at "b") "generated" "jsonparse.so" jp)
+                           (on-generated-path (at "f") "generated" "jsonparse.sls" jp)))
+            (got (run (list (root "legal") "--jsonparse" jp "--byte-machine" (at "bm")
+                            (at "b") (at "c") (at "a") jp (at "e") (at "bm") (at "d") (at "f")))))
+       (if (equal? got want) 'refused got)))))
+
+(test-equal "rule (p): each library directory but DIR and BYTE-MACHINE that holds byte-machine, or byte-machine.<anything>, is named, entry by entry, in the order the directories are named"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("bm/byte-machine/runtime.sls" "jp/jsonparse/easy.sls" "jp/generated/jsonparse.sls"
+                      "a/byte-machine/runtime.sls"
+                      "b/byte-machine.sls" "b/byte-machine.ss" "b/byte-machine.so" "b/byte-machine.chezscheme.sls"
+                      "c/byte-machines/x.sls" "c/byte-machine-extras.sls" "c/byte-machinery.sls"
+                      "c/bytemachine.sls" "c/byte.sls" "c/machine.sls" "c/generated/byte-machine.sls"))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (bm (at "bm"))
+            (want (refused (on-byte-machine-path (at "b") "byte-machine.chezscheme.sls" bm)
+                           (on-byte-machine-path (at "b") "byte-machine.sls" bm)
+                           (on-byte-machine-path (at "b") "byte-machine.so" bm)
+                           (on-byte-machine-path (at "b") "byte-machine.ss" bm)
+                           (on-byte-machine-path (at "a") "byte-machine" bm)))
+            (got (run (list (root "legal") "--byte-machine" bm "--jsonparse" (at "jp")
+                            (at "b") (at "c") (at "a") bm (at "jp")))))
+       (if (equal? got want) 'refused got)))))
+
+;; A Mac's default disk finds a name in any case, so Chez there would take
+;; (jsonparse easy) from Jsonparse/easy.sls, (generated jsonparse) from
+;; Generated/jsonparse.sls, and (byte-machine) from BYTE-MACHINE.so.
+;; Generated and GENERATED are in directories of their own: macOS's file
+;; system ignores case by default, so in one they would be one directory.
+(test-equal "rule (p): jsonparse's, generated's and byte-machine's names in any case are named; names in another case that only begin with their letters are not"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("jp/" "bm/" "g/Jsonparse/easy.sls" "g/JSONPARSE.sls" "g/jSoNpArSe.Ss" "g/JSONPARSER.SLS"
+                      "g/Generated/jsonparse.sls" "h/GENERATED/JsonParse.so" "h/GENERATED/JSONPARSE-MACHINE.sls"
+                      "g/Byte-Machine/runtime.sls" "g/BYTE-MACHINE.so" "g/Byte-Machinery.sls"))
+     (let* ((g (string-append dir "/g"))
+            (h (string-append dir "/h"))
+            (jp (string-append dir "/jp"))
+            (bm (string-append dir "/bm"))
+            (want (refused (on-jsonparse-path g "JSONPARSE.sls" jp)
+                           (on-jsonparse-path g "Jsonparse" jp)
+                           (on-jsonparse-path g "jSoNpArSe.Ss" jp)
+                           (on-generated-path g "Generated" "jsonparse.sls" jp)
+                           (on-generated-path h "GENERATED" "JsonParse.so" jp)
+                           (on-byte-machine-path g "BYTE-MACHINE.so" bm)
+                           (on-byte-machine-path g "Byte-Machine" bm)))
+            (got (run (list (root "legal") "--jsonparse" jp "--byte-machine" bm g h))))
+       (if (equal? got want) 'refused got)))))
+
+(test-equal "rule (p): with no --jsonparse and no --byte-machine, every library directory that holds jsonparse, (generated jsonparse) or byte-machine is named, the ones the flags would name among them"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("jp/jsonparse/easy.sls" "jp/generated/jsonparse.sls" "bm/byte-machine/runtime.sls"
+                      "b/jsonparse.sls" "b/byte-machine.sls" "c/jsonparses/x.sls"))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (want (refused (on-jsonparse-path (at "jp") "jsonparse" #f)
+                           (on-jsonparse-path (at "b") "jsonparse.sls" #f)
+                           (on-generated-path (at "jp") "generated" "jsonparse.sls" #f)
+                           (on-byte-machine-path (at "b") "byte-machine.sls" #f)
+                           (on-byte-machine-path (at "bm") "byte-machine" #f)))
+            (got (run (list (root "legal") (at "jp") (at "c") (at "b") (at "bm")))))
+       (if (equal? got want) 'refused got)))))
+
+;; Mode 000, as rule (j)'s row: its mode is given back before the directory
+;; is removed.
+(test-equal "rule (p): a generated directory it cannot list is named, with Chez's words for why, and the audit fails closed"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((h (string-append dir "/h"))
+            (generated (string-append h "/generated"))
+            (made (begin (make-tree dir '("h/generated/")) (capture-command (list "chmod" "000" generated))))
+            (why (listing-error generated))
+            (got (run (list (root "legal") h)))
+            (restored (capture-command (list "chmod" "755" generated)))
+            (want (refused (string-append generated ": it is in " h
+                                          ", which is on the library path, and cannot be listed, so this check cannot tell whether it holds a (generated jsonparse ...) library: "
+                                          why))))
+       (if (and (equal? got want) (= (car made) 0) (= (car restored) 0)) 'refused (list made got))))))
+
+(test-equal "rule (p): DIR, JSONPARSE and BYTE-MACHINE named again with a slash and without, a LIBDIR that does not exist, a file, and names that only begin with jsonparse's, generated's and byte-machine's letters pass, and the pass names how many rules (j) and (p) looked in"
+  'passed
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("jp/jsonparse/easy.sls" "jp/generated/jsonparse.sls" "bm/byte-machine/runtime.sls"
+                      "c/jsonparser.sls" "c/jsonparse-extras.sls" "c/generated/httparse-message.sls"
+                      "c/generated/jsonparse-machine.sls" "c/generators/jsonparse.sls" "c/byte-machinery.sls"
+                      "c/byte-machine-extras.sls" "f/plain.sls"))
+     (let* ((at (lambda (d) (string-append dir "/" d)))
+            (want (passed 6 6 #f #f #f 4 4))
+            (got (run (list (root "legal") "--jsonparse" (at "jp") "--byte-machine" (at "bm")
+                            (at "jp") (at "bm") (at "c") (root "legal") (string-append (at "jp") "/")
+                            (string-append (at "bm") "/") (at "no-such") (at "f/plain.sls") (at "f")))))
+       (if (equal? got want) 'passed got)))))
+
+(test-equal "rule (p): with --jsonparse and --byte-machine and no LIBDIR, the pass is the tree's line and rule (p)'s, which looked in none"
+  (passed 6 #f #f #f #f 0 0)
+  (run (list (root "legal") "--jsonparse" (at "jsonparse-legal" "jsonparse")
+             "--byte-machine" (at "jsonparse-legal" "byte-machine"))))
+
+(test-equal "rules (j) and (m) hold JSONPARSE and BYTE-MACHINE as they hold any library directory: a circuit and a hashing there are named, and their jsonparse and byte-machine are not"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("jp/jsonparse/easy.sls" "jp/generated/jsonparse.sls" "jp/circuit/request.sls"
+                      "bm/byte-machine/runtime.sls" "bm/hashing/sha-2.scm"))
+     (let* ((jp (string-append dir "/jp"))
+            (bm (string-append dir "/bm"))
+            (want (refused (on-path jp "circuit" (root "legal"))
+                           (on-hashing-path bm "hashing" #f)))
+            (got (run (list (root "legal") "--jsonparse" jp "--byte-machine" bm jp bm))))
+       (if (equal? got want) 'refused got)))))
+
+;; The Makefile names both closure directories by flag and among the
+;; LIBDIRs. Rule (p) holds each to its own family there too, so neither can
+;; hold a copy that stands in for the other's: BYTE-MACHINE's jsonparse,
+;; which rule (o) reads before JSONPARSE's, and JSONPARSE's byte-machine.
+(test-equal "rule (p): BYTE-MACHINE and JSONPARSE, named by their flags and among the LIBDIRs, each holding the other's library: BYTE-MACHINE's jsonparse and generated/jsonparse.sls, which this check reads before JSONPARSE's, and JSONPARSE's byte-machine are each named"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (make-tree dir '("jp/jsonparse/easy.sls" "jp/generated/jsonparse.sls" "jp/byte-machine/runtime.sls"
+                      "bm/byte-machine/runtime.sls" "bm/jsonparse/easy.sls" "bm/generated/jsonparse.sls"))
+     (let* ((jp (string-append dir "/jp"))
+            (bm (string-append dir "/bm"))
+            (want (refused (on-jsonparse-path-ahead bm "jsonparse" jp)
+                           (on-generated-path-ahead bm "generated" "jsonparse.sls" jp)
+                           (on-byte-machine-path jp "byte-machine" bm)))
+            (got (run (list (root "legal") "--jsonparse" jp "--byte-machine" bm bm jp))))
+       (if (equal? got want) 'refused got)))))
+
 ;; make-check-imports : String -> (List Integer String String)
 ;; make check-imports, in a make of its own, with BUILD_DIR at BUILD: its
 ;; scheme-libs, where deps links SRFI-64, is then a directory of every
@@ -1185,7 +1782,7 @@
        (string=? (substring text 0 (string-length head)) head)))
 
 ;; looked-in : String String -> (U Natural #f)
-;; How many directories LINE, a pass's rule (j) or (m) line for FAMILY,
+;; How many directories LINE, a pass's rule (j), (m) or (p) line for FAMILY,
 ;; says it looked in; #f when it is no such line.
 (define (looked-in line family)
   (let ((head (string-append "check-imports: ok, no other directory on the library path holds "
@@ -1204,12 +1801,20 @@
 (define make-closure-line
   "check-imports: ok, the closure of (hashing sha-2) in vendor/akku imports only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac): 3 libraries read")
 
+;; make-jsonparse-closure-line : String
+;; Rule (o)'s pass line through make, on the pinned jsonparse's src/ and
+;; the byte-machine chez-httparse pins.
+(define make-jsonparse-closure-line
+  (string-append "check-imports: ok, the closure of (jsonparse easy) in vendor/jsonparse/src and vendor/chez-http-server/vendor/chez-httparse/vendor/byte-machine/src imports only "
+                 jsonparse-allows ": 12 libraries read"))
+
 ;; The Makefile's wiring: check-imports passes the audit every directory
 ;; of the library paths, so a (circuit ...) library in one of them, here
 ;; the scheme-libs of a BUILD_DIR of the row's own, fails make
-;; check-imports, and the same tree without it passes. The pass reads the
-;; closure from vendor/akku, and rule (m) looks in every directory rule (j)
-;; does but vendor/akku.
+;; check-imports, and the same tree without it passes. The pass reads
+;; hashing's closure from vendor/akku and jsonparse's from jsonparse's src/
+;; and byte-machine's, and rules (m) and (p) look in every directory rule
+;; (j) does but their own.
 (test-equal "rule (j), through make: a circuit/ in a directory of the library path fails make check-imports, and without it the audit passes"
   'refused-then-passed
   (call-with-temp-directory
@@ -1225,20 +1830,26 @@
                                 (string-append "check-imports: " (on-path libs "circuit" "src") "\n"
                                                "make: *** [check-imports] Error 1\n")))
             (passed-lines (split-lines (cadr passed)))
-            (circuit-looked (and (= (length passed-lines) 5)
-                                 (looked-in (list-ref passed-lines 2) "circuit")))
-            (hashing-looked (and (= (length passed-lines) 5)
-                                 (looked-in (list-ref passed-lines 4) "hashing"))))
+            (whole? (= (length passed-lines) 8))
+            (circuit-looked (and whole? (looked-in (list-ref passed-lines 2) "circuit")))
+            (hashing-looked (and whole? (looked-in (list-ref passed-lines 4) "hashing")))
+            (jsonparse-looked (and whole? (looked-in (list-ref passed-lines 6) "jsonparse")))
+            (byte-machine-looked (and whole? (looked-in (list-ref passed-lines 7) "byte-machine"))))
        (if (and (equal? planted want-planted)
                 (= (car passed) 0)
                 (string=? (caddr passed) "")
-                (= (length passed-lines) 5)
+                whole?
                 (string=? (string-append (car passed-lines) "\n") deps-line)
                 (begins? (cadr passed-lines) "check-imports: ok, libraries checked: ")
                 circuit-looked
                 (string=? (list-ref passed-lines 3) make-closure-line)
                 hashing-looked
-                (= hashing-looked (- circuit-looked 1)))
+                (= hashing-looked (- circuit-looked 1))
+                (string=? (list-ref passed-lines 5) make-jsonparse-closure-line)
+                jsonparse-looked
+                (= jsonparse-looked (- circuit-looked 1))
+                byte-machine-looked
+                (= byte-machine-looked (- circuit-looked 1)))
            'refused-then-passed
            (list 'passed passed 'planted planted))))))
 
@@ -1257,6 +1868,32 @@
                             (make-check-imports build)))
             (want (list 2 deps-line
                         (string-append "check-imports: " (on-hashing-path libs "hashing" "vendor/akku") "\n"
+                                       "make: *** [check-imports] Error 1\n"))))
+       (if (equal? planted want) 'refused planted)))))
+
+;; The Makefile names jsonparse's src/ and byte-machine's twice: by flag,
+;; and among the library path's directories. So a jsonparse/, a
+;; generated/jsonparse.sls or a byte-machine/ in another of them fails make
+;; check-imports, while their own are passed over.
+(test-equal "rule (p), through make: a jsonparse/, a generated/jsonparse.sls and a byte-machine/ in a directory of the library path but their own fail make check-imports"
+  'refused
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((build (string-append dir "/build"))
+            (libs (string-append build "/scheme-libs"))
+            (deps-line (string-append "deps: chez-libuv's shim built; vendor/chez-http-server/vendor/chez-srfi linked into "
+                                      libs "/srfi\n"))
+            (planted (begin (make-tree build '("scheme-libs/jsonparse/easy.sls" "scheme-libs/generated/jsonparse.sls"
+                                               "scheme-libs/byte-machine/runtime.sls"))
+                            (make-check-imports build)))
+            (want (list 2 deps-line
+                        (string-append "check-imports: " (on-jsonparse-path libs "jsonparse" "vendor/jsonparse/src") "\n"
+                                       "check-imports: "
+                                       (on-generated-path libs "generated" "jsonparse.sls" "vendor/jsonparse/src") "\n"
+                                       "check-imports: "
+                                       (on-byte-machine-path libs "byte-machine"
+                                                             "vendor/chez-http-server/vendor/chez-httparse/vendor/byte-machine/src")
+                                       "\n"
                                        "make: *** [check-imports] Error 1\n"))))
        (if (equal? planted want) 'refused planted)))))
 
@@ -1319,6 +1956,20 @@
 (test-equal "the (hashing ...) libraries the closure may import are exactly (hashing fixnums) and (hashing hmac)"
   (sorted-libraries '((hashing fixnums) (hashing hmac)))
   (sorted-libraries (declared 'hashing-siblings)))
+
+(test-equal "the one library that may import a (jsonparse ...) library is exactly (circuit json)"
+  '(circuit json)
+  (declared 'json-library))
+
+(test-equal "the one (jsonparse ...) library (circuit json) may import is exactly (jsonparse easy)"
+  '(jsonparse easy)
+  (declared 'jsonparse-library))
+
+(test-equal "the libraries the closure of (jsonparse easy) may import are exactly jsonparse's seven others, (generated jsonparse), (byte-machine runtime) and byte-machine's two private libraries"
+  (sorted-libraries '((jsonparse error) (jsonparse options) (jsonparse parser) (jsonparse sequence)
+                      (jsonparse string) (jsonparse tree) (jsonparse writer) (generated jsonparse)
+                      (byte-machine runtime) (byte-machine private conditions) (byte-machine private names)))
+  (sorted-libraries (declared 'jsonparse-siblings)))
 
 (test-end "check-imports")
 

@@ -3,10 +3,10 @@ name: CI
 # Linux only, deliberately (AGENTS.md: do NOT set up macOS runners). One job,
 # run on two images, amd64 and arm64 (AGENTS.md: portable across both): it
 # installs the toolchain, gets the pinned server, the pins it carries,
-# chez-websocket, and hashing as Akku.lock pins it, with `make submodules`,
-# holds the submodules at their pins with `make check-pins`, builds Chez at
-# its floor (once, then cached), and runs `make
-# test`, which builds chez-libuv's shim against the system libuv and runs
+# chez-websocket, jsonparse, and hashing as Akku.lock pins it, with
+# `make submodules`, holds the submodules at their pins with
+# `make check-pins`, builds Chez at its floor (once, then cached), and runs
+# `make test`, which builds chez-libuv's shim against the system libuv and runs
 # check-help, check-suites and every suite, then checks the docs site and runs
 # the cost gate, `make gate`. The site job builds the site as the Pages
 # workflow does.
@@ -102,7 +102,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config libuv1-dev git curl coreutils cmark-gfm xz-utils
 
-      # Clone the server, the pins it carries, and chez-websocket, and fetch
+      # Clone the server, the pins it carries, chez-websocket and jsonparse, and fetch
       # hashing into vendor/akku, its sha256 checked against Akku.lock; then
       # verify each submodule is where its pin or its parent records, and
       # hashing is its archive, unpacked, before building anything: a

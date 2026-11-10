@@ -1721,6 +1721,48 @@ The owner's answer in slice 10a (2026-11-06), after its review:
     would bring from about 25 to about 5 times `n`, and it can come later, after `n`, as
     `make-router`'s options did, with no call changed. The owner agreed on 2026-11-06.
 
+The owner's answers before slice 11, a JSON body (2026-11-10). jsonparse, the
+organisation's strict JSON parser in portable R6RS, reads it, vendored as a submodule
+on the server's byte-machine (ADR-0009):
+
+36. **A JSON body is `(circuit json)`'s, a twelfth public library:** `wrap-json-body`,
+    `req-json?`, `req-json` and `make-json-res`. Weighed: `(circuit middleware json)`;
+    inside `(circuit middleware)`, which every app that imports it would then load
+    jsonparse through.
+    - **It reads a request whose one `content-type` field is `application/json` or
+      `application/<name>+json`** (RFC 6839), in any case, its parameters ignored, and
+      passes any other untouched, its body unread, as `wrap-form-params` does. Weighed:
+      `application/json` alone; a `415` for the rest.
+    - **An empty body is no JSON:** the handler runs, and `req-json?` is `#f`, since
+      many clients send `content-type: application/json` on a `DELETE` with no body.
+      Weighed: a `400`, `unexpected-eof`, as `read-json` calls it.
+    - **A body that is no JSON is a `400`, `text/plain`, jsonparse's reason and the
+      byte it stopped at.** Weighed: a JSON error object, whose shape clients would come
+      to rely on; an empty `400` and a `-with` maker.
+    - **`(wrap-json-body n)` requires its cap, as `wrap-form-params` does,** and reads
+      under the smaller of it and the request's own: the server caps nothing unless told
+      to, and a parsed tree can be several times its body. Weighed: no cap of its own,
+      an outer `wrap-body-cap` or `CHEZ_HTTP_MAX_BODY_BYTES` alone.
+    - **`req-json?` says whether a value was read, and `req-json` is the value,** an
+      assertion violation with none: jsonparse builds `false` as `#f`, so
+      `(req-ref req key #f)` couldn't tell it from no JSON. Weighed: `req-json` with a
+      default, like `req-ref`; the eof object for none.
+    - **It takes jsonparse's options, optionally, and keeps duplicate keys** as jsonparse
+      does, `json-ref` taking the last. jsonparse has no option to refuse them. Weighed:
+      the defaults alone; a `400` for a key sent twice, by a walk of circuit's own.
+    - **`make-json-res` comes with it:** the value as JSON, `application/json`,
+      under the options given. Weighed: the one line in the docs alone.
+    - **jsonparse's `read-json` keeps reading 16 KiB at a time** (2026-11-10), so a
+      body that is no JSON is refused once the 16 KiB holding its bad byte, or the
+      body's end, is in. Weighed, and declined as too much overhead for jsonparse: a
+      `read-json` that reads a port as its bytes come, as jsonparse's stream readers do,
+      Kiyomi-Computation-Systems/jsonparse#17's first ask.
+      Kiyomi-Computation-Systems/jsonparse#18, open, measured it: Chez's
+      `get-bytevector-some` allocates 8 KiB a call, so through a port giving a byte a
+      read it took 179 ms/MB against 33. #18 takes #17's second ask: it documents the
+      wait and promises that a port's raise passes through `read-json`, with rows, for
+      jsonparse's next release.
+
 ## 16. Open
 
 1. **A cap of circuit's own on the request body**: decided in slice 7, a

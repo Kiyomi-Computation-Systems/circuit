@@ -170,6 +170,12 @@ close-out under **Close-outs**, newest first.
   code shows, read and not run, squashed from
   [PR #44](https://github.com/Kiyomi-Computation-Systems/circuit/pull/44) on
   2026-11-07; its close-out is below. It stays open, on the owner's word.
+- **Slice 11, `(circuit json)`, is merged**, squashed from
+  [PR #45](https://github.com/Kiyomi-Computation-Systems/circuit/pull/45) on 2026-11-10;
+  its close-out is below. A JSON body is read 16 KiB at a time by jsonparse v0.1.0, a
+  third submodule, on the server's byte-machine (ADR-0009). The owner's answers are
+  design §15.36. Twelve public libraries, and `(circuit params)` gains the rows its copy
+  showed it lacked.
 - **Next:** the owner's call. The Open list below holds what is known.
 
 ## Open
@@ -237,6 +243,162 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-10: slice 11, a JSON body, in PR #45
+
+On the owner's brief and answers (design §15.36). Commits on `open/slice-11`: the code,
+tests and docs (bc8abda), this close-out (f35eede), and its CI run named here. `make test`
+passes 26 suites, `make check-site` passes, and `make gate` passes every held gate. CI
+passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job. Later
+commits record the owner's decline of jsonparse#17 and jsonparse#18's answer, the fixes
+the owner's M1 run called for, and that run, all below.
+
+- **`(circuit json)`**, the twelfth public library: `wrap-json-body`, `req-json?`,
+  `req-json` and `make-json-res`. `(wrap-json-body n [options])` reads a request whose one
+  `content-type` field's media type, in any case, is `application/json` or
+  `application/<name>+json`, the name an RFC 6838 restricted-name, under the smaller of
+  `n` and the request's own cap, by jsonparse's `read-json`, 16 KiB at a time on the
+  request's coroutine. A zero-byte body, seen by `lookahead-u8`, is no JSON; a body that
+  isn't JSON is a `400`, `text/plain`, `REASON at byte N`; the guard covers the parse
+  alone, so `&body-failed` (413), `&client-closed`, `&deadline-passed` and the handler's
+  own `&json-error`, `json-ref`'s `not-found` among them, go on as raised. Options
+  `read-json` refuses are refused when `wrap-json-body` is called: it reads a `0` under
+  them. `req-json?` and `req-json` read a key whose absent value is a pair of the
+  library's own, so `false` is `#f` and no value;
+- **what the build settled:**
+  - `read-json` asks for 16 KiB at a time, so a body that isn't JSON is refused once the
+    16 KiB holding its bad byte is in, not at that byte. After the `400`, with the rest
+    of the body already in when the request was read, the server reads past it and
+    answers the next request; with the rest coming after, the `400` goes out with
+    `Connection: close` and the connection ends. A row holds all three;
+  - `media-type`'s leading trim, copied from `(circuit params)`, can't be reached: the
+    server and `make-test-req` both trim a field's value, and nothing else sets one. It
+    is gone from `(circuit json)`, and from `(circuit params)` (below);
+  - jsonparse v0.1.0 refuses a byte order mark, `unexpected-byte at byte 0`, and the
+    page says nothing of it;
+- **the dependency,** as ADR-0009 decides: `vendor/jsonparse` at v0.1.0 (`a939f31`),
+  `JSONPARSE_PIN`; its `src/` on the path after the server's libraries, its `vendor/`
+  not; `make submodules` cloning it alone; `make check-pins` holding its gitlink, its
+  checkout and its byte-machine gitlink at chez-httparse's, and its tree clean. Watched
+  failing: the checkout moved to jsonparse's `main` (byte-machine v0.9.0) named both the
+  checkout and the byte-machine; a wrong `JSONPARSE_PIN` named the gitlink;
+- **`make check-imports`'s three rules,** built by an agent, ADR-0006's sixth decision,
+  the command line `DIR [--akku AKKU] [--jsonparse JSONPARSE] [--byte-machine
+  BYTE-MACHINE] [LIBDIR ...]`, each flag at most once, in any order:
+  - (n): only `(circuit json)` imports a `(jsonparse ...)` library, `(jsonparse easy)`
+    alone, through an `only` naming at least one identifier, by rule (k)'s code;
+  - (o): `(jsonparse easy)`'s closure read as data by rule (l)'s reader, now shared, from
+    byte-machine's `src/` then jsonparse's, the path's order: `(rnrs ...)` but
+    `(rnrs eval)`, jsonparse's seven other libraries, `(generated jsonparse)`, and
+    byte-machine's runtime and its two private libraries, 12 read through make;
+  - (p): no directory on the path but its own holds a `jsonparse`, a
+    `generated/jsonparse` or a `byte-machine`, in any case;
+  - 47 rows new, 145 in the suite, 16 fixture trees; 10 mutants of the program, each
+    failing real rows. Verified here: the suite and `make check-imports` rerun; two of
+    its mutants rerun, failing the rows it named; and seven plants refused: a
+    `jsonparse/`, a `generated/JSONPARSE.sls` and a `byte-machine/` in
+    `build/scheme-libs` through make, a `tree.so` beside jsonparse's source, and, on
+    copies, a jsonparse library importing `(chezscheme)`, `(circuit params)` importing
+    `(jsonparse easy)`, and `(circuit json)` importing it bare;
+- **the rows:**
+  - `tests/test-json.sps`, 38: the media types read and passed, each by hand, every
+    character at the restricted-name's first and middle places, and other types whose
+    tail would match; every kind of value, `false` and a bignum among them, a duplicate
+    kept; the options; eleven refusals, each its reason and byte; the depth limit from
+    both sides at 512, 2 and 0, and the digit limit, 1000 by default and one given; the
+    guard's scope; the cap on test requests and through the test host, at and past it,
+    declared, chunked and behind `100-continue`, the server's under both, 0 and a
+    bignum; a cap inside; pieces split inside tokens and a 24 KB document past the
+    16 KiB step; a stall, and `wrap-timeout` over it; `make-json-res`; the refusals;
+  - `tests/test-names.sps` imports `(circuit json)` and `(jsonparse easy)` together, two
+    rows; `tests/test-reference.sps` takes the twelfth library and holds `JSONPARSE_PIN`
+    as the other two pins: its Makefile comment to jsonparse's manifest, the docs' links
+    into jsonparse at its tag, and the global constraints' "now" and ADR-0003's "since";
+    `tests/site-unit.sps` takes the page;
+- **watched failing:** a stub exporting the four names failed 29 of the 33 rows then
+  written. 42 mutants of `(circuit json)`, each a library of its own first on the path,
+  from `build/json/make-mutants.py` on the final code: all 42 killed by failing rows,
+  after three survivors on the first run became rows (a depth limit of 0, types whose
+  tail matches) or code (the unreachable trim). test-reference's new rows each failed on
+  a mutant: a jsonparse link at another tag, the section gone, the Makefile's comment,
+  the constraints' sha and ADR-0003's "since";
+- **the programs over loopback,** the JSON page's three, in the container, with curl's
+  `--json`: each output on the page is the run's;
+- **the gate,** before the review's fixes and after them: G3 GET +321 B, then +323 B,
+  and POST +288 B, then +295 B, against 384 B and 352 B; every held gate within its
+  bound both times. JSON adds no gate row, as forms add none;
+- **the docs:** the JSON page; the reference's section; the home page's table and Read
+  next; Middleware's line on parsing a body; Installing's pinned dependencies; README.org;
+  the CHANGELOG's Unreleased;
+- **the records:** ADR-0009, accepted; ADR-0003 (item 8) and ADR-0006 (item 6) amended;
+  the global constraints; AGENTS.md; the circuit design's §15.36; CI's comment;
+- **the review**, read-only on Opus, found nothing blocking, and:
+  - should-fix: `make deps` passed with `vendor/jsonparse` empty, and `make
+    check-imports` then named only a missing directory. Its list names
+    `jsonparse/easy.sls` now: watched passing on an empty directory, then refusing it,
+    naming `make submodules`;
+  - the audit read jsonparse's closure from jsonparse's `src/` first, the reverse of the
+    path's order, and rule (p)'s cross check, the one thing that made that safe, was held
+    by no row: its mutant passed all 144. The agent reads the closure in the path's
+    order now, byte-machine's `src/` first, and a row holds the cross check, its words
+    saying which copy is read. Verified here: the suite's 145 rows; the reviewer's
+    reproduction, a legal runtime in jsonparse's `src/` and one importing `(chezscheme)`
+    in byte-machine's, refused by rule (o) itself now; the cross check's mutant killed;
+  - the media type's scan and the restricted-name weren't tried against their
+    complements: now every ASCII character and four past it at the name's first and
+    middle places, two blanks before `;`, and a word after `json`;
+  - the cap was held from one side, and 3/2 taken: a cap of 0 now from both sides, and
+    3/2 refused; the default digit limit was claimed and not held: 1000 digits read,
+    1001 refused;
+  - nits fixed: `string-ci=?` for `ascii-ci=?` survived, a `ſ` row now; `req-json`'s
+    who; "parsed as it arrives" in ADR-0009, the library's header, the reference and the
+    CHANGELOG, which say 16 KiB at a time now, held by the row above; the options check
+    holds its own words and the options, not jsonparse's message; AGENTS.md lists the
+    whole closure;
+  - its twelve mutants that survived, rerun on the final rows: all twelve killed;
+  - filed as Kiyomi-Computation-Systems/jsonparse#17: `read-json`'s refusal waits for
+    16 KiB, where its stream readers use `get-bytevector-some`; and its docs and rows
+    don't promise that a port's raise passes through it, as they do for `write-json` and
+    `read-json-sequence`, though circuit's rows rely on it. The owner declined the read
+    the same day, as too much overhead for jsonparse, and jsonparse's session answered
+    with Kiyomi-Computation-Systems/jsonparse#18, open: `read-json`'s code unchanged, its
+    cost measured (`get-bytevector-some` allocates 8 KiB a call, and took 179 ms/MB
+    against 33 at a byte a read), and the wait and the pass-through documented and held
+    by rows, for jsonparse's next release. Design §15.36 and ADR-0009's consequences
+    record both, and the Open list doesn't carry them: the pin move takes #18. My issue
+    had cited ADR-0020's 5% more allocation, measured on ports that give 8 KiB a read.
+    Circuit's rows hold the pass-through: on a copy of jsonparse whose `read-json` turns
+    a port's raise into a `&json-error`, the 413, smallest-cap and `wrap-timeout` rows
+    fail;
+- **`(circuit params)`'s gaps, folded in on the owner's word:** `(circuit json)` copied
+  its code, and three mutants of it passed every row of `tests/test-params.sps`: a cap of
+  0 refused, 3/2 taken as a cap, and `media-type` without its leading trim, which no
+  request reaches. Two rows now: a cap of 0 from both sides, through the server, and 3/2
+  refused; each watched failing on its mutant. The trim is gone, as in `(circuit json)`.
+  Eight mutants of the final code: seven killed by failing rows. The eighth,
+  `string-ci=?` for `ascii-ci=?`, can't differ there: the characters past ASCII whose
+  case fold is ASCII fold to s, k, ss, ff, fi, fl, ffi, ffl or st, and the form's media
+  type holds none of them. `(circuit json)` checked the same way: seven mutants, the cap
+  of 0, 3/2, its trailing trim and `string-ci=?` on `json` and `+json` each killed;
+  `string-ci=?` on `application/`, which holds none either, the one survivor;
+- **the owner's M1 run,** macOS on arm64 with Homebrew's libuv 1.52.1: 24 of 26 suites
+  passed, and two failed on what Linux hides:
+  - rule (p)'s row made `g/Generated/` and `g/GENERATED/`, which macOS's file system,
+    ignoring case by default, makes one directory. They are in library directories of
+    their own now; the row passes, and fails on the audit with `generated-entry?` taking
+    case, and with `family-entry?` taking it. No other row's tree holds two names that
+    differ only in case;
+  - the examples suite's bash scripts, since slice 6a, read a count of bytes with
+    `read -N`, which macOS's bash 3.2 lacks. They read with `-d '' -n` now, which it has:
+    with NUL the delimiter, `-n` reads the count, and none of the words or frames holds a
+    NUL. The suite passes in the container, and a script reading a byte short of
+    "early" fails the upgrade row. One reading a byte long passes, under `-N` as under
+    `-n`: its read waits out its 10 s and takes what came;
+  - on 56c0107, with the fixes, the owner's M1 passed all 26 suites: the audit's 145
+    rows, and the examples suite's 92, with 2 skipped;
+- **agents:** the audit's rules, Opus, 24.6 min, then the review's fix, 6.4 min, 333,115
+  tokens over both; the reviewer, Opus, 303,661 tokens and 19.3 min. The library, its
+  suites, the Makefile, the docs and the records were mine.
 
 ### 2026-11-07: the reset item's reading of the server, in PR #44
 
