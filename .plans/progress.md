@@ -184,6 +184,11 @@ close-out under **Close-outs**, newest first.
   [PR #47](https://github.com/Kiyomi-Computation-Systems/circuit/pull/47), squashed on
   2026-11-10; its close-out is below. The tag is on b08e422, #46's squash, the
   Release is the repository's latest, and the docs site names v0.3.0.
+- **The comments are written for the code's readers**, squashed from
+  [PR #48](https://github.com/Kiyomi-Computation-Systems/circuit/pull/48) on 2026-11-10;
+  its close-out is below. The code's comments cite no design section, slice or ADR but
+  the files `test-reference.sps` reads; one that stood for a rule names the check that
+  holds it, or AGENTS.md.
 - **Next:** the owner's call. The Open list below holds what is known.
 
 ## Open
@@ -251,6 +256,45 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-10: comments written for the code's readers, in PR #48
+
+On the owner's "Let's do a pass of all the code comments in /src - comments should not
+refer to plans or adrs and should be written specifically for developers using the
+code", then "Do the same pass for the others" and "Commit and open". Commits on
+`comments/src-for-developers`: the comments (cfcaccb), Now and this close-out, and its CI
+run named here.
+
+- **`src/`:** its 1,779 comment lines read whole. Beside their citations they already
+  spoke to the code's readers, so the pass is the citations: 22 places in 12 libraries
+  named a design section, a slice, an ADR, chez-websocket's ADR-0009, spike S2 or the
+  gate's G4 and G5. Each drops the citation and keeps its fact. Where an ADR stood for a
+  rule, the comment names the check that holds it, `make check-imports` or `make gate`,
+  each read first: `chez-names` is one list for both impure libraries, so
+  `(circuit middleware waits)`'s four `(chezscheme)` names are "of the few" it allows
+  them. `(circuit response)`'s record note says what the keys cost, not what they took
+  it from. The facade's list of what it leaves out gains the `res-tapped-body-`
+  accessors, which it never exported;
+- **the rest:** 82 replacements in 26 files, by a script that refused any old text not
+  found exactly once: the Makefile, CI, `.gitignore`, `Akku.manifest`,
+  `scripts/require-chez` and 18 suites' headers. `check-imports.sps`'s allowlist notes
+  say "(AGENTS.md)", which states each rule, as one already did. The gate loses spike
+  S2's `.plans/research/` paths, and two printed lines lose "design §15.6". The router
+  suites' 23 references to the design's §5 say "the routing rules". The websocket
+  suite's oracle in chez-websocket's ADR-0009 is its `reference.md` and `handlers.md`,
+  which say the same. Seven row names lose the design: two now name
+  `docs/cookies.md` and `docs/middleware.md`, each read to hold what the name says, and a
+  check-imports fixture says what its library is, not whose it was;
+- **kept:** the gate's row labels, G1 to G10, and the suites' own (M1, R8, S1, S2); RFC
+  and standards sections; `.akkuignore`'s and `.gitattributes`'s entries for `.plans/`;
+  and `test-reference.sps`'s lines on the global constraints and ADR-0003, files it
+  reads;
+- **checks:** `git diff -U0`, filtered to lines that aren't comments, shows only the row
+  names and the gate's two printed lines. On the final tree, in the container,
+  `make test` passed 26 of 26 and `make gate` passed, every held gate within its bound:
+  the gate because its printed lines changed, and `make test` doesn't run it;
+- **left as they are:** `docs/`, `AGENTS.md`, the CHANGELOG and `.plans/`;
+- **agents:** none.
 
 ### 2026-11-10: v0.3.0 tagged, released and published, recorded in PR #47
 
