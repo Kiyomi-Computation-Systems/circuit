@@ -252,9 +252,10 @@ close-out under **Close-outs**, newest first.
 ### 2026-11-10: v0.3.0, in PR #46
 
 On the owner's "tag it", after PR #45's closing ritual, and their answer to the version,
-0.3.0. Commits on `release/v0.3.0`: the release (77880a6), this close-out, and its
-CI run named here. In the container, `make test` passes 26 suites, and
-`make check-site` and `make check-help` pass.
+0.3.0. Commits on `release/v0.3.0`: the release (77880a6), this close-out (0a516b7),
+and its CI run named here. In the container, `make test` passes 26 suites, and
+`make check-site` and `make check-help` pass. CI passed on the PR (run 42815509097,
+5m34s), on amd64, arm64 and the site job.
 
 - **`[0.3.0]`:** Unreleased whole, from #45, under an intro: the fifth release,
   `(circuit json)` by jsonparse v0.1.0, a third submodule on the server's byte-machine,
