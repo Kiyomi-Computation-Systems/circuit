@@ -388,7 +388,8 @@ M1 run called for, both below.
     NUL. The suite passes in the container, and a script reading a byte short of
     "early" fails the upgrade row. One reading a byte long passes, under `-N` as under
     `-n`: its read waits out its 10 s and takes what came;
-  - the M1 hasn't run the fixes yet;
+  - on 56c0107, with the fixes, the owner's M1 passed all 26 suites: the audit's 145
+    rows, and the examples suite's 92, with 2 skipped;
 - **agents:** the audit's rules, Opus, 24.6 min, then the review's fix, 6.4 min, 333,115
   tokens over both; the reviewer, Opus, 303,661 tokens and 19.3 min. The library, its
   suites, the Makefile, the docs and the records were mine.
