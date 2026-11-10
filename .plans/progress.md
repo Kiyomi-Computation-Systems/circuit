@@ -250,7 +250,8 @@ On the owner's brief and answers (design §15.36). Commits on `open/slice-11`: t
 tests and docs (bc8abda), this close-out (f35eede), and its CI run named here. `make test`
 passes 26 suites, `make check-site` passes, and `make gate` passes every held gate. CI
 passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job. A fourth
-commit records the owner's decline of jsonparse#17, below.
+commit records the owner's decline of jsonparse#17, and a fifth the fixes the owner's
+M1 run called for, both below.
 
 - **`(circuit json)`**, the twelfth public library: `wrap-json-body`, `req-json?`,
   `req-json` and `make-json-res`. `(wrap-json-body n [options])` reads a request whose one
@@ -374,6 +375,20 @@ commit records the owner's decline of jsonparse#17, below.
   type holds none of them. `(circuit json)` checked the same way: seven mutants, the cap
   of 0, 3/2, its trailing trim and `string-ci=?` on `json` and `+json` each killed;
   `string-ci=?` on `application/`, which holds none either, the one survivor;
+- **the owner's M1 run,** macOS on arm64 with Homebrew's libuv 1.52.1: 24 of 26 suites
+  passed, and two failed on what Linux hides:
+  - rule (p)'s row made `g/Generated/` and `g/GENERATED/`, which macOS's file system,
+    ignoring case by default, makes one directory. They are in library directories of
+    their own now; the row passes, and fails on the audit with `generated-entry?` taking
+    case, and with `family-entry?` taking it. No other row's tree holds two names that
+    differ only in case;
+  - the examples suite's bash scripts, since slice 6a, read a count of bytes with
+    `read -N`, which macOS's bash 3.2 lacks. They read with `-d '' -n` now, which it has:
+    with NUL the delimiter, `-n` reads the count, and none of the words or frames holds a
+    NUL. The suite passes in the container, and a script reading a byte short of
+    "early" fails the upgrade row. One reading a byte long passes, under `-N` as under
+    `-n`: its read waits out its 10 s and takes what came;
+  - the M1 hasn't run the fixes yet;
 - **agents:** the audit's rules, Opus, 24.6 min, then the review's fix, 6.4 min, 333,115
   tokens over both; the reviewer, Opus, 303,661 tokens and 19.3 min. The library, its
   suites, the Makefile, the docs and the records were mine.

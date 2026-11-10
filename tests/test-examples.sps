@@ -484,7 +484,9 @@
 ;; the echo of "early", then of "ping" and of "pong", each sent once the
 ;; echo before it is in, so a byte too many shifts the next. Each read is
 ;; bounded by 10 s. bash reads a socket a byte at a time, so no read takes
-;; bytes past its own.
+;; bytes past its own. A count of bytes is read with -d '' -n, not -N,
+;; which macOS's bash 3.2 lacks: with NUL its delimiter, -n reads them all,
+;; and none of these words holds a NUL.
 (define echo-script
   (string-append
    "LC_ALL=C\n"
@@ -494,11 +496,11 @@
    "  printf '%s\\n' \"$line\"\n"
    "  [ \"$line\" = $'\\r' ] && break\n"
    "done\n"
-   "read -r -t 10 -N 5 got <&3; printf '%s' \"$got\"\n"
+   "IFS= read -r -d '' -t 10 -n 5 got <&3; printf '%s' \"$got\"\n"
    "printf 'ping' >&3\n"
-   "read -r -t 10 -N 4 got <&3; printf '%s' \"$got\"\n"
+   "IFS= read -r -d '' -t 10 -n 4 got <&3; printf '%s' \"$got\"\n"
    "printf 'pong' >&3\n"
-   "read -r -t 10 -N 4 got <&3; printf '%s' \"$got\"\n"
+   "IFS= read -r -d '' -t 10 -n 4 got <&3; printf '%s' \"$got\"\n"
    "exec 3>&-\n"))
 
 ;; echoed : Nat -> (List Nat String String)
@@ -532,7 +534,8 @@
 ;; the status of a read past them, 1 at the end of the stream. Each read is
 ;; bounded by 10 s. bash reads a socket a byte at a time, so no read takes
 ;; bytes past its own, and none of these frames holds a NUL, which bash
-;; would drop.
+;; would drop. A count of bytes is read with -d '' -n, not -N, which
+;; macOS's bash 3.2 lacks: with NUL its delimiter, -n reads them all.
 (define (websocket-script path sends)
   (string-append
    "LC_ALL=C\n"
@@ -547,10 +550,10 @@
           (map (lambda (send)
                  (string-append
                   "printf '" (car send) "' >&3\n"
-                  "IFS= read -r -t 10 -N " (number->string (cdr send))
+                  "IFS= read -r -d '' -t 10 -n " (number->string (cdr send))
                   " got <&3; printf '%s' \"$got\" | od -An -tx1 | tr -d ' \\n'; echo\n"))
                sends))
-   "IFS= read -r -t 10 -N 1 got <&3; echo \"read $?\"\n"
+   "IFS= read -r -d '' -t 10 -n 1 got <&3; echo \"read $?\"\n"
    "exec 3>&-\n"))
 
 ;; websocket-talked : Nat String (Listof (Pair String Nat)) -> (List Nat String String)

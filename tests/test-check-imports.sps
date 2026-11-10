@@ -1638,24 +1638,27 @@
 ;; A Mac's default disk finds a name in any case, so Chez there would take
 ;; (jsonparse easy) from Jsonparse/easy.sls, (generated jsonparse) from
 ;; Generated/jsonparse.sls, and (byte-machine) from BYTE-MACHINE.so.
+;; Generated and GENERATED are in directories of their own: macOS's file
+;; system ignores case by default, so in one they would be one directory.
 (test-equal "rule (p): jsonparse's, generated's and byte-machine's names in any case are named; names in another case that only begin with their letters are not"
   'refused
   (call-with-temp-directory
    (lambda (dir)
      (make-tree dir '("jp/" "bm/" "g/Jsonparse/easy.sls" "g/JSONPARSE.sls" "g/jSoNpArSe.Ss" "g/JSONPARSER.SLS"
-                      "g/Generated/jsonparse.sls" "g/GENERATED/JsonParse.so" "g/GENERATED/JSONPARSE-MACHINE.sls"
+                      "g/Generated/jsonparse.sls" "h/GENERATED/JsonParse.so" "h/GENERATED/JSONPARSE-MACHINE.sls"
                       "g/Byte-Machine/runtime.sls" "g/BYTE-MACHINE.so" "g/Byte-Machinery.sls"))
      (let* ((g (string-append dir "/g"))
+            (h (string-append dir "/h"))
             (jp (string-append dir "/jp"))
             (bm (string-append dir "/bm"))
             (want (refused (on-jsonparse-path g "JSONPARSE.sls" jp)
                            (on-jsonparse-path g "Jsonparse" jp)
                            (on-jsonparse-path g "jSoNpArSe.Ss" jp)
-                           (on-generated-path g "GENERATED" "JsonParse.so" jp)
                            (on-generated-path g "Generated" "jsonparse.sls" jp)
+                           (on-generated-path h "GENERATED" "JsonParse.so" jp)
                            (on-byte-machine-path g "BYTE-MACHINE.so" bm)
                            (on-byte-machine-path g "Byte-Machine" bm)))
-            (got (run (list (root "legal") "--jsonparse" jp "--byte-machine" bm g))))
+            (got (run (list (root "legal") "--jsonparse" jp "--byte-machine" bm g h))))
        (if (equal? got want) 'refused got)))))
 
 (test-equal "rule (p): with no --jsonparse and no --byte-machine, every library directory that holds jsonparse, (generated jsonparse) or byte-machine is named, the ones the flags would name among them"
