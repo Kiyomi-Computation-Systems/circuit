@@ -202,13 +202,6 @@ close-out under **Close-outs**, newest first.
   versions it needs. Until it is published,
   circuit can't be installed with Akku, and the submodule stays its only way in
   (ADR-0003).
-- **Kiyomi-Computation-Systems/jsonparse#17, filed 2026-11-10:** `read-json` refuses a
-  body that isn't JSON only once the 16 KiB holding its bad byte, or the body's end, is
-  in, where jsonparse's stream readers read with `get-bytevector-some`; and nothing in
-  its docs or rows promises that a port's raise passes through it, which
-  `wrap-json-body`'s guard relies on. Circuit's rows hold today's behaviour. A jsonparse
-  release with either change is on byte-machine 0.9.0, so it comes with the server's
-  next release (ADR-0009).
 - **A wrap's `f` can meet a closed port in the test host** once the client has gone while
   the app waited (design §6, §9), and the test host drops `f`'s raise. Over a real socket,
   a FIN is heard at once, but the request stays open until its response is written: `f`
@@ -256,7 +249,8 @@ close-out under **Close-outs**, newest first.
 On the owner's brief and answers (design §15.36). Commits on `open/slice-11`: the code,
 tests and docs (bc8abda), this close-out (f35eede), and its CI run named here. `make test`
 passes 26 suites, `make check-site` passes, and `make gate` passes every held gate. CI
-passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job.
+passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job. A fourth
+commit records the owner's decline of jsonparse#17, below.
 
 - **`(circuit json)`**, the twelfth public library: `wrap-json-body`, `req-json?`,
   `req-json` and `make-json-res`. `(wrap-json-body n [options])` reads a request whose one
@@ -364,7 +358,11 @@ passed on the PR (run 42799289676, 4m34s), on amd64, arm64 and the site job.
   - filed as Kiyomi-Computation-Systems/jsonparse#17: `read-json`'s refusal waits for
     16 KiB, where its stream readers use `get-bytevector-some`; and its docs and rows
     don't promise that a port's raise passes through it, as they do for `write-json` and
-    `read-json-sequence`, though circuit's rows rely on it;
+    `read-json-sequence`, though circuit's rows rely on it. The owner declined it the
+    same day, as too much overhead for jsonparse: design §15.36 and ADR-0009's
+    consequences record it, and the Open list doesn't carry it. Circuit's rows hold the
+    pass-through: on a copy of jsonparse whose `read-json` turns a port's raise into a
+    `&json-error`, the 413, smallest-cap and `wrap-timeout` rows fail;
 - **`(circuit params)`'s gaps, folded in on the owner's word:** `(circuit json)` copied
   its code, and three mutants of it passed every row of `tests/test-params.sps`: a cap of
   0 refused, 3/2 taken as a cap, and `media-type` without its leading trim, which no
