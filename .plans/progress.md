@@ -180,8 +180,11 @@ close-out under **Close-outs**, newest first.
   [PR #46](https://github.com/Kiyomi-Computation-Systems/circuit/pull/46) on 2026-11-10;
   its close-out is below. `[0.3.0]` takes Unreleased whole: `(circuit json)` and the
   jsonparse submodule.
-- **Next:** v0.3.0's tag on #46's squash, once main's CI on it passes, then its Release
-  and its site.
+- **v0.3.0 is tagged, released and published**, recorded in
+  [PR #47](https://github.com/Kiyomi-Computation-Systems/circuit/pull/47), squashed on
+  2026-11-10; its close-out is below. The tag is on b08e422, #46's squash, the
+  Release is the repository's latest, and the docs site names v0.3.0.
+- **Next:** the owner's call. The Open list below holds what is known.
 
 ## Open
 
@@ -248,6 +251,35 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-10: v0.3.0 tagged, released and published, recorded in PR #47
+
+On the owner's "Do ritual and then tag & release". This PR holds this close-out alone
+(519b2f5); CI passed on it (run 42861183222, 4m44s), on amd64, arm64 and the site job.
+
+- **CI on the tagged commit:** main's run on b08e422, #46's squash, 42859839694, passed
+  on amd64, arm64 and the site job, every job completed;
+- **the tag:** `v0.3.0` (tag object b3569c8) on b08e422, annotated and signed with the
+  Kiyomi release key (`git tag -v`: a good signature), checked absent locally and on
+  origin first, then pushed alone. Its message: "circuit v0.3.0 — JSON request bodies",
+  then a paragraph from `[0.3.0]`'s intro. The tag's day is `[0.3.0]`'s date;
+- **the site:** the tag's push ran the Pages workflow (42860804468): its build in 30s
+  and its deploy in 10s. Live, each of the 16 pages answers 200, one for each page in
+  `docs/`; links to circuit's files name `blob/v0.3.0/` (11), to the server's
+  `blob/v0.10.0/` (31), to chez-websocket's `blob/v0.5.1/` (3) and to jsonparse's
+  `blob/v0.1.0/` (2), and none names `blob/main/` or an earlier circuit tag; the home
+  page says v0.3.0, and Installing clones `--branch v0.3.0`;
+- **the GitHub Release:** that title, from the tag with `--verify-tag` and `--latest`,
+  not a draft or a prerelease, and the repository's latest (`releases/latest` answers
+  v0.3.0). Its notes are `[0.3.0]` as the tag holds it, intro to last bullet, 1,493
+  bytes, and the published body is those notes, byte for byte, read from the API's
+  JSON. The recipe first rebuilt v0.2.0's published notes, 10,279 bytes, byte for byte;
+- **GitHub's source tarball** for the tag, listed, not unpacked: 793 entries,
+  `vendor/`'s three directories empty, neither `.plans/` nor `AGENTS.md`, the 16 docs
+  pages in it, and `Akku.manifest` naming 0.3.0;
+- **not run:** a fresh clone of the tag built and tested, which v0.2.0's record did on
+  the owner's "do the clone check";
+- **no agents ran.**
 
 ### 2026-11-10: v0.3.0, in PR #46
 
