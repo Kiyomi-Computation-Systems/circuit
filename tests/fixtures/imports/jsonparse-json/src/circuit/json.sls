@@ -1,0 +1,11 @@
+#!r6rs
+(library (circuit json)
+  (export)
+  (import (rnrs)
+          (only (circuit request) req-body)
+          (only (jsonparse easy) read-json)
+          (only (library (jsonparse easy)) json->bytevector)
+          (prefix (only (jsonparse easy) json-error?) j:)
+          (rename (only (jsonparse easy (0 1)) json-error-reason) (json-error-reason reason))
+          (except (only (jsonparse easy) read-json json-error-offset) read-json)
+          (for (only (jsonparse easy) make-json-options) run)))

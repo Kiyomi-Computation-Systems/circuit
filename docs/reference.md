@@ -1,6 +1,6 @@
 # API reference
 
-Every name the eleven public libraries export, one entry each, library by
+Every name the twelve public libraries export, one entry each, library by
 library. An entry gives the name's signature, says what it does, and links
 the guide page that explains it. A name `(circuit http-server)` re-exports
 from chez-http-server has no signature here: its entry links the server's
@@ -1245,6 +1245,55 @@ params->string : Params -> String
 
 Pairs written urlencoded, a space as `+`, for a query or a test's form
 body. See [Query strings and forms](params.md).
+
+## `(circuit json)`
+
+A request's JSON body, read by jsonparse 16 KiB at a time, and a JSON
+response. Options are jsonparse's, made by `make-json-options` from
+`(jsonparse easy)`.
+
+```scheme
+(import (rnrs) (circuit) (circuit json))
+```
+
+### `wrap-json-body`
+
+```text
+wrap-json-body : Nat [json-options] -> Middleware
+```
+
+Middleware that reads an `application/json` or `application/...+json`
+body before the handler, at most that many bytes, under any cap the
+request already has. A longer one is a `413`, a body that isn't JSON a
+`400` with its reason and byte, and an empty one no JSON. It goes inside
+every cap. See [JSON](json.md).
+
+### `req-json?`
+
+```text
+req-json? : Req -> Boolean
+```
+
+Whether `wrap-json-body` read a value from the body. See [JSON](json.md).
+
+### `req-json`
+
+```text
+req-json : Req -> Any
+```
+
+The value `wrap-json-body` read from the body, `false` as `#f`. With
+none read, an assertion violation. See [JSON](json.md).
+
+### `make-json-res`
+
+```text
+make-json-res : Integer Any [json-options] -> Res
+```
+
+A response whose body is the value as JSON, compact unless the options
+say otherwise, with `content-type: application/json`. A value JSON can't
+express raises jsonparse's `&json-error`. See [JSON](json.md).
 
 ## `(circuit cookies)`
 

@@ -9,12 +9,13 @@
 ;;; once only because each is the server's own binding. chez-websocket's
 ;;; facade, (websocket), is imported beside (circuit websocket), as an app
 ;;; that takes a WebSocket imports both: a name of either that another
-;;; library here exports is a clash too.
+;;; library here exports is a clash too. So is jsonparse's (jsonparse easy),
+;;; beside (circuit json), as an app that reads JSON imports both.
 ;;;
 ;;; Its tests hold what the import cannot: that each library exports exactly
 ;;; its list, so the (circuit) facade keeps the adapter's, the tests', the
-;;; router's, the CORS and header middleware's, the params' and the
-;;; cookies' names out,
+;;; router's, the CORS and header middleware's, the params', the JSON
+;;; and the cookies' names out,
 ;;; that the adapter's re-exports are the server's own bindings,
 ;;; compared through a prefixed import of each, and that the like-named
 ;;; bindings of the two make different things.
@@ -36,6 +37,8 @@
         (circuit middleware headers)
         (circuit router)
         (circuit params)
+        (circuit json)
+        (jsonparse easy)
         (circuit cookies)
         (circuit session)
         (circuit test)
@@ -179,6 +182,15 @@
   '()
   (filter (lambda (name) (memq name (library-exports '(circuit))))
           (library-exports '(circuit params))))
+
+(test-equal "(circuit json) exports its four exactly"
+  '(make-json-res req-json req-json? wrap-json-body)
+  (sorted-exports '(circuit json)))
+
+(test-equal "(circuit) exports none of the JSON names: an app imports (circuit json) beside it"
+  '()
+  (filter (lambda (name) (memq name (library-exports '(circuit))))
+          (library-exports '(circuit json))))
 
 (test-equal "(circuit cookies) exports its ten exactly"
   '(cookie-domain cookie-http-only cookie-max-age cookie-path cookie-same-site cookie-secure

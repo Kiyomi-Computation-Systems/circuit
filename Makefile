@@ -3,13 +3,16 @@
 # On a Guix host, run targets through the container:
 #   scripts/guix-env make <target>
 #
-# Two dependencies, each pinned by gitlink at a release tag under vendor/:
-# chez-http-server, and chez-websocket for (circuit websocket). The server
-# carries its own pins, and circuit uses them through it: chez-libuv,
-# chez-httparse with byte-machine under it, uriparse, and chez-srfi for
-# SRFI-64. chez-websocket pins a server of its own, which circuit doesn't
-# clone: it must be SERVER_PIN. `make submodules` clones those, and not the
-# server's test clients; `make check-pins` holds them where the pins say.
+# Three dependencies, each pinned by gitlink at a release tag under vendor/:
+# chez-http-server, chez-websocket for (circuit websocket), and jsonparse for
+# (circuit json). The server carries its own pins, and circuit uses them
+# through it: chez-libuv, chez-httparse with byte-machine under it, uriparse,
+# and chez-srfi for SRFI-64. chez-websocket pins a server of its own, which
+# circuit doesn't clone: it must be SERVER_PIN. jsonparse pins a
+# byte-machine of its own, which circuit doesn't clone either: it must be the
+# one chez-httparse records, so the path holds one byte-machine (ADR-0009).
+# `make submodules` clones those, and not the server's test clients;
+# `make check-pins` holds them where the pins say.
 # One dependency comes from Akku: hashing, for (circuit session), which
 # `make submodules` also fetches into vendor/akku as Akku.lock pins it, its
 # sha256 checked (ADR-0008), and `make check-pins` holds it to its archive.
@@ -54,6 +57,8 @@ SERVER_DIR := vendor/chez-http-server
 SERVER_PIN := 5c16f64b34087ff32225de4838fe0b83a3d55bb2  # v0.10.0
 WEBSOCKET_DIR := vendor/chez-websocket
 WEBSOCKET_PIN := 4b70f22b9ab8716c999d2599a75c7ee6a357ecd4  # v0.5.1
+JSONPARSE_DIR := vendor/jsonparse
+JSONPARSE_PIN := a939f3132fa229de4a032927c1a2b272b63cc9af  # v0.1.0
 
 # --- the pins it carries ------------------------------------------------------
 LIBUV_DIR        := $(SERVER_DIR)/vendor/chez-libuv
@@ -65,7 +70,8 @@ SRFI_DIR         := $(SERVER_DIR)/vendor/chez-srfi
 # --- the library paths --------------------------------------------------------
 # LIBDIRS is the path `make run` and `make dev` use: circuit's src/, then the
 # server's, chez-websocket's and the libraries the server carries, then
-# vendor/akku, which holds hashing. chez-libuv locates its C shim by an
+# jsonparse's src/, not its vendor/, whose byte-machine is chez-httparse's,
+# then vendor/akku, which holds hashing. chez-libuv locates its C shim by an
 # absolute path baked into the config.sls its build generates, so only its
 # src/ is needed. build/scheme-libs carries (srfi :64). vendor/akku comes
 # last, so it can stand in for none of the others' libraries.
@@ -83,6 +89,7 @@ LIBDIR_LIST := src \
   $(LIBUV_DIR)/src \
   $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src \
   $(URIPARSE_DIR)/src \
+  $(JSONPARSE_DIR)/src \
   $(SRFI_LIBS) \
   $(AKKU_DIR)
 LIBDIRS := $(subst $(SPACE),:,$(strip $(LIBDIR_LIST)))
@@ -192,9 +199,9 @@ FETCH_TOOL = $(if $(shell command -v curl 2>/dev/null),curl,$(if $(shell command
 SHA256_TOOL = $(if $(shell command -v sha256sum 2>/dev/null),sha256sum,$(if $(shell command -v shasum 2>/dev/null),shasum,"sha256sum or shasum"))
 XZ_TOOL = $(if $(findstring GNU,$(shell tar --version 2>/dev/null)),xz)
 
-submodules: ## (host) Clone the pinned server, the pins it carries, and chez-websocket; fetch hashing into vendor/akku
+submodules: ## (host) Clone the pinned server, the pins it carries, chez-websocket and jsonparse; fetch hashing into vendor/akku
 	@scripts/require-tools "$(GOAL)" git $(FETCH_TOOL) tar $(XZ_TOOL) $(SHA256_TOOL) diff
-	git submodule update --init $(SERVER_DIR) $(WEBSOCKET_DIR)
+	git submodule update --init $(SERVER_DIR) $(WEBSOCKET_DIR) $(JSONPARSE_DIR)
 	git -C $(SERVER_DIR) submodule update --init vendor/chez-libuv vendor/uriparse vendor/chez-srfi
 	git -C $(SERVER_DIR) submodule update --init --recursive vendor/chez-httparse
 	AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock hashing
@@ -202,10 +209,13 @@ submodules: ## (host) Clone the pinned server, the pins it carries, and chez-web
 # Each checkout is asked for its own .git first: in a submodule that was
 # never cloned, `git -C` would climb to the repository around it and answer
 # that one's commit: for chez-websocket's server, circuit's own gitlink.
+# jsonparse's byte-machine is never cloned: its gitlink, read from
+# jsonparse's tree, must be the one chez-httparse's tree records, which the
+# checkout on the path is held to.
 # vendor/akku is held by scripts/fetch-akku-lock --check, which downloads
 # nothing: hashing's tree must record Akku.lock's sha256 and be the archive
 # under vendor/akku/dl, with that sha256, unpacked. Read-only.
-check-pins: ## (host) Fail unless the server and chez-websocket sit at their pins, chez-websocket's server pin is SERVER_PIN, each pin the server carries sits where it records, and vendor/akku holds hashing as Akku.lock pins it
+check-pins: ## (host) Fail unless the server, chez-websocket and jsonparse sit at their pins, chez-websocket's server pin is SERVER_PIN, jsonparse's byte-machine pin is chez-httparse's, each pin the server carries sits where it records, and vendor/akku holds hashing as Akku.lock pins it
 	@scripts/require-tools "$(GOAL)" git tar $(XZ_TOOL) $(SHA256_TOOL) diff
 	@fail=0; \
 	check_pin() { \
@@ -229,11 +239,20 @@ check-pins: ## (host) Fail unless the server and chez-websocket sit at their pin
 	    echo "PIN MISMATCH: $(WEBSOCKET_DIR) pins the server at $${wsrv:-<no gitlink recorded>}, SERVER_PIN says $(strip $(SERVER_PIN))" >&2; fail=1; \
 	  else echo "pin ok: $(WEBSOCKET_DIR)'s server $$wsrv, SERVER_PIN"; fi; \
 	fi; \
+	gitlink $(JSONPARSE_DIR) JSONPARSE_PIN $(strip $(JSONPARSE_PIN)); \
+	check_pin $(JSONPARSE_DIR) $(strip $(JSONPARSE_PIN)); \
+	if [ -e "$(JSONPARSE_DIR)/.git" ]; then \
+	  jbm=$$(recorded $(JSONPARSE_DIR) vendor/byte-machine); \
+	  hbm=; [ -e "$(HTTPARSE_DIR)/.git" ] && hbm=$$(recorded $(HTTPARSE_DIR) vendor/byte-machine); \
+	  if [ -z "$$jbm" ] || [ "$$jbm" != "$$hbm" ]; then \
+	    echo "PIN MISMATCH: $(JSONPARSE_DIR) pins byte-machine at $${jbm:-<no gitlink recorded>}, but $(HTTPARSE_DIR) records $${hbm:-<none>}: the path holds one byte-machine" >&2; fail=1; \
+	  else echo "pin ok: $(JSONPARSE_DIR)'s byte-machine $$jbm, $(HTTPARSE_DIR)'s"; fi; \
+	fi; \
 	for d in chez-libuv chez-httparse uriparse chez-srfi; do \
 	  check_pin $(SERVER_DIR)/vendor/$$d "$$(recorded $(SERVER_DIR) vendor/$$d)"; \
 	done; \
 	check_pin $(BYTE_MACHINE_DIR) "$$(recorded $(HTTPARSE_DIR) vendor/byte-machine)"; \
-	for d in $(SERVER_DIR) $(WEBSOCKET_DIR) $(LIBUV_DIR) $(HTTPARSE_DIR) $(BYTE_MACHINE_DIR) $(URIPARSE_DIR) $(SRFI_DIR); do \
+	for d in $(SERVER_DIR) $(WEBSOCKET_DIR) $(JSONPARSE_DIR) $(LIBUV_DIR) $(HTTPARSE_DIR) $(BYTE_MACHINE_DIR) $(URIPARSE_DIR) $(SRFI_DIR); do \
 	  if [ -e "$$d/.git" ] && [ -n "$$(git -C $$d status --porcelain --untracked-files=no 2>/dev/null)" ]; then \
 	    echo "PIN DIRTY: $$d has local edits to tracked files" >&2; fail=1; fi; \
 	done; \
@@ -285,7 +304,7 @@ check-chez: ## Fail unless CHEZ is Chez Scheme 10.4.1 or later, threaded, naming
 
 deps: check-chez ## Build chez-libuv's shim and link SRFI-64 into build/scheme-libs; never fetches
 	@scripts/require-tools "$(GOAL)" $(CHEZ) $(CC) pkg-config
-	@for f in $(SERVER_DIR)/src/http-server.sls $(WEBSOCKET_DIR)/src/websocket.sls $(LIBUV_DIR)/Makefile $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src $(URIPARSE_DIR)/src $(SRFI_DIR)/%3a64.sls; do \
+	@for f in $(SERVER_DIR)/src/http-server.sls $(WEBSOCKET_DIR)/src/websocket.sls $(JSONPARSE_DIR)/src/jsonparse/easy.sls $(LIBUV_DIR)/Makefile $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src $(URIPARSE_DIR)/src $(SRFI_DIR)/%3a64.sls; do \
 	  if [ ! -e "$$f" ]; then \
 	    echo "deps: $$f not found, so a submodule is empty or missing. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
 	    exit 1; \
@@ -371,17 +390,22 @@ check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared ex
 # waits) import the server or (chezscheme), and only (circuit websocket)
 # imports chez-websocket, through its facade (websocket) alone: the core is
 # plain R6RS, importing its own libraries and (rnrs ...) alone, but
-# (circuit session), which imports (hashing sha-2) through only
+# (circuit session), which imports (hashing sha-2) through only, and
+# (circuit json), which imports (jsonparse easy) through only
 # (tests/check-imports.sps). (hashing sha-2), read from AKKU_DIR as Chez
 # resolves it, and the libraries it imports, import (rnrs ...) and each
-# other alone. And no other directory of LIBRARY_DIRS holds a (circuit ...)
-# library, nor any but AKKU_DIR a hashing one. It names each breach on
+# other alone; (jsonparse easy), read from byte-machine's src/ and
+# jsonparse's, in LIBDIRS' order, and the libraries it imports, import
+# (rnrs ...), each other and byte-machine's runtime alone. And no other directory of
+# LIBRARY_DIRS holds a (circuit ...) library, nor any but AKKU_DIR a hashing
+# one, nor any but jsonparse's src/ a jsonparse one, nor any but
+# BYTE_MACHINE_DIR's src/ a byte-machine. It names each breach on
 # stderr. make test runs it once src/ exists; an src/ with no library fails
 # it. Its own suite, tests/test-check-imports.sps, runs in make test whether
 # src/ exists or not.
-check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), only (circuit websocket) imports (websocket), only (circuit session) imports hashing, the core imports nothing else, only src holds circuit's libraries, and only vendor/akku hashing
+check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), only (circuit websocket) imports (websocket), only (circuit session) imports hashing, only (circuit json) imports jsonparse, the core imports nothing else, only src holds circuit's libraries, only vendor/akku hashing, and the path one jsonparse and one byte-machine
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
-	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src --akku $(AKKU_DIR) $(LIBRARY_DIRS)
+	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src --akku $(AKKU_DIR) --jsonparse $(JSONPARSE_DIR)/src --byte-machine $(BYTE_MACHINE_DIR)/src $(LIBRARY_DIRS)
 
 # The cost gate (design §15.6, ADR-0007), outside `make test`: bytes a
 # request through circuit's adapter, against the raw server and its

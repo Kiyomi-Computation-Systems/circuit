@@ -12,7 +12,10 @@
   a development dependency that `Akku.lock` pins (item 7); 2026-11-06, in slice 10b: `Akku.manifest` names its first
   `depends`, hashing, which the same lock pins and `make submodules` fetches into
   `vendor/akku` (item 7, [ADR-0008](0008-hashing-from-akku-is-the-first-runtime-dependency.md));
-  2026-11-06, after slice 10b: `make check-pins` holds `vendor/akku` too (item 4)
+  2026-11-06, after slice 10b: `make check-pins` holds `vendor/akku` too (item 4);
+  2026-11-10, in slice 11: jsonparse is a third submodule, for `(circuit json)`, its own
+  byte-machine pin held to chez-httparse's and not cloned (item 8,
+  [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md))
 - **Scope:** circuit's dependencies
 - **Prior art:** chez-websocket, which takes the server the same way
 - **Related:** [ADR-0002](0002-builds-and-tests-run-in-a-pinned-guix-container-with-no-network.md)
@@ -62,6 +65,14 @@ either, and takes the server as a submodule.
    Since slice 10b, `Akku.manifest`'s `depends` names hashing, circuit's one runtime
    dependency from the index, which the same lock pins and `make submodules` fetches into
    `vendor/akku` by the same script (ADR-0008).
+8. **jsonparse is a submodule at `vendor/jsonparse`, pinned at a release tag**, v0.1.0
+   (`a939f31`) since 2026-11-10, for `(circuit json)` (ADR-0009). `JSONPARSE_PIN` names
+   the same commit. It pins a byte-machine of its own, which circuit doesn't clone: the
+   server's, under chez-httparse, is the one on the library path. So jsonparse's
+   gitlink for its byte-machine must equal chez-httparse's. `make submodules` clones
+   jsonparse alone, none of its submodules; `make check-pins` holds its gitlink and its
+   checkout at `JSONPARSE_PIN`, its byte-machine's gitlink at chez-httparse's, and no
+   local edits in it. No Akku dependency on it either: it isn't on the index.
 
 ## Consequences
 
@@ -69,6 +80,9 @@ either, and takes the server as a submodule.
   chez-websocket's: its gitlink and `WEBSOCKET_PIN`.
 - **The server's pin moves only with a chez-websocket release on the same server**, or
   `make check-pins` fails: circuit runs chez-websocket on circuit's server, not its own.
+- **A server pin that moves chez-httparse's byte-machine moves jsonparse's too**, to a
+  jsonparse release on the same byte-machine, on the same commit, or `make check-pins`
+  fails.
 - **A pin move brings the server's pins along**, and `make check-pins` holds them where the
   server records them.
 - **`Akku.manifest` names what the lock pins:** hashing in `depends`, and chez-cmark-gfm,

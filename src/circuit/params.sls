@@ -106,14 +106,15 @@
            (ascii-ci=? (media-type (car fields)) "application/x-www-form-urlencoded"))))
 
   ;; media-type : String -> String
-  ;; VALUE up to its first ;, without the SP and HTAB at either end.
+  ;; VALUE up to its first ;, without the SP and HTAB before it. A field's
+  ;; value has none at its start: the server and make-test-req trim them.
   (define (media-type value)
     (let* ((n (string-length value))
            (end (let loop ((i 0)) (if (or (= i n) (char=? (string-ref value i) #\;)) i (loop (+ i 1))))))
-      (let trim ((start 0) (end end))
-        (cond ((and (< start end) (ows? (string-ref value start))) (trim (+ start 1) end))
-              ((and (< start end) (ows? (string-ref value (- end 1)))) (trim start (- end 1)))
-              (else (substring value start end))))))
+      (let trim ((end end))
+        (if (and (> end 0) (ows? (string-ref value (- end 1))))
+            (trim (- end 1))
+            (substring value 0 end)))))
 
   (define (ows? c) (or (char=? c #\space) (char=? c #\tab)))
 

@@ -7,6 +7,22 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **JSON: `(circuit json)`.** `(wrap-json-body n)` reads the body of a request whose
+  `content-type` is `application/json` or `application/<name>+json`, of at most `n`
+  bytes, before the handler, 16 KiB at a time. `(req-json? req)` says whether it read a
+  value, and `(req-json req)` is the value: an object as an alist, every key kept, an
+  array as a vector, `false` as `#f` and `null` as the symbol `null`. A body that isn't
+  JSON is a `400` naming the reason and the byte, an empty one no JSON, and any other
+  request passes untouched. An optional second argument takes jsonparse's options, its
+  depth limit among them. `(make-json-res status value)` answers with the value as JSON,
+  `application/json`.
+- **jsonparse v0.1.0 is a third submodule,** under `vendor/jsonparse`, for
+  `(circuit json)`. It runs on the server's byte-machine, so the path holds one:
+  `make check-pins` holds jsonparse's byte-machine pin to chez-httparse's. Run
+  `make submodules` again in an earlier checkout.
+
 ## [0.2.0] - 2026-11-07
 
 The fourth release: cookies, sessions, the query and urlencoded forms, CORS and security

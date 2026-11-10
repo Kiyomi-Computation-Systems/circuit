@@ -4,3 +4,6 @@
 [submodule "vendor/chez-websocket"]
 	path = vendor/chez-websocket
 	url = https://github.com/Kiyomi-Computation-Systems/chez-websocket.git
+[submodule "vendor/jsonparse"]
+	path = vendor/jsonparse
+	url = https://github.com/Kiyomi-Computation-Systems/jsonparse.git

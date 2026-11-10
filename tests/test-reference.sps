@@ -8,9 +8,9 @@
 ;;; block whose info string is text, holding the signature, then words and
 ;;; links. Its rows:
 ;;;
-;;;   (a) the page's sections are the eleven public libraries, in their order,
+;;;   (a) the page's sections are the twelve public libraries, in their order,
 ;;;       each once;
-;;;   (b) every library under src/ is one of the eleven, or the names it
+;;;   (b) every library under src/ is one of the twelve, or the names it
 ;;;       exports that no public library exports are exactly the ones this
 ;;;       suite lists as the adapter's and the tests' own;
 ;;;   (c) under each section, the entries are the library's exports, by
@@ -30,9 +30,9 @@
 ;;;       one's docs/reference.md at its pin's tag, whose anchored section,
 ;;;       down to the next heading of its level or a higher one, names it in
 ;;;       a code span;
-;;;   (f) every link in docs/*.md and README.org into chez-http-server's or
-;;;       chez-websocket's repository, at blob/<ref>/ or tree/<ref>/, names
-;;;       its pin's tag as <ref>;
+;;;   (f) every link in docs/*.md and README.org into chez-http-server's,
+;;;       chez-websocket's or jsonparse's repository, at blob/<ref>/ or
+;;;       tree/<ref>/, names its pin's tag as <ref>;
 ;;;   (g) every re-export that is a procedure has one signature comment in
 ;;;       the library under src/ that re-exports it, and its text is the one
 ;;;       signature that one's docs/reference.md, as vendored at its pin,
@@ -43,8 +43,8 @@
 ;;; A pin's tag is v and the version its vendored copy's Akku.manifest
 ;;; gives, which the Makefile's comment on the pin, `SERVER_PIN := <sha>  #
 ;;; vX.Y.Z`, must name too. The records name each pin as the Makefile does,
-;;; its tag and its sha's first seven digits, the server's then
-;;; chez-websocket's: the global constraints as `now vX.Y.Z (`sha`)`, and
+;;; its tag and its sha's first seven digits, the server's, chez-websocket's,
+;;; then jsonparse's: the global constraints as `now vX.Y.Z (`sha`)`, and
 ;;; ADR-0003 as `vX.Y.Z (`sha`) since <date>`. And the page's own shape: no heading out of the
 ;;; convention; each type alias in its intro is the alias comment in src/,
 ;;; `;; NAME = TYPE`, where two that name one type agree; every entry has
@@ -101,11 +101,11 @@
 (define makefile "Makefile")
 
 ;; public-libraries : (Listof (Listof Symbol))
-;; The eleven, in the page's order.
+;; The twelve, in the page's order.
 (define public-libraries
   '((circuit) (circuit http-server) (circuit middleware waits) (circuit middleware cors)
-    (circuit middleware headers) (circuit router) (circuit params) (circuit cookies)
-    (circuit session) (circuit websocket) (circuit test)))
+    (circuit middleware headers) (circuit router) (circuit params) (circuit json)
+    (circuit cookies) (circuit session) (circuit websocket) (circuit test)))
 
 ;; internal-exports : (Listof (Pair (Listof Symbol) (Listof Symbol)))
 ;; What a library under src/ exports for the adapter and the tests, which no
@@ -125,6 +125,15 @@
      "vendor/chez-http-server/docs/reference.md" "vendor/chez-http-server/Akku.manifest")
     ((websocket) "chez-websocket" "WEBSOCKET_PIN"
      "vendor/chez-websocket/docs/reference.md" "vendor/chez-websocket/Akku.manifest")))
+
+;; pin-specs : (Listof (List String String String))
+;; Each repository circuit pins by gitlink: its name, the Makefile variable
+;; that pins it, and its vendored Akku.manifest, in the order the records
+;; name the pins. upstream-specs's are the first two.
+(define pin-specs
+  '(("chez-http-server" "SERVER_PIN" "vendor/chez-http-server/Akku.manifest")
+    ("chez-websocket" "WEBSOCKET_PIN" "vendor/chez-websocket/Akku.manifest")
+    ("jsonparse" "JSONPARSE_PIN" "vendor/jsonparse/Akku.manifest")))
 
 (define github "https://github.com/Kiyomi-Computation-Systems/")
 
@@ -498,11 +507,11 @@
 
 ;; --- links into the pinned repositories, in any text ---------------------------
 
-;; repository-refs : String -> (Listof (List String String String))
-;; Every link in TEXT into chez-http-server's or chez-websocket's
-;; repository at blob/<ref> or tree/<ref>, as its repository, blob or tree,
-;; and the ref, in order. TEXT is read as text: Markdown, Org or anything.
-(define (repository-refs text)
+;; repository-refs : String (Listof String) -> (Listof (List String String String))
+;; Every link in TEXT into one of the REPOS of Kiyomi-Computation-Systems
+;; at blob/<ref> or tree/<ref>, as its repository, blob or tree, and the
+;; ref, in order. TEXT is read as text: Markdown, Org or anything.
+(define (repository-refs text repos)
   (let ((host "github.com/Kiyomi-Computation-Systems/"))
     (let loop ((i 0) (found '()))
       (let ((at (string-search text host i)))
@@ -513,7 +522,7 @@
                    (parts (split-at-slashes (substring text start end))))
               (loop end
                     (if (and (>= (length parts) 3)
-                             (member (car parts) '("chez-http-server" "chez-websocket"))
+                             (member (car parts) repos)
                              (member (cadr parts) '("blob" "tree")))
                         (cons (list (car parts) (cadr parts) (caddr parts)) found)
                         found))))))))
@@ -1110,6 +1119,24 @@
 (define (upstream-of-repo repo)
   (find (lambda (u) (string=? (upstream-repo u) repo)) upstreams))
 
+(define-record-type pinned
+  (fields repo variable manifest package tag makefile-tag))
+
+;; pins : (Listof pinned)
+;; Each of pin-specs: its manifest's package, its tag, v and the manifest's
+;; version, and the tag the Makefile's comment on it names.
+(define pins
+  (guard (e (#t '()))
+    (map (lambda (spec)
+           (let ((package (manifest-package (or (read-data (caddr spec)) '()))))
+             (make-pinned (car spec) (cadr spec) (caddr spec) package
+                          (and package (string-append "v" (cdr package)))
+                          (pin-tag makefile-text (cadr spec)))))
+         pin-specs)))
+
+(define (pinned-of-repo repo)
+  (find (lambda (p) (string=? (pinned-repo p) repo)) pins))
+
 ;; upstream-signatures : (Listof (Pair String (Listof (Pair Symbol String))))
 ;; Each upstream's repository, with every signature its reference gives.
 (define upstream-signatures
@@ -1392,17 +1419,19 @@
   (guard (e (#t (list 'raised (describe e))))
     (map counts-text '(2 6 28 -2 -3 0))))
 
-(test-equal "repository-refs reads every blob and tree link into the two repositories, in Markdown or Org"
+(test-equal "repository-refs reads every blob and tree link into the repositories named, in Markdown or Org"
   '(("chez-http-server" "blob" "v1.2.3") ("chez-websocket" "tree" "main")
-    ("chez-http-server" "blob" "v0.0.1"))
+    ("jsonparse" "blob" "v0.1.0") ("chez-http-server" "blob" "v0.0.1"))
   (guard (e (#t (list 'raised (describe e))))
     (repository-refs
      (string-append
       "[a](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v1.2.3/docs/x.md#y) "
       "https://github.com/Kiyomi-Computation-Systems/chez-websocket/tree/main and "
       "https://github.com/Kiyomi-Computation-Systems/circuit/blob/v9.9.9/README.org "
+      "https://github.com/Kiyomi-Computation-Systems/jsonparse/blob/v0.1.0/docs/tree.md "
       "https://github.com/Kiyomi-Computation-Systems/chez-http-server/issues/3\n"
-      "[[https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.0.1/README.md][b]]"))))
+      "[[https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.0.1/README.md][b]]")
+     '("chez-http-server" "chez-websocket" "jsonparse"))))
 
 (test-equal "page-anchors makes GitHub's anchors, a repeat numbered, none from inside a fence"
   '("api-reference" "the-server" "http-server-error-http-server-error" "request-on-done"
@@ -1456,46 +1485,47 @@
 ;; --- the pins ------------------------------------------------------------------------------
 
 (test-equal "each vendored Akku.manifest names its package and a release version, vX.Y.Z"
-  '(("chez-http-server" #t) ("chez-websocket" #t))
-  (map (lambda (u) (list (and (upstream-package u) (car (upstream-package u))) (release-tag? (upstream-tag u))))
-       upstreams))
+  '(("chez-http-server" #t) ("chez-websocket" #t) ("jsonparse" #t))
+  (map (lambda (p) (list (and (pinned-package p) (car (pinned-package p))) (release-tag? (pinned-tag p))))
+       pins))
 
 (for-each
- (lambda (u)
-   (test-equal (string-append makefile ": " (upstream-variable u) "'s comment names "
-                              (or (upstream-tag u) "<no tag>") ", v and the version "
-                              (upstream-manifest u) " gives")
-     (upstream-tag u)
-     (upstream-makefile-tag u)))
- upstreams)
+ (lambda (p)
+   (test-equal (string-append makefile ": " (pinned-variable p) "'s comment names "
+                              (or (pinned-tag p) "<no tag>") ", v and the version "
+                              (pinned-manifest p) " gives")
+     (pinned-tag p)
+     (pinned-makefile-tag p)))
+ pins)
 
 ;; --- the records' pins -----------------------------------------------------------------------
 ;; The global constraints say which release each dependency is pinned at
 ;; now, and ADR-0003 since when: each is the Makefile's pin, its tag and its
-;; sha's first seven digits, the server's then chez-websocket's.
+;; sha's first seven digits, the server's, chez-websocket's, then
+;; jsonparse's.
 
 (define constraints ".plans/global-constraints.md")
 (define adr-0003 ".plans/decisions/0003-chez-http-server-is-a-submodule-pinned-at-a-release-tag.md")
 
 ;; record-pins : (Listof (List (U String #f) (U String #f)))
-;; SERVER_PIN and WEBSOCKET_PIN as the records write them.
+;; SERVER_PIN, WEBSOCKET_PIN and JSONPARSE_PIN as the records write them.
 (define record-pins
   (guard (e (#t (list 'raised (describe e))))
     (map (lambda (variable)
            (let ((sha (pin-sha makefile-text variable)))
              (list (pin-tag makefile-text variable)
                    (and sha (>= (string-length sha) 7) (substring sha 0 7)))))
-         '("SERVER_PIN" "WEBSOCKET_PIN"))))
+         (map cadr pin-specs))))
 
 (test-equal (string-append constraints ": each pin it says a dependency is at now is the Makefile's, "
-                           "SERVER_PIN's then WEBSOCKET_PIN's")
+                           "SERVER_PIN's, WEBSOCKET_PIN's, then JSONPARSE_PIN's")
   record-pins
   (guard (e (#t (list 'raised (describe e))))
     (map (lambda (m) (list (cadr m) (caddr m)))
          (filter (lambda (m) (equal? (car m) "now")) (pin-mentions (or (read-text constraints) ""))))))
 
 (test-equal (string-append adr-0003 ": each pin it says a dependency is at since a date is the Makefile's, "
-                           "SERVER_PIN's then WEBSOCKET_PIN's")
+                           "SERVER_PIN's, WEBSOCKET_PIN's, then JSONPARSE_PIN's")
   record-pins
   (guard (e (#t (list 'raised (describe e))))
     (map (lambda (m) (list (cadr m) (caddr m)))
@@ -1503,7 +1533,7 @@
 
 ;; --- (a) the sections ------------------------------------------------------------------------
 
-(test-equal (string-append page ": its ## sections are the eleven public libraries, in order, each once")
+(test-equal (string-append page ": its ## sections are the twelve public libraries, in order, each once")
   public-libraries
   (map section-library page-sections))
 
@@ -1540,7 +1570,7 @@
                      (let ((exports (exports-of library)))
                        (if exports (without exports all-public-names) 'unloadable)))))
          (test-equal (string-append (source-path s) ": " (written library)
-                                    " is no public library, so what it exports that none of the eleven does is the adapter's and the tests' alone")
+                                    " is no public library, so what it exports that none of the twelve does is the adapter's and the tests' alone")
            (sorted-symbols (cond ((assoc library internal-exports) => cdr) (else '())))
            left)))))
  sources)
@@ -1764,14 +1794,14 @@
 (for-each
  (lambda (path)
    (let ((text (read-text path)))
-     (test-equal (string-append path ": every link into chez-http-server's or chez-websocket's repository at a ref names its pin's tag, "
-                                (joined " and " (map (lambda (u) (or (upstream-tag u) "<none>")) upstreams)))
+     (test-equal (string-append path ": every link into chez-http-server's, chez-websocket's or jsonparse's repository at a ref names its pin's tag, "
+                                (joined ", " (map (lambda (p) (or (pinned-tag p) "<none>")) pins)))
        '()
        (if text
            (filter (lambda (ref)
-                     (let ((u (upstream-of-repo (car ref))))
-                       (not (and u (upstream-tag u) (string=? (caddr ref) (upstream-tag u))))))
-                   (repository-refs text))
+                     (let ((p (pinned-of-repo (car ref))))
+                       (not (and p (pinned-tag p) (string=? (caddr ref) (pinned-tag p))))))
+                   (repository-refs text (map car pin-specs)))
            'unreadable))))
  (append (guard (e (#t (list docs-dir)))
            (map (lambda (name) (string-append docs-dir "/" name))

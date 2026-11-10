@@ -24,8 +24,14 @@ provisional. They bind until that record is accepted or amended.
   tag**, now v0.5.1 (`4b70f22`). Its own gitlink for the server must equal `SERVER_PIN`,
   and circuit doesn't clone that server: circuit's is the one on the path. Move its
   gitlink and `WEBSOCKET_PIN` on one commit; `make check-pins` holds them (ADR-0003).
-- **No Akku dependency on the server**, nor on chez-websocket, while they aren't on the
-  Akku index (ADR-0003).
+- **jsonparse is a third submodule, at `vendor/jsonparse`, pinned at a release tag**, now
+  v0.1.0 (`a939f31`), for `(circuit json)`. Its own gitlink for byte-machine must equal
+  chez-httparse's, and circuit doesn't clone it: the path holds one byte-machine, the
+  server's. Move its gitlink and `JSONPARSE_PIN` on one commit, and with the server's
+  when chez-httparse's byte-machine moves; `make check-pins` holds them (ADR-0003,
+  ADR-0009).
+- **No Akku dependency on the server**, nor on chez-websocket or jsonparse, while they
+  aren't on the Akku index (ADR-0003).
 - **chez-cmark-gfm, the docs site's renderer, is pinned by `Akku.lock`**, a development
   dependency alone: nothing under `src/` and no `tests/test-*.sps` imports it.
   `make site-deps` fetches it on the host (ADR-0003).
@@ -80,6 +86,13 @@ provisional. They bind until that record is accepted or amended.
   libraries it imports, import `(rnrs ...)` but `(rnrs eval)`, `(hashing fixnums)` and
   `(hashing hmac)` alone, and no other directory on the library path holds a `hashing`.
   `make check-imports` holds it (ADR-0006, ADR-0008).
+- **Only `(circuit json)` may import a `jsonparse` library: `(jsonparse easy)` alone,
+  through `only`.** `(jsonparse easy)`, as Chez resolves it from byte-machine's `src/`
+  and jsonparse's, in the path's order, and the libraries it imports, import `(rnrs ...)` but `(rnrs eval)`,
+  jsonparse's own libraries, `(generated jsonparse)`, and byte-machine's runtime and its
+  two private libraries alone, and no other directory on the library path holds a
+  `jsonparse`, a `generated/jsonparse` or a `byte-machine`. `make check-imports` holds
+  it (ADR-0006, ADR-0009).
 - **Only `(circuit websocket)` may import `(websocket)`, chez-websocket's facade**, which
   imports the server. No circuit library imports any other `(websocket ...)` library,
   nor `(circuit websocket)`, and `(circuit websocket)` imports neither `(chezscheme)` nor

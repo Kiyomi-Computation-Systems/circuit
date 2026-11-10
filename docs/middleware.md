@@ -118,8 +118,10 @@ hello, guest
 - `req-set` hands the handler a new request, and every handler inside it
   sees the value.
 - Export a reader, here `req-user`, and keep the key to yourself.
-- To parse the body, as a form or JSON, read it once and keep what you
-  parsed under a key: the body can be read only once.
+- To parse the body, read it once and keep what you parsed under a key:
+  the body can be read only once. `wrap-form-params` and `wrap-json-body`
+  do that for a form and for JSON ([Query strings and forms](params.md),
+  [JSON](json.md)).
 
 ## Pass data up
 

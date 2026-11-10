@@ -1,0 +1,12 @@
+#!r6rs
+(library (circuit)
+  (export)
+  (import (rnrs)
+          (generated jsonparse)
+          (only (generated jsonparse) jsonparse-machine)
+          (generated httparse-message)
+          (generated)
+          (byte-machine runtime)
+          (only (byte-machine runtime) make-parser)
+          (byte-machine private conditions)
+          (byte-machine)))

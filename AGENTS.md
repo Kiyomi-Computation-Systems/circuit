@@ -16,12 +16,16 @@
   library, `(circuit session)`, imports `hashing`'s `(hashing sha-2)`,
   through `only`, and no other library imports a `(hashing ...)` one; what
   `(hashing sha-2)` imports is held to `(rnrs ...)` and its own two
-  libraries (ADR-0008).
+  libraries (ADR-0008). Another, `(circuit json)`, imports jsonparse's
+  `(jsonparse easy)`, through `only`, and no other library imports a
+  `(jsonparse ...)` one; what it imports is held to `(rnrs ...)`,
+  jsonparse's own libraries, `(generated jsonparse)`, and byte-machine's
+  runtime and its two private libraries (ADR-0009).
   `make check-imports` holds it, and `make test` runs it once `src/` exists.
 * Follow the 12 Factor Apps philosophy
 * Project is built for Chez Scheme but should be mostly portable to R6RS:
-  the core is plain R6RS, `hashing` too, and only the two libraries above
-  may use Chez's own procedures.
+  the core is plain R6RS, `hashing` and jsonparse too, and only the two
+  libraries above may use Chez's own procedures.
 * Project should be portable across macos (darwin) and linux; windows is not
   supported (`.plans/decisions/0001-windows-is-not-supported.md`)
 * Project should be portable across amd64 and arm64
@@ -40,26 +44,36 @@
   isn't cloned: circuit's server is the one on the path, so chez-websocket's
   server gitlink must equal `SERVER_PIN`. The server's pin moves only with a
   chez-websocket release on that server.
+* jsonparse https://github.com/Kiyomi-Computation-Systems/jsonparse, a third
+  submodule under `vendor/`, pinned at a release tag (`JSONPARSE_PIN`), for
+  `(circuit json)`. Its `src/` is on the library path, and its own
+  byte-machine isn't cloned: the server's, under chez-httparse, is the one on
+  the path, so jsonparse's byte-machine gitlink must equal chez-httparse's.
+  A server pin that moves that byte-machine moves `JSONPARSE_PIN` on the same
+  commit (ADR-0009).
 * hashing, Gwen Weinholt's SHA-2 and HMAC, from the Akku index, for
   `(circuit session)`: circuit's one runtime dependency from Akku
   (ADR-0008). `Akku.manifest` names it in `depends`, and `Akku.lock` pins
   its archive and sha256.
 * `make submodules`, on the host, clones the server and the pins it
-  carries, not its test clients, and chez-websocket, not its server. Then
+  carries, not its test clients, chez-websocket, not its server, and
+  jsonparse, not its submodules. Then
   it fetches hashing as `Akku.lock` pins it into `vendor/akku`, which is
   git-ignored, on the library path, and kept by `make clean`; `make deps`
   fails without it, or on another than the one the lock pins.
   `make check-pins`, on the host and in CI, holds the server at
   `SERVER_PIN`, each pin it carries where the server records it,
   chez-websocket at `WEBSOCKET_PIN` with its server gitlink at `SERVER_PIN`,
-  and `vendor/akku`'s hashing to the archive the lock pins, and refuses a
-  checkout or a tree with local edits. Move a gitlink and its pin
-  (`SERVER_PIN` or `WEBSOCKET_PIN`) on one commit, with the docs' links into
+  jsonparse at `JSONPARSE_PIN` with its byte-machine gitlink at
+  chez-httparse's, and `vendor/akku`'s hashing to the archive the lock pins,
+  and refuses a checkout or a tree with local edits. Move a gitlink and its
+  pin (`SERVER_PIN`, `WEBSOCKET_PIN` or `JSONPARSE_PIN`) on one commit, with
+  the docs' links into
   that repository and the records' lines on the pin, the global
   constraints' "now" and ADR-0003's "since": `tests/test-reference.sps`
   holds the links at the pin's tag and the lines to the pin.
-* chez-http-server isn't on the Akku index, so Akku can't install it for
-  circuit: the submodule is the only way in.
+* chez-http-server and jsonparse aren't on the Akku index, so Akku can't
+  install them for circuit: the submodules are the only way in.
 * chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
   development dependency of `Akku.manifest`. `make site-deps`, on the host,
   fetches it into `build/akku/`, off the library path.
@@ -81,7 +95,7 @@
   `build/site/`, and the Pages workflow publishes it on a release tag.
   `make check-site` gates it: every page is in `site/pages.sls`, in the
   home page's Read next order. `tests/test-reference.sps` holds
-  `docs/reference.md` to every export of the eleven public libraries and its
+  `docs/reference.md` to every export of the twelve public libraries and its
   signature comment: a new export needs an entry.
 * Documentation should be very concise, focused, to the point, ELI5 style.
 * `Makefile` should have a `help` command which lists all of its commands
