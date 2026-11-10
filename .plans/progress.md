@@ -262,8 +262,9 @@ close-out under **Close-outs**, newest first.
 On the owner's "Let's do a pass of all the code comments in /src - comments should not
 refer to plans or adrs and should be written specifically for developers using the
 code", then "Do the same pass for the others" and "Commit and open". Commits on
-`comments/src-for-developers`: the comments (cfcaccb), Now and this close-out, and its CI
-run named here.
+`comments/src-for-developers`: the comments (cfcaccb), Now and this close-out (e3a4826),
+and its CI run named here: it passed on the PR (run 42911320650, 4m27s), on amd64, arm64
+and the site job.
 
 - **`src/`:** its 1,779 comment lines read whole. Beside their citations they already
   spoke to the code's readers, so the pass is the citations: 22 places in 12 libraries
