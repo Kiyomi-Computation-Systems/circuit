@@ -7,6 +7,15 @@ release before 1.0.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-10
+
+The fifth release: JSON. `(circuit json)`, a library of its own, reads a request's JSON
+body before the handler and answers with JSON, by jsonparse v0.1.0, a third submodule,
+which runs on the server's byte-machine. `make submodules` clones it: run it again in a
+checkout of an earlier release. No name joins or leaves an existing library, and the
+pins stay at chez-http-server v0.10.0 and chez-websocket v0.5.1. A new library, and a
+step an upgrade needs, make the release 0.3.0.
+
 ### Added
 
 - **JSON: `(circuit json)`.** `(wrap-json-body n)` reads the body of a request whose
@@ -302,7 +311,8 @@ both pinned submodules under `vendor/`. The API may change in any release before
   `make gate` holds what circuit adds to a request, in bytes. A pinned Guix container
   runs both. CI runs on Linux, on amd64 and arm64.
 
-[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Kiyomi-Computation-Systems/circuit/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.2.0
 [0.1.2]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Kiyomi-Computation-Systems/circuit/releases/tag/v0.1.1
