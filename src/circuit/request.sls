@@ -46,7 +46,7 @@
 
   ;; req? : Any -> Boolean
   ;; At most five fields: one req-set copies the record and conses two pairs,
-  ;; which the gate holds (design §15.6, G4).
+  ;; and make gate holds that cost to a bound.
   (define-record-type (req %make-req req?)
     (fields (immutable view req-view-of)
             (immutable source req-source)

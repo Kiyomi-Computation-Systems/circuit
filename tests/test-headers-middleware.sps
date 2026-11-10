@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit middleware headers): wrap-default-headers, security-headers and
-;;; wrap-hsts (the slice 9 design §4).
+;;; wrap-hsts.
 ;;;
 ;;; Oracles: RFC 9110, for a token (§5.6.2) and a field value (§5.5), as the
 ;;; server's serializer refuses them; RFC 6797, for HSTS's value (§6.1) and

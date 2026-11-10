@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit json): a request's JSON body, read as a value, and a JSON
-;;; response (design §15.36, ADR-0009).
+;;; response.
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit json))
 ;;;   (wrap app (wrap-json-body 65536))
@@ -31,7 +31,7 @@
 ;;; wrap-form-params does.
 ;;;
 ;;; This library imports jsonparse's (jsonparse easy), through only, and no
-;;; other library imports a (jsonparse ...) one (ADR-0006, ADR-0009).
+;;; other library imports a (jsonparse ...) one: make check-imports holds it.
 (library (circuit json)
   (export wrap-json-body req-json? req-json make-json-res)
   (import (rnrs)

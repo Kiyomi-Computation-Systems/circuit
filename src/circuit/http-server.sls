@@ -13,7 +13,7 @@
 ;;;
 ;;;   1. a value that is no res is an assertion violation;
 ;;;   2. a body that holds the request's own req-body port, bare, sized,
-;;;      wrapped or tapped, is one too: a producer can't read it (design §9);
+;;;      wrapped or tapped, is one too: a producer can't read it;
 ;;;   3. the body: #f and a bytevector as they are, a string as its UTF-8,
 ;;;      a producer as itself; an upgrade's take-over as it is; any other
 ;;;      kind through res-body-stream. A port is measured first, from its
@@ -30,7 +30,7 @@
 ;;;      headers take-over) instead: the server writes the 101, then calls
 ;;;      the take-over with its transport and the bytes it read past the
 ;;;      request. It refuses the switch, a 500, for a request that asked for
-;;;      no upgrade (design §8).
+;;;      no upgrade.
 ;;;
 ;;; The adapter catches nothing: whatever the thunk raises the server
 ;;; answers, a 500 before the head, a &body-failed's own status, or nothing

@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit params), by property: param lists and bytes generated from a
-;;; fixed seed (the slice 9 design §5).
+;;; fixed seed.
 ;;;
 ;;; The rows:
 ;;;   - P1 a param list written by params->string reads back whole from

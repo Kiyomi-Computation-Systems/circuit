@@ -10,8 +10,8 @@
 # to its end and exits 0, so it is the line, not the exit, that tells.
 #
 # GOAL CHEZ: refuses, before a make recipe runs Chez, a CHEZ that is not
-# Chez Scheme 10.4.1 or later, threaded: chez-http-server's floor
-# (ADR-0002). The Makefile passes it $(GOAL), what the user typed, as
+# Chez Scheme 10.4.1 or later, threaded: chez-http-server's floor.
+# The Makefile passes it $(GOAL), what the user typed, as
 # scripts/require-tools takes it.
 #
 # --any-version GOAL CHEZ: refuses a CHEZ that is not a threaded Chez

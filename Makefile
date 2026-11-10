@@ -10,12 +10,12 @@
 # and chez-srfi for SRFI-64. chez-websocket pins a server of its own, which
 # circuit doesn't clone: it must be SERVER_PIN. jsonparse pins a
 # byte-machine of its own, which circuit doesn't clone either: it must be the
-# one chez-httparse records, so the path holds one byte-machine (ADR-0009).
+# one chez-httparse records, so the path holds one byte-machine.
 # `make submodules` clones those, and not the server's test clients;
 # `make check-pins` holds them where the pins say.
 # One dependency comes from Akku: hashing, for (circuit session), which
 # `make submodules` also fetches into vendor/akku as Akku.lock pins it, its
-# sha256 checked (ADR-0008), and `make check-pins` holds it to its archive.
+# sha256 checked, and `make check-pins` holds it to its archive.
 # Both need git or the network, so they run on the host: the container has
 # neither. `make deps` builds chez-libuv's shim and links SRFI-64, and never
 # fetches: it fails unless vendor/akku holds the hashing the lock pins.
@@ -292,8 +292,8 @@ define link-srfi
 endef
 
 # Runs $(CHEZ) once, asking its version and build, and refuses one that is
-# not Chez Scheme 10.4.1 or later, threaded, chez-http-server's floor
-# (ADR-0002), naming what it found and what it needs (scripts/require-chez).
+# not Chez Scheme 10.4.1 or later, threaded, chez-http-server's floor,
+# naming what it found and what it needs (scripts/require-chez).
 # A CHEZ that is empty or not on PATH it refuses itself, so require-tools
 # doesn't ask first. deps takes it first, so every target that runs Chez on
 # circuit's libraries, deps itself, which builds chez-libuv's shim with it,
@@ -407,7 +407,7 @@ check-imports: deps ## Fail unless only the two impure libraries import the serv
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src --akku $(AKKU_DIR) --jsonparse $(JSONPARSE_DIR)/src --byte-machine $(BYTE_MACHINE_DIR)/src $(LIBRARY_DIRS)
 
-# The cost gate (design §15.6, ADR-0007), outside `make test`: bytes a
+# The cost gate, outside `make test`: bytes a
 # request through circuit's adapter, against the raw server and its
 # `awaiting` path, in one process, with the counts fixed (tests/gate.sps).
 # It prints G1, G2, G8 and G8 on-done, and fails when a held gate, G3 to G5, G7, G8 own, G9

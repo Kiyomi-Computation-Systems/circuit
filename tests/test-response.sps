@@ -788,7 +788,7 @@
 
 ;; --- res-body-stream: the port is the caller's before any f runs ---------------------------
 ;; The adapter registers a port's close in on-port: measure first, then
-;; on-port, then the wraps' f, innermost first (design §9).
+;; on-port, then the wraps' f, innermost first.
 
 ;; ordered : Body -> (List (Listof Symbol) Any Boolean)
 ;; res-body-stream over BODY with a measure, an on-port and wraps that note

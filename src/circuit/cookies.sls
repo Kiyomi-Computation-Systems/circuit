@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit cookies): the request's cookies, read as name and value pairs,
-;;; and set-cookie fields written on the response (the slice 9 design §6).
+;;; and set-cookie fields written on the response.
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit cookies))
 ;;;   (req-cookie req "__Host-theme")

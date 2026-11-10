@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit middleware waits): the catch helper, wrap-timeout and request
-;;; logging (design §6, §7, §10).
+;;; logging.
 ;;;
 ;;;   - wrap-catch, called directly on make-test-req requests, with no host:
 ;;;     the two conditions raised again, the very ones, from where they were
@@ -18,7 +18,7 @@
 ;;;   - the default line agrees with the server's own: for the same raise,
 ;;;     the text is what the server's log-line writes, the procedure serve
 ;;;     writes every log line with, imported from (http-server private
-;;;     serve), which a suite may import and a library may not (ADR-0006).
+;;;     serve), which a suite may import and a library may not.
 ;;;     Directly, for a raise of each kind, and through the test host, for
 ;;;     the entry the server logs when the same raise reaches it;
 ;;;   - wrap-timeout through the test host: the 504 at the deadline's
@@ -1258,7 +1258,7 @@
 ;; list-head* : (Listof Any) Nat -> (Listof Any) — the first N of L.
 (define (list-head* l n) (if (= n 0) '() (cons (car l) (list-head* (cdr l) (- n 1)))))
 
-(test-equal "composed as the design writes it, (wrap app wrap-catch (wrap-timeout ms) wrap-log), on the default clock: 504 and 500, each logged written"
+(test-equal "composed as docs/middleware.md writes it, (wrap app wrap-catch (wrap-timeout ms) wrap-log), on the default clock: 504 and 500, each logged written"
   (list (list (list empty-504) #f '() "request GET /slow 504 written N -\n")
         (list (list empty-500) #f '() "handler-failed Exception in app: boom\nrequest GET /boom 500 written N -\n"))
   (map (lambda (seen) (append (list-head* seen 3) (list (ms-blanked (list-ref seen 3)))))

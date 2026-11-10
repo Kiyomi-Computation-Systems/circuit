@@ -1,6 +1,6 @@
 #!chezscheme
-;; The review's library: under Chez's own directive it reads a repeat
-;; vector and an fxvector literal, which R6RS lacks, and imports only (rnrs).
+;; A library under Chez's own directive: it reads a repeat vector and an
+;; fxvector literal, which R6RS lacks, and imports only (rnrs).
 (library (circuit)
   (export port-size)
   (import (rnrs))

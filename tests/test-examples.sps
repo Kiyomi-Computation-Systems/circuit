@@ -1,7 +1,7 @@
 #!r6rs
 ;;; The programs under examples/, and tests/loopback-app.sps, each run as a
 ;;; process of its own and asked over loopback with curl: what the server's
-;;; test host, which has no socket, leaves out (design §10). upgrade.sps's
+;;; test host, which has no socket, leaves out. upgrade.sps's
 ;;; switch is asked with bash's /dev/tcp instead, since curl can't talk past
 ;;; a 101. So is each WebSocket's handshake, its frames written by hand,
 ;;; websocket.sps's and the loopback program's /websocket: the command line

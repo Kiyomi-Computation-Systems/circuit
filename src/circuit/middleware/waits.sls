@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit middleware waits): the middleware that knows the server's
-;;; waits and conditions (design §6, §7, §15 item 4).
+;;; waits and conditions.
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit http-server) (circuit middleware waits))
 ;;;   (run-server (wrap app wrap-catch (wrap-timeout 5000) wrap-log))
@@ -36,19 +36,19 @@
 ;;; request's own req-body, which the client gets as the server's 500.
 ;;;
 ;;; Both catches escape by call/cc around with-exception-handler, the
-;;; cheapest way on a coroutine (S2): guard costs more, and Chez's call/1cc
+;;; cheapest way on a coroutine: guard costs more, and Chez's call/1cc
 ;;; costs 3.4 KB or more once a wait or Chez's error falls inside it. Each
 ;;; call/cc is in tail position, and each answer is made inside the
 ;;; exception handler, before the escape: a frame after the call/cc, to make
-;;; the answer once escaped, cost wrap-catch about 100 B a request (G5,
-;;; about 485 B against about 380 B). With nothing raised, a catch
-;;; allocates nothing beyond its escape; the gate holds wrap-catch's (G5).
-;;; What either passes on, it raises again by raise-continuable, so a
-;;; continuable raise is answered where it was raised, as if the catch
-;;; weren't there.
+;;; the answer once escaped, costs wrap-catch about 100 B a request more.
+;;; With nothing raised, a catch allocates nothing beyond its escape, and
+;;; make gate holds wrap-catch's cost to a bound. What either passes on, it
+;;; raises again by raise-continuable, so a continuable raise is answered
+;;; where it was raised, as if the catch weren't there.
 ;;;
 ;;; This library imports the server, as (circuit http-server) does, and
-;;; takes four names from (chezscheme) (ADR-0006): real-time, wrap-log's
+;;; takes four names from (chezscheme), through only, of the few make
+;;; check-imports allows those two libraries: real-time, wrap-log's
 ;;; default clock, and display-condition, print-record and parameterize,
 ;;; which show a detail in the default line as the server's log does.
 (library (circuit middleware waits)

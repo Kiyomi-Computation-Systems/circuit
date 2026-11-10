@@ -14,8 +14,9 @@
 ;;;
 ;;; Left out, for the adapter and the tests: make-req-view, make-req,
 ;;; req-body-made and test-req-done! from (circuit request); the
-;;; res-sized-body- and res-wrapped-body- accessors, res-body-port and
-;;; res-body-stream from (circuit response); and (circuit test).
+;;; res-sized-body-, res-wrapped-body- and res-tapped-body- accessors,
+;;; res-body-port and res-body-stream from (circuit response); and
+;;; (circuit test).
 (library (circuit)
   (export
     ;; the request

@@ -1,7 +1,7 @@
 #!r6rs
 ;;; The names suite: circuit's libraries and the server's, imported together
-;;; with no only, except, prefix or rename, as an app may import them
-;;; (design §10, ADR-0005). An export of circuit's that names a binding the
+;;; with no only, except, prefix or rename, as an app may import them. An
+;;; export of circuit's that names a binding the
 ;;; server's libraries export is a clash, and Chez refuses this program
 ;;; before any test runs, so the suite fails. The adapter, (circuit
 ;;; http-server), re-exports the server's waits, conditions, transport

@@ -1,6 +1,5 @@
 #!r6rs
-;;; (circuit session): a session kept in a signed cookie (the sessions
-;;; design §5).
+;;; (circuit session): a session kept in a signed cookie.
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit session))
 ;;;   (wrap app (wrap-session (list secret) clock 1209600))

@@ -1,7 +1,7 @@
 #!r6rs
 ;;; (circuit middleware cors): wrap-cors's options and their refusals, the
 ;;; origins it takes, the preflight it answers itself, the fields it puts on
-;;; the handler's response, and Vary (the slice 9 design §3).
+;;; the handler's response, and Vary.
 ;;;
 ;;; Oracles: Fetch, for what a preflight is (§3.3.2), the fields' names, and
 ;;; why a response from an origin list varies on Origin while one under *

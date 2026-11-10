@@ -1,6 +1,6 @@
 #!r6rs
 ;;; (circuit params): the query and an urlencoded form, as name and value
-;;; pairs (the slice 9 design §5).
+;;; pairs.
 ;;;
 ;;;   (import (rnrs) (circuit) (circuit params))
 ;;;   (param-value (req-query-params req) "q")

@@ -13,8 +13,8 @@
 ;;; fails that row, not the suite. Requests carry a query, q=7, which the
 ;;; router must leave alone.
 ;;;
-;;; Oracles: the slice 6 design's §5 and the slice's briefs, which settle
-;;; each rule; RFC 3986's pchar, written out below as the word allowlist;
+;;; Oracles: the routing rules, as (circuit router)'s header gives them;
+;;; RFC 3986's pchar, written out below as the word allowlist;
 ;;; RFC 9110's tchar, written out as the method allowlist; and UTF-8's
 ;;; table of well-formed byte sequences (RFC 3629 §4).
 (import (rnrs)

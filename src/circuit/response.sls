@@ -27,7 +27,7 @@
 ;;;
 ;;; (make-upgrade-res headers take-over) is a 101 whose body is an upgrade:
 ;;; no bytes, but the take-over, which the adapter hands the server, and the
-;;; server calls with its transport once the 101 is written (design §8). An
+;;; server calls with its transport once the 101 is written. An
 ;;; upgrade body sits only in a 101 that make-upgrade-res made, or
 ;;; res-with-take-over made from one: make-res and res-with-body refuse one;
 ;;; res-with-body, res-with-status, res-wrap-body and res-tap-body refuse an
@@ -70,15 +70,14 @@
   ;;   Answer what goes back to the server, which may be awaiting. A
   ;;   middleware that wraps a take-over answers what the wrapped one
   ;;   answers: with that answer dropped, the 101 is written, and a
-  ;;   WebSocket's procedure never runs (chez-websocket's ADR-0009)
+  ;;   WebSocket's procedure never runs
   ;; UpgradeBody = the body of make-upgrade-res's 101, holding its TakeOver
 
   ;; res? : Any -> Boolean
   ;; res-status : Res -> Integer
   ;; res-headers : Res -> (Listof (Pair String String))
   ;; res-body : Res -> (U Body UpgradeBody)
-  ;; Four fields, 48 B: the keys took it from three, 32 B (the sessions
-  ;; design §3).
+  ;; Four fields, 48 B: without the keys, the fourth, it would be 32 B.
   (define-record-type (res %make-res res?)
     (fields (immutable status res-status)
             (immutable headers res-headers)
@@ -400,7 +399,7 @@
   ;; as many as the read gave, fewer when the port held fewer and never more,
   ;; are the body from then on, and ON-PORT is not called, since nothing is
   ;; left open. Otherwise ON-PORT is called once with the port, where the
-  ;; adapter registers its close (design §9), and the port streams: in
+  ;; adapter registers its close, and the port streams: in
   ;; pieces of at most SIZE, never past the length MEASURE gave, answering
   ;; eof, the port closed, at its eof, and closed as its last byte is read.
   ;; A port under a sized body is not measured, and always streams: ON-PORT,
