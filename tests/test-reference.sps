@@ -32,7 +32,9 @@
 ;;;       a code span;
 ;;;   (f) every link in docs/*.md and README.org into chez-http-server's,
 ;;;       chez-websocket's or jsonparse's repository, at blob/<ref>/ or
-;;;       tree/<ref>/, names its pin's tag as <ref>;
+;;;       tree/<ref>/, names its tag as <ref>: the pin's for the first two,
+;;;       and for jsonparse, which comes from the Akku index, v and the
+;;;       version Akku.lock pins;
 ;;;   (g) every re-export that is a procedure has one signature comment in
 ;;;       the library under src/ that re-exports it, and its text is the one
 ;;;       signature that one's docs/reference.md, as vendored at its pin,
@@ -43,9 +45,13 @@
 ;;; A pin's tag is v and the version its vendored copy's Akku.manifest
 ;;; gives, which the Makefile's comment on the pin, `SERVER_PIN := <sha>  #
 ;;; vX.Y.Z`, must name too. The records name each pin as the Makefile does,
-;;; its tag and its sha's first seven digits, the server's, chez-websocket's,
-;;; then jsonparse's: the global constraints as `now vX.Y.Z (`sha`)`, and
-;;; ADR-0003 as `vX.Y.Z (`sha`) since <date>`. And the page's own shape: no heading out of the
+;;; its tag and its sha's first seven digits, the server's, then
+;;; chez-websocket's: the global constraints as `now vX.Y.Z (`sha`)`, and
+;;; ADR-0003 as `vX.Y.Z (`sha`) since <date>`. The version Akku.lock pins
+;;; jsonparse at is the one its archive's file name gives,
+;;; jsonparse_<version>_repack.tar.xz, a release, and the Akku.manifest of
+;;; the tree unpacked from it, under vendor/akku-trees, gives it too.
+;;; And the page's own shape: no heading out of the
 ;;; convention; each type alias in its intro is the alias comment in src/,
 ;;; `;; NAME = TYPE`, where two that name one type agree; every entry has
 ;;; words, and every entry but a re-export a link to a guide page, a
@@ -129,11 +135,19 @@
 ;; pin-specs : (Listof (List String String String))
 ;; Each repository circuit pins by gitlink: its name, the Makefile variable
 ;; that pins it, and its vendored Akku.manifest, in the order the records
-;; name the pins. upstream-specs's are the first two.
+;; name the pins. They are upstream-specs's.
 (define pin-specs
   '(("chez-http-server" "SERVER_PIN" "vendor/chez-http-server/Akku.manifest")
-    ("chez-websocket" "WEBSOCKET_PIN" "vendor/chez-websocket/Akku.manifest")
-    ("jsonparse" "JSONPARSE_PIN" "vendor/jsonparse/Akku.manifest")))
+    ("chez-websocket" "WEBSOCKET_PIN" "vendor/chez-websocket/Akku.manifest")))
+
+;; locked-specs : (Listof (List String String))
+;; Each repository circuit takes from the Akku index whose docs the pages
+;; link to: its name, which is its project's in Akku.lock, and the
+;; Akku.manifest of its tree as `make submodules` unpacks it.
+(define locked-specs
+  '(("jsonparse" "vendor/akku-trees/jsonparse/Akku.manifest")))
+
+(define lock-file "Akku.lock")
 
 (define github "https://github.com/Kiyomi-Computation-Systems/")
 
@@ -1048,6 +1062,29 @@
                     data)))
     (and form (cons (car (cadr form)) (cadr (cadr form))))))
 
+;; lock-version : (Listof Any) String -> (U String #f)
+;; The version an Akku.lock's data pin the project NAME at: what its
+;; archive's file name, NAME_VERSION_repack.tar.xz, gives, as `akku lock`
+;; writes it in (projects ((name NAME) (location (url URL)) ...) ...). #f
+;; when no project is NAME, or its URL's file name isn't of that form.
+(define (lock-version data name)
+  (let* ((form? (lambda (head) (lambda (d) (and (pair? d) (list? d) (eq? (car d) head)))))
+         (projects (find (form? 'projects) data))
+         (project (and projects
+                       (find (lambda (p) (and (list? p) (member (list 'name name) p))) (cdr projects))))
+         (location (and project (find (form? 'location) project)))
+         (url (and location
+                   (let ((u (find (form? 'url) (cdr location))))
+                     (and u (= (length u) 2) (string? (cadr u)) (cadr u)))))
+         (file (and url (let ((parts (split-at-slashes url))) (list-ref parts (- (length parts) 1)))))
+         (head (string-append name "_"))
+         (tail "_repack.tar.xz"))
+    (and file
+         (prefix? head file)
+         (suffix? file tail)
+         (> (string-length file) (+ (string-length head) (string-length tail)))
+         (substring file (string-length head) (- (string-length file) (string-length tail))))))
+
 ;; release-tag? : Any -> Boolean
 ;; vX.Y.Z, each a run of digits.
 (define (release-tag? tag)
@@ -1136,6 +1173,30 @@
 
 (define (pinned-of-repo repo)
   (find (lambda (p) (string=? (pinned-repo p) repo)) pins))
+
+(define lock-data (or (read-data lock-file) '()))
+
+;; locked-tags : (Listof (Pair String (U String #f)))
+;; Each of locked-specs, with its tag: v and the version Akku.lock pins it
+;; at, #f when the lock gives none.
+(define locked-tags
+  (guard (e (#t '()))
+    (map (lambda (spec)
+           (let ((version (lock-version lock-data (car spec))))
+             (cons (car spec) (and version (string-append "v" version)))))
+         locked-specs)))
+
+;; link-repos : (Listof String)
+;; Every repository whose links the pages must hold to a tag.
+(define link-repos (append (map car pin-specs) (map car locked-specs)))
+
+;; link-tag : String -> (U String #f)
+;; The tag the pages' links into REPO name: its pin's, or, for a repository
+;; from the Akku index, v and the version Akku.lock pins.
+(define (link-tag repo)
+  (cond ((pinned-of-repo repo) => pinned-tag)
+        ((assoc repo locked-tags) => cdr)
+        (else #f)))
 
 ;; upstream-signatures : (Listof (Pair String (Listof (Pair Symbol String))))
 ;; Each upstream's repository, with every signature its reference gives.
@@ -1482,10 +1543,28 @@
     (list (manifest-package '((import (akku format manifest)) (akku-package ("x" "1.2.3") (synopsis "s"))))
           (manifest-package '((akku-package "x"))))))
 
+(test-equal "lock-version reads a project's version from its own archive's file name, NAME_VERSION_repack.tar.xz, and no other"
+  '("0.9.0" "2.0.0" #f #f #f #f #f)
+  (guard (e (#t (list 'raised (describe e))))
+    (let ((data '((import (akku format lockfile))
+                  (projects
+                   ((name "byte-machine")
+                    (location (url "https://a.test/pkg/b/byte-machine_0.9.0_repack.tar.xz"))
+                    (content (sha256 "00")))
+                   ((name "jsonparse")
+                    (location (url "https://a.test/pkg/j/jsonparse_2.0.0_repack.tar.xz"))
+                    (content (sha256 "11")))
+                   ((name "other") (location (url "https://a.test/pkg/o/another_1.0.0_repack.tar.xz")))
+                   ((name "plain") (location (url "https://a.test/pkg/p/plain_1.0.0.tar.xz")))
+                   ((name "empty") (location (url "https://a.test/pkg/e/empty__repack.tar.xz")))
+                   ((name "nameless") (location (url 7)))))))
+      (map (lambda (name) (lock-version data name))
+           '("byte-machine" "jsonparse" "other" "plain" "empty" "nameless" "missing")))))
+
 ;; --- the pins ------------------------------------------------------------------------------
 
 (test-equal "each vendored Akku.manifest names its package and a release version, vX.Y.Z"
-  '(("chez-http-server" #t) ("chez-websocket" #t) ("jsonparse" #t))
+  '(("chez-http-server" #t) ("chez-websocket" #t))
   (map (lambda (p) (list (and (pinned-package p) (car (pinned-package p))) (release-tag? (pinned-tag p))))
        pins))
 
@@ -1498,17 +1577,34 @@
      (pinned-makefile-tag p)))
  pins)
 
+;; --- from the Akku index -------------------------------------------------------------------
+;; jsonparse has no pin: the pages' links into it name v and the version
+;; Akku.lock pins, which is the version of the tree `make submodules`
+;; unpacked from that archive.
+
+(test-equal (string-append lock-file ": it pins " (joined ", " (map car locked-specs))
+                           " at a release, vX.Y.Z by its archive's file name")
+  (map (lambda (spec) (list (car spec) #t)) locked-specs)
+  (map (lambda (t) (list (car t) (release-tag? (cdr t)))) locked-tags))
+
+(test-equal (string-append "each tree from the Akku index, "
+                           (joined ", " (map cadr locked-specs))
+                           ": its Akku.manifest names its package at the version " lock-file " pins")
+  (guard (e (#t (list 'raised (describe e))))
+    (map (lambda (spec) (cons (car spec) (lock-version lock-data (car spec)))) locked-specs))
+  (guard (e (#t (list 'raised (describe e))))
+    (map (lambda (spec) (manifest-package (or (read-data (cadr spec)) '()))) locked-specs)))
+
 ;; --- the records' pins -----------------------------------------------------------------------
 ;; The global constraints say which release each dependency is pinned at
 ;; now, and ADR-0003 since when: each is the Makefile's pin, its tag and its
-;; sha's first seven digits, the server's, chez-websocket's, then
-;; jsonparse's.
+;; sha's first seven digits, the server's, then chez-websocket's.
 
 (define constraints ".plans/global-constraints.md")
 (define adr-0003 ".plans/decisions/0003-chez-http-server-is-a-submodule-pinned-at-a-release-tag.md")
 
 ;; record-pins : (Listof (List (U String #f) (U String #f)))
-;; SERVER_PIN, WEBSOCKET_PIN and JSONPARSE_PIN as the records write them.
+;; SERVER_PIN and WEBSOCKET_PIN as the records write them.
 (define record-pins
   (guard (e (#t (list 'raised (describe e))))
     (map (lambda (variable)
@@ -1518,14 +1614,14 @@
          (map cadr pin-specs))))
 
 (test-equal (string-append constraints ": each pin it says a dependency is at now is the Makefile's, "
-                           "SERVER_PIN's, WEBSOCKET_PIN's, then JSONPARSE_PIN's")
+                           "SERVER_PIN's, then WEBSOCKET_PIN's")
   record-pins
   (guard (e (#t (list 'raised (describe e))))
     (map (lambda (m) (list (cadr m) (caddr m)))
          (filter (lambda (m) (equal? (car m) "now")) (pin-mentions (or (read-text constraints) ""))))))
 
 (test-equal (string-append adr-0003 ": each pin it says a dependency is at since a date is the Makefile's, "
-                           "SERVER_PIN's, WEBSOCKET_PIN's, then JSONPARSE_PIN's")
+                           "SERVER_PIN's, then WEBSOCKET_PIN's")
   record-pins
   (guard (e (#t (list 'raised (describe e))))
     (map (lambda (m) (list (cadr m) (caddr m)))
@@ -1795,13 +1891,14 @@
  (lambda (path)
    (let ((text (read-text path)))
      (test-equal (string-append path ": every link into chez-http-server's, chez-websocket's or jsonparse's repository at a ref names its pin's tag, "
-                                (joined ", " (map (lambda (p) (or (pinned-tag p) "<none>")) pins)))
+                                "or the tag of the version " lock-file " pins: "
+                                (joined ", " (map (lambda (repo) (or (link-tag repo) "<none>")) link-repos)))
        '()
        (if text
            (filter (lambda (ref)
-                     (let ((p (pinned-of-repo (car ref))))
-                       (not (and p (pinned-tag p) (string=? (caddr ref) (pinned-tag p))))))
-                   (repository-refs text (map car pin-specs)))
+                     (let ((tag (link-tag (car ref))))
+                       (not (and tag (string=? (caddr ref) tag)))))
+                   (repository-refs text link-repos))
            'unreadable))))
  (append (guard (e (#t (list docs-dir)))
            (map (lambda (name) (string-append docs-dir "/" name))

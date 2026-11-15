@@ -11,7 +11,7 @@ name: Pages
 # chezscheme is below the server's floor, which is fine here: nothing the site
 # runs imports the server or (libuv). chez-cmark-gfm comes from the archive
 # Akku.lock pins (`make site-deps`). xz-utils is installed before `make
-# submodules`, which fetches hashing too, and unpacks it.
+# submodules`, which fetches hashing and jsonparse too, and unpacks them.
 #
 # Every action is pinned to a full commit SHA, with its tag in a comment, as in
 # ci.yml.

@@ -189,6 +189,13 @@ close-out under **Close-outs**, newest first.
   its close-out is below. The code's comments cite no design section, slice or ADR but
   the files `test-reference.sps` reads; one that stood for a rule names the check that
   holds it, or AGENTS.md.
+- **The pins are at the server's v0.11.0 and chez-websocket's v0.5.2, and jsonparse 0.2.0
+  comes from Akku**, squashed from
+  [PR #49](https://github.com/Kiyomi-Computation-Systems/circuit/pull/49) on 2026-11-15;
+  its close-out is below. jsonparse's tree is in `vendor/akku-trees`, its `src/` on the
+  path, and runs on the server's byte-machine 0.9.0, which `make check-pins` holds to the
+  lock's version and to jsonparse's range (ADR-0010, which supersedes ADR-0009's items 1,
+  2 and 4).
 - **Next:** the owner's call. The Open list below holds what is known.
 
 ## Open
@@ -208,13 +215,13 @@ close-out under **Close-outs**, newest first.
 - **`make libdirs` prints relative paths,** so what it prints works only from the
   checkout. Absolute ones, by `abspath`, would be the owner's call.
 - **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
-  2026-10-26, with the docs fix; see PR #2's close-out. **chez-http-server is submitted
-  to the Akku index and awaits review**: the owner submitted 0.8.0 on 2026-10-24, then
-  0.9.0 and 0.9.1 (0.10.0, of 2026-10-30, is the latest). On 2026-10-29 the index, last
-  rebuilt on 2026-10-25, listed no version of it, and its four dependencies at the
-  versions it needs. Until it is published,
-  circuit can't be installed with Akku, and the submodule stays its only way in
-  (ADR-0003).
+  2026-10-26, with the docs fix; see PR #2's close-out. **The Akku index**, read on
+  2026-11-15 (its `Akku-index.scm` last modified 2026-11-14), lists chez-http-server at
+  0.9.1 alone, on byte-machine `^0.8.0`, and no chez-websocket; the owner is publishing
+  the server's v0.11.0 there, which may take some days. jsonparse 0.2.0 is there, and
+  circuit takes it (ADR-0010). Until the index has the server at `SERVER_PIN`'s release
+  and chez-websocket, circuit can't be installed with Akku, and the two submodules stay
+  its only way in (ADR-0003).
 - **A wrap's `f` can meet a closed port in the test host** once the client has gone while
   the app waited (design §6, §9), and the test host drops `f`'s raise. Over a real socket,
   a FIN is heard at once, but the request stays open until its response is written: `f`
@@ -256,6 +263,86 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-15: the pins at the server's v0.11.0 and chez-websocket's v0.5.2, and jsonparse 0.2.0 from Akku, in PR #49
+
+On the owner's "jsonparse is now on akku", then their answers. First: wait for the
+server on byte-machine 0.9.0, over taking 0.2.0 at once on 0.8.0's runtime or recording
+the news alone. Then, once the server pushed v0.11.0 and chez-websocket v0.5.2: a second
+directory for jsonparse's tree, and the server's byte-machine held to the lock
+(ADR-0010). Commits on `deps/server-0.11-jsonparse-akku`: the change (c4af7b8), Open,
+Now and this close-out (20ac072), and its CI run named here: it passed on the PR (run
+43768594176, 4m45s), on amd64, arm64 and the site job.
+
+- **What the index and the tags showed,** on 2026-11-15: the index had jsonparse 0.2.0
+  alone, on byte-machine `^0.9.0`, and its archive is the v0.2.0 tag (`641c73d`) less
+  `AGENTS.md` and `.plans/`. byte-machine's runtime and its two private libraries are
+  byte-identical in 0.8.0 and 0.9.0, and circuit's vendored 0.8.0 `src/` was the
+  index's. The server's v0.11.0 (`f1d2220`) is on chez-httparse v0.6.0 and uriparse
+  v0.9.0, with byte-machine v0.9.0 (`fdd4da0`), and chez-websocket's v0.5.2 (`9a8563e`)
+  is on that server; neither changes code under its `src/`. An issue drafted for the
+  server, asking for that release, was never filed: v0.11.0 came first;
+- **the trial,** before the move: the server at v0.11.0 and jsonparse at v0.2.0 in
+  `vendor/`, chez-websocket at v0.5.1. `make test` passed 25 of 26; the one failure was
+  `test-reference.sps`'s 35 rows holding the docs' links and the Makefile's comments to
+  the pins. `make gate` passed. The checkouts went back to their pins after;
+- **the pins:** both gitlinks, `SERVER_PIN` and `WEBSOCKET_PIN`, the docs' 34 links into
+  the two repositories (31 into the server, 3 into chez-websocket), the global
+  constraints' "now" and ADR-0003's "since";
+- **jsonparse from Akku:**
+  - `vendor/jsonparse` is gone, with its gitlink and its `.gitmodules` entry.
+    `Akku.manifest` names `("jsonparse" "^0.2.0")`, and `Akku.lock` gains jsonparse
+    0.2.0 and byte-machine 0.9.0, each url and sha256 from the index, as `akku lock`
+    writes them;
+  - `make submodules` fetches jsonparse into `vendor/akku-trees`, git-ignored and kept by
+    `make clean`, its `src/` in `vendor/jsonparse/src`'s place on the path. `make deps`
+    fails without it or on another than the lock's, and `make check-pins` holds its tree
+    to its archive, and the server's byte-machine to the lock's version and to the
+    caret range jsonparse's tree names;
+  - `test-reference.sps`'s pin rows hold `SERVER_PIN` and `WEBSOCKET_PIN` alone, and the
+    links into jsonparse name `v` and the lock's version, held to the tree's
+    `Akku.manifest`, by a reader of the lock with a row of its own.
+    `test-check-imports.sps`'s rows through make expect the new path;
+  - CI's and the Pages workflow's comments, `docs/installing.md`, `docs/json.md`'s two
+    links at v0.2.0, and `README.org`. `.gitignore` takes `vendor/akku-trees` and a stale
+    `vendor/jsonparse`;
+- **watched failing:**
+  - the lock check: a lock at 0.8.0, one with no byte-machine, an archive name of
+    another form, a manifest of another package, a missing one, and one at 0.8.0;
+  - the range check: 26 rows of ranges and versions, 15 of them failing as they should.
+    They hold each caret's bounds from both sides, `^1.4.0` and `^0.9.0` and `^0.0.3`,
+    and cover unreadable forms, no `depends`, and a byte-machine named in `depends/dev`
+    alone;
+  - the tree check: an edited file, unpacked again from `dl/` with no network;
+  - `make deps`: the record moved aside, set to zeros, and the tree moved away;
+  - the reference suite's rows: `json.md` at v0.1.0, a lock at 0.3.0, a lock with no
+    jsonparse, and two mutants of its reader;
+- **the review,** read-only, found no blocking bug. Fixed:
+  1. `make check-pins` held the server's byte-machine to the lock's alone, so a lock
+     whose byte-machine moved without its jsonparse passed; the reviewer reproduced it.
+     The range check is added, and the records name it;
+  2. an older checkout's `vendor/jsonparse`, which git leaves, would go back in as a
+     gitlink by `git add -A`, reproduced in a scratch repository. `.gitignore` takes it,
+     and the CHANGELOG says what to delete;
+  3. six record lines left untrue, in ADR-0003, ADR-0006 and the Makefile's header.
+
+  Left as they are:
+  - the check compares version labels, so a byte-machine at an unreleased commit whose
+    manifest still says 0.9.0 would pass. The server pins it through chez-httparse at a
+    release tag, `check_pin` holds it to chez-httparse's gitlink, and the runtime's ABI
+    check refuses a break at load;
+  - "jsonparse 0.2.0" in the prose of `docs/installing.md`, the constraints and ADR-0003
+    is held by no check, as hashing's 1.4.0 isn't;
+- **checks,** on the final tree: in the container, `make test` passed 26 of 26, and
+  `make check-site` and `make check-help` passed; on the host, `make check-pins` passed.
+  `make gate` passed on the tree before the review's fixes, which touched nothing under
+  `src/` and no gate, and wasn't run again;
+- **records:** ADR-0010, new; ADR-0009's items 1, 2 and 4 superseded, and its #18
+  consequence taken; ADR-0003's items 1, 4, 5, 6 and 8 and its consequences; ADR-0006's
+  line on hashing; the global constraints; AGENTS.md's Dependencies; the CHANGELOG's
+  Unreleased; and the Open item on the index;
+- **agents,** both Opus: the build of jsonparse's mechanics (235,135 tokens, 113 tool
+  uses, 19m03s), and the read-only review (208,935 tokens, 82 tool uses, 13m48s).
 
 ### 2026-11-10: comments written for the code's readers, in PR #48
 

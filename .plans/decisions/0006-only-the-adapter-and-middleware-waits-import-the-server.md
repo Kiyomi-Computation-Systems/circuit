@@ -78,7 +78,7 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
    core library doesn't, and since `(websocket)` imports the server, no library imports
    `(circuit websocket)`, as none imports an impure one. The audit's rule (i) holds it.
 5. **`(circuit session)`, a core library, may also import `(hashing sha-2)`**, from
-   hashing, circuit's one runtime dependency from Akku, through an `only` right around it
+   hashing, a runtime dependency from Akku, through an `only` right around it
    naming at least one identifier, so its header names all it takes from code circuit
    didn't write. It imports no other `(hashing ...)` library, and no other circuit library
    imports any (the audit's rule (k)). The audit reads `(hashing sha-2)`'s closure as

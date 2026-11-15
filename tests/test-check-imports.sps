@@ -1802,10 +1802,11 @@
   "check-imports: ok, the closure of (hashing sha-2) in vendor/akku imports only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac): 3 libraries read")
 
 ;; make-jsonparse-closure-line : String
-;; Rule (o)'s pass line through make, on the pinned jsonparse's src/ and
-;; the byte-machine chez-httparse pins.
+;; Rule (o)'s pass line through make, on the src/ of the jsonparse
+;; Akku.lock pins, in vendor/akku-trees, and the byte-machine chez-httparse
+;; pins.
 (define make-jsonparse-closure-line
-  (string-append "check-imports: ok, the closure of (jsonparse easy) in vendor/jsonparse/src and vendor/chez-http-server/vendor/chez-httparse/vendor/byte-machine/src imports only "
+  (string-append "check-imports: ok, the closure of (jsonparse easy) in vendor/akku-trees/jsonparse/src and vendor/chez-http-server/vendor/chez-httparse/vendor/byte-machine/src imports only "
                  jsonparse-allows ": 12 libraries read"))
 
 ;; The Makefile's wiring: check-imports passes the audit every directory
@@ -1887,9 +1888,9 @@
                                                "scheme-libs/byte-machine/runtime.sls"))
                             (make-check-imports build)))
             (want (list 2 deps-line
-                        (string-append "check-imports: " (on-jsonparse-path libs "jsonparse" "vendor/jsonparse/src") "\n"
+                        (string-append "check-imports: " (on-jsonparse-path libs "jsonparse" "vendor/akku-trees/jsonparse/src") "\n"
                                        "check-imports: "
-                                       (on-generated-path libs "generated" "jsonparse.sls" "vendor/jsonparse/src") "\n"
+                                       (on-generated-path libs "generated" "jsonparse.sls" "vendor/akku-trees/jsonparse/src") "\n"
                                        "check-imports: "
                                        (on-byte-machine-path libs "byte-machine"
                                                              "vendor/chez-http-server/vendor/chez-httparse/vendor/byte-machine/src")

@@ -44,36 +44,38 @@
   isn't cloned: circuit's server is the one on the path, so chez-websocket's
   server gitlink must equal `SERVER_PIN`. The server's pin moves only with a
   chez-websocket release on that server.
-* jsonparse https://github.com/Kiyomi-Computation-Systems/jsonparse, a third
-  submodule under `vendor/`, pinned at a release tag (`JSONPARSE_PIN`), for
-  `(circuit json)`. Its `src/` is on the library path, and its own
-  byte-machine isn't cloned: the server's, under chez-httparse, is the one on
-  the path, so jsonparse's byte-machine gitlink must equal chez-httparse's.
-  A server pin that moves that byte-machine moves `JSONPARSE_PIN` on the same
-  commit (ADR-0009).
 * hashing, Gwen Weinholt's SHA-2 and HMAC, from the Akku index, for
-  `(circuit session)`: circuit's one runtime dependency from Akku
-  (ADR-0008). `Akku.manifest` names it in `depends`, and `Akku.lock` pins
-  its archive and sha256.
+  `(circuit session)` (ADR-0008). `Akku.manifest` names it in `depends`,
+  and `Akku.lock` pins its archive and sha256.
+* jsonparse https://github.com/Kiyomi-Computation-Systems/jsonparse, from
+  the Akku index too, for `(circuit json)` (ADR-0010). `depends` names it
+  and `Akku.lock` pins it. Its tree goes in `vendor/akku-trees`, with only
+  its `src/` on the library path. It runs on the server's byte-machine,
+  under chez-httparse, the path's one: the lock's byte-machine, which
+  `akku lock` adds for jsonparse, is never fetched. A server pin that moves
+  that byte-machine moves the lock's byte-machine and jsonparse on the same
+  commit.
 * `make submodules`, on the host, clones the server and the pins it
-  carries, not its test clients, chez-websocket, not its server, and
-  jsonparse, not its submodules. Then
-  it fetches hashing as `Akku.lock` pins it into `vendor/akku`, which is
-  git-ignored, on the library path, and kept by `make clean`; `make deps`
-  fails without it, or on another than the one the lock pins.
+  carries, not its test clients, and chez-websocket, not its server. Then
+  it fetches hashing into `vendor/akku` and jsonparse into
+  `vendor/akku-trees`, as `Akku.lock` pins them. Both are git-ignored and
+  kept by `make clean`; `make deps` fails without either, or on another
+  than the one the lock pins.
   `make check-pins`, on the host and in CI, holds the server at
   `SERVER_PIN`, each pin it carries where the server records it,
   chez-websocket at `WEBSOCKET_PIN` with its server gitlink at `SERVER_PIN`,
-  jsonparse at `JSONPARSE_PIN` with its byte-machine gitlink at
-  chez-httparse's, and `vendor/akku`'s hashing to the archive the lock pins,
-  and refuses a checkout or a tree with local edits. Move a gitlink and its
-  pin (`SERVER_PIN`, `WEBSOCKET_PIN` or `JSONPARSE_PIN`) on one commit, with
-  the docs' links into
-  that repository and the records' lines on the pin, the global
-  constraints' "now" and ADR-0003's "since": `tests/test-reference.sps`
-  holds the links at the pin's tag and the lines to the pin.
-* chez-http-server and jsonparse aren't on the Akku index, so Akku can't
-  install them for circuit: the submodules are the only way in.
+  the server's byte-machine at the version the lock pins and in the range
+  jsonparse's tree names, and hashing's and
+  jsonparse's trees to the archives the lock pins, and refuses a checkout or
+  a tree with local edits. Move a gitlink and its pin (`SERVER_PIN` or
+  `WEBSOCKET_PIN`) on one commit, with the docs' links into that repository
+  and the records' lines on the pin, the global constraints' "now" and
+  ADR-0003's "since": `tests/test-reference.sps` holds the links at the
+  pin's tag and the lines to the pin, and the links into jsonparse at the
+  tag of the version the lock pins.
+* The Akku index has chez-http-server only at a release older than
+  `SERVER_PIN`, and no chez-websocket, so Akku can't install them for
+  circuit: the submodules are the only way in.
 * chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
   development dependency of `Akku.manifest`. `make site-deps`, on the host,
   fetches it into `build/akku/`, off the library path.

@@ -17,31 +17,36 @@ provisional. They bind until that record is accepted or amended.
 ## Dependency
 
 - **chez-http-server is a submodule at `vendor/chez-http-server`, pinned at a release
-  tag**, now v0.10.0 (`5c16f64`). Circuit uses the pins the server carries and pins none
+  tag**, now v0.11.0 (`f1d2220`). Circuit uses the pins the server carries and pins none
   itself. Move the gitlink and `SERVER_PIN` on one commit, `SERVER_PIN` naming the tag's
   commit; `make check-pins` holds them (ADR-0003).
 - **chez-websocket is a second submodule, at `vendor/chez-websocket`, pinned at a release
-  tag**, now v0.5.1 (`4b70f22`). Its own gitlink for the server must equal `SERVER_PIN`,
+  tag**, now v0.5.2 (`9a8563e`). Its own gitlink for the server must equal `SERVER_PIN`,
   and circuit doesn't clone that server: circuit's is the one on the path. Move its
   gitlink and `WEBSOCKET_PIN` on one commit; `make check-pins` holds them (ADR-0003).
-- **jsonparse is a third submodule, at `vendor/jsonparse`, pinned at a release tag**, now
-  v0.1.0 (`a939f31`), for `(circuit json)`. Its own gitlink for byte-machine must equal
-  chez-httparse's, and circuit doesn't clone it: the path holds one byte-machine, the
-  server's. Move its gitlink and `JSONPARSE_PIN` on one commit, and with the server's
-  when chez-httparse's byte-machine moves; `make check-pins` holds them (ADR-0003,
-  ADR-0009).
-- **No Akku dependency on the server**, nor on chez-websocket or jsonparse, while they
-  aren't on the Akku index (ADR-0003).
+- **No Akku dependency on the server**, nor on chez-websocket, while the index lacks the
+  server at `SERVER_PIN`'s release, or lacks chez-websocket (ADR-0003).
 - **chez-cmark-gfm, the docs site's renderer, is pinned by `Akku.lock`**, a development
   dependency alone: nothing under `src/` and no `tests/test-*.sps` imports it.
   `make site-deps` fetches it on the host (ADR-0003).
-- **hashing 1.4.0, from the Akku index, is circuit's one runtime dependency from Akku.**
+- **hashing 1.4.0, from the Akku index, is a runtime dependency from Akku.**
   `Akku.manifest`'s `depends` names it, `Akku.lock` pins its archive and sha256, and
   `make submodules` fetches it on the host into `vendor/akku`, git-ignored, on the library
   path last, and kept by `make clean`. `make deps` fails without it, or on another than
   the lock's, and `make check-pins` holds it to its archive. A move of the lock is
   tried first: hashing's own suites, and circuit's rows holding RFC 4231's cases through
   the pin, pass on it before it lands (ADR-0008).
+- **jsonparse 0.2.0, from the Akku index, is another, for `(circuit json)`.** `depends`
+  names it, `Akku.lock` pins its archive and sha256, and `make submodules` fetches it on
+  the host into `vendor/akku-trees`, git-ignored and kept by `make clean`, with only its
+  `src/` on the library path. It runs on the path's one byte-machine, the server's under
+  chez-httparse: the lock's byte-machine, which `akku lock` adds for jsonparse, is never
+  fetched, and `make check-pins` fails unless the server's is the version it pins and in
+  the range jsonparse's tree names.
+  `make deps` fails without jsonparse, or on another than the lock's, and
+  `make check-pins` holds it to its archive. A move of the server that moves its
+  byte-machine moves the lock's byte-machine and jsonparse on the same commit, tried
+  first (ADR-0010).
 
 ## Tooling
 
