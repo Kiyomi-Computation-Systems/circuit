@@ -271,7 +271,8 @@ server on byte-machine 0.9.0, over taking 0.2.0 at once on 0.8.0's runtime or re
 the news alone. Then, once the server pushed v0.11.0 and chez-websocket v0.5.2: a second
 directory for jsonparse's tree, and the server's byte-machine held to the lock
 (ADR-0010). Commits on `deps/server-0.11-jsonparse-akku`: the change (c4af7b8), Open,
-Now and this close-out, and its CI run named here.
+Now and this close-out (20ac072), and its CI run named here: it passed on the PR (run
+43768594176, 4m45s), on amd64, arm64 and the site job.
 
 - **What the index and the tags showed,** on 2026-11-15: the index had jsonparse 0.2.0
   alone, on byte-machine `^0.9.0`, and its archive is the v0.2.0 tag (`641c73d`) less
