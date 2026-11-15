@@ -1,11 +1,17 @@
 #!r6rs ; -*- scheme -*-
 (import (akku format manifest))
 
-;; One runtime dependency from Akku: hashing, whose (hashing sha-2) signs a
-;; session's cookie in (circuit session). `make submodules`
-;; fetches it as Akku.lock pins it into vendor/akku/, on the library path.
-;; chez-http-server and chez-websocket aren't on the Akku index, so they are
-;; submodules under vendor/, and circuit is not installed through Akku yet.
+;; Two runtime dependencies from Akku: hashing, whose (hashing sha-2) signs a
+;; session's cookie in (circuit session), and jsonparse, whose (jsonparse
+;; easy) reads a JSON body in (circuit json). `make submodules` fetches each
+;; as Akku.lock pins it: hashing into vendor/akku/, on the library path, and
+;; jsonparse into vendor/akku-trees/, its src/ on the path. jsonparse runs
+;; on the byte-machine under chez-http-server, so Akku.lock's byte-machine,
+;; which `akku lock` adds for jsonparse, is never fetched: `make check-pins`
+;; holds the server's to its version. chez-websocket isn't on the Akku index,
+;; and the server is there at an older release than circuit's pin, so both
+;; are submodules under vendor/, and circuit is not installed through Akku
+;; yet.
 ;; Development only: chez-cmark-gfm renders docs/ into the docs
 ;; site (`make site`). Akku.lock is `akku lock`'s output for this file.
 ;; .akkuignore keeps `akku install` from installing circuit's own libraries.
@@ -14,5 +20,6 @@
   (authors "Kiyomi Computation Systems LLC")
   (homepage "https://github.com/Kiyomi-Computation-Systems/circuit")
   (license "BSD-3-Clause")
-  (depends ("hashing" "^1.4.0"))
+  (depends ("hashing" "^1.4.0")
+           ("jsonparse" "^0.2.0"))
   (depends/dev ("chez-cmark-gfm" "^2.0.0")))

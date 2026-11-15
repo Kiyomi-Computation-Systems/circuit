@@ -15,7 +15,10 @@
   2026-11-06, after slice 10b: `make check-pins` holds `vendor/akku` too (item 4);
   2026-11-10, in slice 11: jsonparse is a third submodule, for `(circuit json)`, its own
   byte-machine pin held to chez-httparse's and not cloned (item 8,
-  [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md))
+  [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md)); 2026-11-15:
+  the pins moved together to the server's v0.11.0 (`f1d2220`) and chez-websocket's v0.5.2
+  (`9a8563e`), on byte-machine v0.9.0, and jsonparse left `vendor/` for the Akku index
+  (items 5 and 8, [ADR-0010](0010-jsonparse-comes-from-akku-on-the-servers-byte-machine.md))
 - **Scope:** circuit's dependencies
 - **Prior art:** chez-websocket, which takes the server the same way
 - **Related:** [ADR-0002](0002-builds-and-tests-run-in-a-pinned-guix-container-with-no-network.md)
@@ -36,8 +39,9 @@ either, and takes the server as a submodule.
 
 1. **The server is a submodule at `vendor/chez-http-server`, pinned at a release tag**,
    v0.8.0 (`a996eef`) first, v0.9.0 (`d928e41`) from 2026-10-26, v0.9.1 (`b7381a0`) from
-   2026-10-29, v0.10.0 (`5c16f64`) since 2026-10-30. `SERVER_PIN` in the Makefile names the
-   same commit, the tag's commit and not the tag object.
+   2026-10-29, v0.10.0 (`5c16f64`) from 2026-10-30, v0.11.0 (`f1d2220`) since 2026-11-15.
+   `SERVER_PIN` in the Makefile names the same commit, the tag's commit and not the tag
+   object.
 2. **Circuit uses the pins the server carries**, through the server's checkout. It clones
    none of them itself and pins none of them itself.
 3. **`make submodules`, on the host, clones the server and what the build needs**: chez-libuv,
@@ -48,13 +52,17 @@ either, and takes the server as a submodule.
    local edits to tracked files in any of them. Since 2026-11-06 it holds `vendor/akku`
    too, by `scripts/fetch-akku-lock --check`, which downloads nothing: hashing's tree
    records the lock's sha256 and is its archive under `dl/`, with that sha256, unpacked.
-5. **No Akku dependency on the server** while it isn't on the index.
+   Since 2026-11-15 it holds jsonparse's tree in `vendor/akku-trees` the same way, and
+   the server's byte-machine to the version the lock pins and to the range jsonparse's
+   tree names (ADR-0010).
+5. **No Akku dependency on the server** while the index doesn't have it at `SERVER_PIN`'s
+   release: on 2026-11-15 it has 0.9.1.
 6. **chez-websocket is a submodule at `vendor/chez-websocket`, pinned at a release tag**,
-   v0.4.0 (`4456814`) first, v0.4.1 (`579c118`) from 2026-10-29, v0.5.1 (`4b70f22`) since
-   2026-10-30, for `(circuit websocket)`. `WEBSOCKET_PIN` names the same commit.
-   It pins a server of its own, which circuit doesn't clone: circuit's checkout is the one
-   on the library path. So chez-websocket's gitlink for its server must equal
-   `SERVER_PIN`. `make submodules` clones chez-websocket alone, none of its submodules;
+   v0.4.0 (`4456814`) first, v0.4.1 (`579c118`) from 2026-10-29, v0.5.1 (`4b70f22`) from
+   2026-10-30, v0.5.2 (`9a8563e`) since 2026-11-15, for `(circuit websocket)`.
+   `WEBSOCKET_PIN` names the same commit. It pins a server of its own, which circuit
+   doesn't clone: circuit's checkout is the one on the library path. So chez-websocket's
+   gitlink for its server must equal `SERVER_PIN`. `make submodules` clones chez-websocket alone, none of its submodules;
    `make check-pins` holds its gitlink and its checkout at `WEBSOCKET_PIN`, its server's
    gitlink at `SERVER_PIN`, and no local edits in it. No Akku dependency on it either.
 7. **chez-cmark-gfm, which renders `docs/` into the docs site, is pinned by `Akku.lock`**,
@@ -65,14 +73,12 @@ either, and takes the server as a submodule.
    Since slice 10b, `Akku.manifest`'s `depends` names hashing, circuit's one runtime
    dependency from the index, which the same lock pins and `make submodules` fetches into
    `vendor/akku` by the same script (ADR-0008).
-8. **jsonparse is a submodule at `vendor/jsonparse`, pinned at a release tag**, v0.1.0
-   (`a939f31`) since 2026-11-10, for `(circuit json)` (ADR-0009). `JSONPARSE_PIN` names
-   the same commit. It pins a byte-machine of its own, which circuit doesn't clone: the
-   server's, under chez-httparse, is the one on the library path. So jsonparse's
-   gitlink for its byte-machine must equal chez-httparse's. `make submodules` clones
-   jsonparse alone, none of its submodules; `make check-pins` holds its gitlink and its
-   checkout at `JSONPARSE_PIN`, its byte-machine's gitlink at chez-httparse's, and no
-   local edits in it. No Akku dependency on it either: it isn't on the index.
+8. **jsonparse was a submodule at `vendor/jsonparse`**, v0.1.0 (`a939f31`) from
+   2026-11-10 to 2026-11-15, for `(circuit json)` (ADR-0009), its byte-machine's gitlink
+   held to chez-httparse's. Since 2026-11-15 it comes from the Akku index, 0.2.0, which
+   `Akku.lock` pins and `make submodules` fetches into `vendor/akku-trees` by the same
+   script as hashing, and `make check-pins` holds the server's byte-machine to the
+   version the lock pins (ADR-0010).
 
 ## Consequences
 
@@ -80,14 +86,16 @@ either, and takes the server as a submodule.
   chez-websocket's: its gitlink and `WEBSOCKET_PIN`.
 - **The server's pin moves only with a chez-websocket release on the same server**, or
   `make check-pins` fails: circuit runs chez-websocket on circuit's server, not its own.
-- **A server pin that moves chez-httparse's byte-machine moves jsonparse's too**, to a
-  jsonparse release on the same byte-machine, on the same commit, or `make check-pins`
-  fails.
+- **A server pin that moves chez-httparse's byte-machine moves `Akku.lock`'s byte-machine
+  and jsonparse too**, to a jsonparse release whose range takes it, on the same commit,
+  or `make check-pins` fails (ADR-0010).
 - **A pin move brings the server's pins along**, and `make check-pins` holds them where the
   server records them.
-- **`Akku.manifest` names what the lock pins:** hashing in `depends`, and chez-cmark-gfm,
-  for the site, in `depends/dev`. It names circuit's version, which a release moves with
+- **`Akku.manifest` names what the lock pins:** hashing and jsonparse in `depends`, and
+  chez-cmark-gfm, for the site, in `depends/dev`. The lock also pins byte-machine, which
+  `akku lock` adds for jsonparse and the build never fetches. It names circuit's version, which a release moves with
   `CHANGELOG.md`, and `.akkuignore` keeps circuit's own files out of `akku install`.
-- **Circuit can't be installed with Akku as a whole** until the server is on the index. Until
-  then a consumer takes circuit's `src/` and the server's tree as this repository does.
-  Publishing the server is an ask on the server, not yet filed.
+- **Circuit can't be installed with Akku as a whole** until the index has the server at
+  `SERVER_PIN`'s release, and chez-websocket. Until then a consumer takes circuit's `src/`
+  and the server's tree as this repository does. On 2026-11-15 the index has the server at
+  0.9.1, and no chez-websocket.

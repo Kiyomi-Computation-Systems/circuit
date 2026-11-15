@@ -3,22 +3,26 @@
 # On a Guix host, run targets through the container:
 #   scripts/guix-env make <target>
 #
-# Three dependencies, each pinned by gitlink at a release tag under vendor/:
-# chez-http-server, chez-websocket for (circuit websocket), and jsonparse for
-# (circuit json). The server carries its own pins, and circuit uses them
-# through it: chez-libuv, chez-httparse with byte-machine under it, uriparse,
-# and chez-srfi for SRFI-64. chez-websocket pins a server of its own, which
-# circuit doesn't clone: it must be SERVER_PIN. jsonparse pins a
-# byte-machine of its own, which circuit doesn't clone either: it must be the
-# one chez-httparse records, so the path holds one byte-machine.
-# `make submodules` clones those, and not the server's test clients;
-# `make check-pins` holds them where the pins say.
-# One dependency comes from Akku: hashing, for (circuit session), which
-# `make submodules` also fetches into vendor/akku as Akku.lock pins it, its
-# sha256 checked, and `make check-pins` holds it to its archive.
+# Two dependencies, each pinned by gitlink at a release tag under vendor/:
+# chez-http-server, and chez-websocket for (circuit websocket). The server
+# carries its own pins, and circuit uses them through it: chez-libuv,
+# chez-httparse with byte-machine under it, uriparse, and chez-srfi for
+# SRFI-64. chez-websocket pins a server of its own, which circuit doesn't
+# clone: it must be SERVER_PIN. `make submodules` clones those, and not the
+# server's test clients; `make check-pins` holds them where the pins say.
+# Two come from Akku, which `make submodules` also fetches as Akku.lock pins
+# them, each sha256 checked, and `make check-pins` holds each to its archive:
+# hashing, for (circuit session), into vendor/akku, and jsonparse, for
+# (circuit json), into vendor/akku-trees, its src/ alone on the path.
+# jsonparse runs on the server's byte-machine, the path's one: the lock's is
+# never fetched, and `make check-pins` fails unless the server's is the
+# version the lock pins and in the range jsonparse's tree names.
+# `make check-imports` holds that no other directory on the path holds a
+# byte-machine.
 # Both need git or the network, so they run on the host: the container has
 # neither. `make deps` builds chez-libuv's shim and links SRFI-64, and never
-# fetches: it fails unless vendor/akku holds the hashing the lock pins.
+# fetches: it fails unless vendor/akku and vendor/akku-trees hold the
+# hashing and the jsonparse the lock pins.
 
 # The Chez binary. In the container, scripts/guix-env-enter exports the
 # profile's real `scheme` binary. Elsewhere, scripts/require-chez --find
@@ -54,11 +58,9 @@ GOAL = $(strip $(if $(MAKECMDGOALS),$(MAKECMDGOALS),$@))
 
 # --- the pins ----------------------------------------------------------------
 SERVER_DIR := vendor/chez-http-server
-SERVER_PIN := 5c16f64b34087ff32225de4838fe0b83a3d55bb2  # v0.10.0
+SERVER_PIN := f1d22201f8ed58657e1c2367fed9a035694761d6  # v0.11.0
 WEBSOCKET_DIR := vendor/chez-websocket
-WEBSOCKET_PIN := 4b70f22b9ab8716c999d2599a75c7ee6a357ecd4  # v0.5.1
-JSONPARSE_DIR := vendor/jsonparse
-JSONPARSE_PIN := a939f3132fa229de4a032927c1a2b272b63cc9af  # v0.1.0
+WEBSOCKET_PIN := 9a8563e9e16ca4954cfd4803b96b964d6e5987f1  # v0.5.2
 
 # --- the pins it carries ------------------------------------------------------
 LIBUV_DIR        := $(SERVER_DIR)/vendor/chez-libuv
@@ -70,8 +72,8 @@ SRFI_DIR         := $(SERVER_DIR)/vendor/chez-srfi
 # --- the library paths --------------------------------------------------------
 # LIBDIRS is the path `make run` and `make dev` use: circuit's src/, then the
 # server's, chez-websocket's and the libraries the server carries, then
-# jsonparse's src/, not its vendor/, whose byte-machine is chez-httparse's,
-# then vendor/akku, which holds hashing. chez-libuv locates its C shim by an
+# jsonparse's src/, the one directory of vendor/akku-trees on the path, then
+# vendor/akku, which holds hashing. chez-libuv locates its C shim by an
 # absolute path baked into the config.sls its build generates, so only its
 # src/ is needed. build/scheme-libs carries (srfi :64). vendor/akku comes
 # last, so it can stand in for none of the others' libraries.
@@ -81,6 +83,8 @@ SRFI_DIR         := $(SERVER_DIR)/vendor/chez-srfi
 BUILD_DIR := build
 SRFI_LIBS := $(BUILD_DIR)/scheme-libs
 AKKU_DIR := vendor/akku
+AKKU_TREES_DIR := vendor/akku-trees
+JSONPARSE_DIR := $(AKKU_TREES_DIR)/jsonparse
 EMPTY :=
 SPACE := $(EMPTY) $(EMPTY)
 LIBDIR_LIST := src \
@@ -187,36 +191,47 @@ check-guix-inside: ## (inside the container) Assert the pinned toolchain, isolat
 # Targeted, so neither chez-libuv's own vendored libuv nor the server's test
 # clients (vtest2) are cloned: the shim links the libuv pkg-config finds when
 # it meets chez-libuv's floor, as the container's does. chez-websocket's own
-# server isn't cloned either: circuit's is the one on the path. Then hashing,
-# downloaded as Akku.lock pins it, its sha256 checked, and unpacked into
-# vendor/akku by scripts/fetch-akku-lock, which needs curl or wget, tar,
-# sha256sum or shasum, and diff, and xz with GNU tar, which reads the
-# archive through it: bsdtar, macOS's, reads it itself. A tree that already
-# records the lock's sha256 is held to its archive under vendor/akku/dl, the
-# archive downloaded again first if dl/ lacks it or holds another, and the
-# tree unpacked again if it differs.
+# server isn't cloned either: circuit's is the one on the path. Then hashing
+# and jsonparse, each downloaded as Akku.lock pins it, its sha256 checked,
+# and unpacked by scripts/fetch-akku-lock, hashing into vendor/akku and
+# jsonparse into vendor/akku-trees. It needs curl or wget, tar, sha256sum or
+# shasum, and diff, and xz with GNU tar, which reads the archive through it:
+# bsdtar, macOS's, reads it itself. A tree that already records the lock's
+# sha256 is held to its archive under its directory's dl/, the archive
+# downloaded again first if dl/ lacks it or holds another, and the tree
+# unpacked again if it differs. The lock's byte-machine isn't fetched: the
+# server's is the one on the path.
 FETCH_TOOL = $(if $(shell command -v curl 2>/dev/null),curl,$(if $(shell command -v wget 2>/dev/null),wget,"curl or wget"))
 SHA256_TOOL = $(if $(shell command -v sha256sum 2>/dev/null),sha256sum,$(if $(shell command -v shasum 2>/dev/null),shasum,"sha256sum or shasum"))
 XZ_TOOL = $(if $(findstring GNU,$(shell tar --version 2>/dev/null)),xz)
 
-submodules: ## (host) Clone the pinned server, the pins it carries, chez-websocket and jsonparse; fetch hashing into vendor/akku
+submodules: ## (host) Clone the pinned server, the pins it carries and chez-websocket; fetch hashing into vendor/akku and jsonparse into vendor/akku-trees
 	@scripts/require-tools "$(GOAL)" git $(FETCH_TOOL) tar $(XZ_TOOL) $(SHA256_TOOL) diff
-	git submodule update --init $(SERVER_DIR) $(WEBSOCKET_DIR) $(JSONPARSE_DIR)
+	git submodule update --init $(SERVER_DIR) $(WEBSOCKET_DIR)
 	git -C $(SERVER_DIR) submodule update --init vendor/chez-libuv vendor/uriparse vendor/chez-srfi
 	git -C $(SERVER_DIR) submodule update --init --recursive vendor/chez-httparse
 	AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock hashing
+	AKKU_DEST=$(AKKU_TREES_DIR) sh scripts/fetch-akku-lock jsonparse
 
 # Each checkout is asked for its own .git first: in a submodule that was
 # never cloned, `git -C` would climb to the repository around it and answer
 # that one's commit: for chez-websocket's server, circuit's own gitlink.
-# jsonparse's byte-machine is never cloned: its gitlink, read from
-# jsonparse's tree, must be the one chez-httparse's tree records, which the
-# checkout on the path is held to.
-# vendor/akku is held by scripts/fetch-akku-lock --check, which downloads
-# nothing: hashing's tree must record Akku.lock's sha256 and be the archive
-# under vendor/akku/dl, with that sha256, unpacked. Read-only.
-check-pins: ## (host) Fail unless the server, chez-websocket and jsonparse sit at their pins, chez-websocket's server pin is SERVER_PIN, jsonparse's byte-machine pin is chez-httparse's, each pin the server carries sits where it records, and vendor/akku holds hashing as Akku.lock pins it
-	@scripts/require-tools "$(GOAL)" git tar $(XZ_TOOL) $(SHA256_TOOL) diff
+# Akku.lock's byte-machine, which `akku lock` adds for jsonparse, is never
+# fetched: the path's one is the server's, under chez-httparse, and it must
+# be the version the lock pins. The checkout's version is the one its
+# Akku.manifest's (akku-package ("byte-machine" "<version>") ...) gives, and
+# the lock's the one its archive's file name gives,
+# byte-machine_<version>_repack.tar.xz; either unread fails, naming it.
+# It must be in the range jsonparse's tree names in its Akku.manifest's
+# depends too, ("byte-machine" "^X.Y.Z"), read as Akku reads a caret: at
+# least X.Y.Z, below (X+1).0.0, or below 0.(Y+1).0 when X is 0, or exactly
+# 0.0.Z when X and Y are. A range or a version of any other form fails.
+# vendor/akku and vendor/akku-trees are held by scripts/fetch-akku-lock
+# --check, which downloads nothing: hashing's tree and jsonparse's must each
+# record Akku.lock's sha256 and be the archive under its directory's dl/,
+# with that sha256, unpacked. Read-only.
+check-pins: ## (host) Fail unless the server and chez-websocket sit at their pins, chez-websocket's server pin is SERVER_PIN, each pin the server carries sits where it records, its byte-machine is the version Akku.lock pins and in the range jsonparse needs, and vendor/akku and vendor/akku-trees hold hashing and jsonparse as Akku.lock pins them
+	@scripts/require-tools "$(GOAL)" git awk tar $(XZ_TOOL) $(SHA256_TOOL) diff
 	@fail=0; \
 	check_pin() { \
 	  got=; [ -e "$$1/.git" ] && got=$$(git -C "$$1" rev-parse HEAD 2>/dev/null); \
@@ -239,25 +254,59 @@ check-pins: ## (host) Fail unless the server, chez-websocket and jsonparse sit a
 	    echo "PIN MISMATCH: $(WEBSOCKET_DIR) pins the server at $${wsrv:-<no gitlink recorded>}, SERVER_PIN says $(strip $(SERVER_PIN))" >&2; fail=1; \
 	  else echo "pin ok: $(WEBSOCKET_DIR)'s server $$wsrv, SERVER_PIN"; fi; \
 	fi; \
-	gitlink $(JSONPARSE_DIR) JSONPARSE_PIN $(strip $(JSONPARSE_PIN)); \
-	check_pin $(JSONPARSE_DIR) $(strip $(JSONPARSE_PIN)); \
-	if [ -e "$(JSONPARSE_DIR)/.git" ]; then \
-	  jbm=$$(recorded $(JSONPARSE_DIR) vendor/byte-machine); \
-	  hbm=; [ -e "$(HTTPARSE_DIR)/.git" ] && hbm=$$(recorded $(HTTPARSE_DIR) vendor/byte-machine); \
-	  if [ -z "$$jbm" ] || [ "$$jbm" != "$$hbm" ]; then \
-	    echo "PIN MISMATCH: $(JSONPARSE_DIR) pins byte-machine at $${jbm:-<no gitlink recorded>}, but $(HTTPARSE_DIR) records $${hbm:-<none>}: the path holds one byte-machine" >&2; fail=1; \
-	  else echo "pin ok: $(JSONPARSE_DIR)'s byte-machine $$jbm, $(HTTPARSE_DIR)'s"; fi; \
-	fi; \
 	for d in chez-libuv chez-httparse uriparse chez-srfi; do \
 	  check_pin $(SERVER_DIR)/vendor/$$d "$$(recorded $(SERVER_DIR) vendor/$$d)"; \
 	done; \
 	check_pin $(BYTE_MACHINE_DIR) "$$(recorded $(HTTPARSE_DIR) vendor/byte-machine)"; \
-	for d in $(SERVER_DIR) $(WEBSOCKET_DIR) $(JSONPARSE_DIR) $(LIBUV_DIR) $(HTTPARSE_DIR) $(BYTE_MACHINE_DIR) $(URIPARSE_DIR) $(SRFI_DIR); do \
+	bm=$$(awk '/^[[:space:]]*\(akku-package[[:space:]]*\([[:space:]]*"byte-machine"[[:space:]]/ { split($$0, a, "\""); print a[4]; exit }' $(BYTE_MACHINE_DIR)/Akku.manifest 2>/dev/null); \
+	lock_url=$$(awk '/\(name "/ { split($$0, a, "\""); name = a[2]; next } name == "byte-machine" && /\(url "/ { split($$0, a, "\""); print a[2]; exit }' Akku.lock 2>/dev/null); \
+	lock_bm=; \
+	case $$lock_url in */byte-machine_*_repack.tar.xz) lock_bm=$${lock_url##*/byte-machine_}; lock_bm=$${lock_bm%_repack.tar.xz} ;; esac; \
+	case $$lock_bm in *[!0-9A-Za-z.+-]*) lock_bm= ;; esac; \
+	if [ -z "$$bm" ]; then \
+	  echo "PIN MISMATCH: $(BYTE_MACHINE_DIR)/Akku.manifest gives no version in (akku-package (\"byte-machine\" \"<version>\") ...), so it can't be held to Akku.lock's byte-machine" >&2; fail=1; \
+	fi; \
+	if [ -z "$$lock_bm" ]; then \
+	  echo "PIN MISMATCH: Akku.lock's byte-machine archive gives no version in its file name, byte-machine_<version>_repack.tar.xz: it is $${lock_url:-<not in Akku.lock>}" >&2; fail=1; \
+	fi; \
+	if [ -n "$$bm" ] && [ -n "$$lock_bm" ]; then \
+	  if [ "$$bm" != "$$lock_bm" ]; then \
+	    echo "PIN MISMATCH: $(BYTE_MACHINE_DIR) is byte-machine $$bm, but Akku.lock pins $$lock_bm, for jsonparse: the path holds one byte-machine, the server's. Move Akku.lock's byte-machine, and a jsonparse on it, with the server." >&2; fail=1; \
+	  else echo "pin ok: $(BYTE_MACHINE_DIR) is byte-machine $$bm, the version Akku.lock pins"; fi; \
+	fi; \
+	semver() { \
+	  case $$1 in *.*.*.*|*..*|.*|*.) return 1 ;; *.*.*) ;; *) return 1 ;; esac; \
+	  sa=$${1%%.*}; sr=$${1#*.}; sb=$${sr%%.*}; sc=$${sr#*.}; \
+	  for x in "$$sa" "$$sb" "$$sc"; do case $$x in ''|*[!0-9]*|0?*) return 1 ;; esac; done; }; \
+	in_caret() { \
+	  case $$1 in ^*) ;; *) return 2 ;; esac; \
+	  semver "$${1#^}" || return 2; ra=$$sa; rb=$$sb; rc=$$sc; \
+	  semver "$$2" || return 2; \
+	  if [ "$$ra" -gt 0 ]; then \
+	    [ "$$sa" -eq "$$ra" ] && { [ "$$sb" -gt "$$rb" ] || { [ "$$sb" -eq "$$rb" ] && [ "$$sc" -ge "$$rc" ]; }; }; \
+	  elif [ "$$rb" -gt 0 ]; then \
+	    [ "$$sa" -eq 0 ] && [ "$$sb" -eq "$$rb" ] && [ "$$sc" -ge "$$rc" ]; \
+	  else [ "$$sa" -eq 0 ] && [ "$$sb" -eq 0 ] && [ "$$sc" -eq "$$rc" ]; fi || return 1; }; \
+	jr=$$(awk '/^[[:space:]]*;/ { next } /depends\/dev/ { on = 0; next } /\(depends/ { on = 1 } on { n = split($$0, a, "\""); for (i = 2; i + 2 <= n; i += 2) if (a[i] == "byte-machine") { print a[i + 2]; exit } }' $(JSONPARSE_DIR)/Akku.manifest 2>/dev/null); \
+	if [ -z "$$jr" ]; then \
+	  echo "PIN MISMATCH: $(JSONPARSE_DIR)/Akku.manifest names no byte-machine in its depends, so the path's can't be held to the range jsonparse needs" >&2; fail=1; \
+	elif [ -n "$$bm" ]; then \
+	  r=0; in_caret "$$jr" "$$bm" || r=$$?; \
+	  case $$r in \
+	    0) echo "pin ok: $(BYTE_MACHINE_DIR) is byte-machine $$bm, in the range $$jr jsonparse needs" ;; \
+	    1) echo "PIN MISMATCH: $(JSONPARSE_DIR) needs byte-machine $$jr, but the path's, $(BYTE_MACHINE_DIR), is $$bm. Move Akku.lock's jsonparse to a release on it." >&2; fail=1 ;; \
+	    *) echo "PIN MISMATCH: $(JSONPARSE_DIR) needs byte-machine $$jr and the path's is $$bm: this check reads only a range ^X.Y.Z and a version X.Y.Z" >&2; fail=1 ;; \
+	  esac; \
+	fi; \
+	for d in $(SERVER_DIR) $(WEBSOCKET_DIR) $(LIBUV_DIR) $(HTTPARSE_DIR) $(BYTE_MACHINE_DIR) $(URIPARSE_DIR) $(SRFI_DIR); do \
 	  if [ -e "$$d/.git" ] && [ -n "$$(git -C $$d status --porcelain --untracked-files=no 2>/dev/null)" ]; then \
 	    echo "PIN DIRTY: $$d has local edits to tracked files" >&2; fail=1; fi; \
 	done; \
 	if ! AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock --check hashing; then \
 	  echo "PIN MISMATCH: $(AKKU_DIR) doesn't hold hashing as Akku.lock pins it. Run 'make submodules', which fetches it again: an edit there is lost." >&2; fail=1; \
+	fi; \
+	if ! AKKU_DEST=$(AKKU_TREES_DIR) sh scripts/fetch-akku-lock --check jsonparse; then \
+	  echo "PIN MISMATCH: $(AKKU_TREES_DIR) doesn't hold jsonparse as Akku.lock pins it. Run 'make submodules', which fetches it again: an edit there is lost." >&2; fail=1; \
 	fi; \
 	exit $$fail
 
@@ -304,7 +353,7 @@ check-chez: ## Fail unless CHEZ is Chez Scheme 10.4.1 or later, threaded, naming
 
 deps: check-chez ## Build chez-libuv's shim and link SRFI-64 into build/scheme-libs; never fetches
 	@scripts/require-tools "$(GOAL)" $(CHEZ) $(CC) pkg-config
-	@for f in $(SERVER_DIR)/src/http-server.sls $(WEBSOCKET_DIR)/src/websocket.sls $(JSONPARSE_DIR)/src/jsonparse/easy.sls $(LIBUV_DIR)/Makefile $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src $(URIPARSE_DIR)/src $(SRFI_DIR)/%3a64.sls; do \
+	@for f in $(SERVER_DIR)/src/http-server.sls $(WEBSOCKET_DIR)/src/websocket.sls $(LIBUV_DIR)/Makefile $(HTTPARSE_DIR)/src $(BYTE_MACHINE_DIR)/src $(URIPARSE_DIR)/src $(SRFI_DIR)/%3a64.sls; do \
 	  if [ ! -e "$$f" ]; then \
 	    echo "deps: $$f not found, so a submodule is empty or missing. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
 	    exit 1; \
@@ -316,6 +365,14 @@ deps: check-chez ## Build chez-libuv's shim and link SRFI-64 into build/scheme-l
 	fi
 	@if ! AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock --check-record hashing > /dev/null; then \
 	  echo "deps: so $(AKKU_DIR) holds another hashing than the one Akku.lock pins. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
+	  exit 1; \
+	fi
+	@if [ ! -e $(JSONPARSE_DIR)/src/jsonparse/easy.sls ]; then \
+	  echo "deps: $(JSONPARSE_DIR)/src/jsonparse/easy.sls not found, so jsonparse, which Akku.lock pins, isn't fetched. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
+	  exit 1; \
+	fi
+	@if ! AKKU_DEST=$(AKKU_TREES_DIR) sh scripts/fetch-akku-lock --check-record jsonparse > /dev/null; then \
+	  echo "deps: so $(AKKU_TREES_DIR) holds another jsonparse than the one Akku.lock pins. Run 'make submodules' on the host: make deps never fetches, and the container has no network." >&2; \
 	  exit 1; \
 	fi
 	@$(MAKE) --no-print-directory -C $(LIBUV_DIR) build
@@ -395,10 +452,10 @@ check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared ex
 # (tests/check-imports.sps). (hashing sha-2), read from AKKU_DIR as Chez
 # resolves it, and the libraries it imports, import (rnrs ...) and each
 # other alone; (jsonparse easy), read from byte-machine's src/ and
-# jsonparse's, in LIBDIRS' order, and the libraries it imports, import
+# JSONPARSE_DIR's, in LIBDIRS' order, and the libraries it imports, import
 # (rnrs ...), each other and byte-machine's runtime alone. And no other directory of
 # LIBRARY_DIRS holds a (circuit ...) library, nor any but AKKU_DIR a hashing
-# one, nor any but jsonparse's src/ a jsonparse one, nor any but
+# one, nor any but JSONPARSE_DIR's src/ a jsonparse one, nor any but
 # BYTE_MACHINE_DIR's src/ a byte-machine. It names each breach on
 # stderr. make test runs it once src/ exists; an src/ with no library fails
 # it. Its own suite, tests/test-check-imports.sps, runs in make test whether

@@ -62,14 +62,14 @@ You need Linux or macOS, on x86-64 or arm64, with:
 - libuv 1.48 or later that ~pkg-config~ can see, and a C compiler: the
   server's libuv binding builds a small C shim
 
-Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], takes WebSockets from
-[[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]] and reads JSON with
-[[https://github.com/Kiyomi-Computation-Systems/jsonparse][jsonparse]], all pinned under ~vendor/~.
+Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]] and takes WebSockets from
+[[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]], both pinned under ~vendor/~, and reads JSON with
+[[https://github.com/Kiyomi-Computation-Systems/jsonparse][jsonparse]], from the Akku index.
 
 #+begin_src sh
 git clone https://github.com/Kiyomi-Computation-Systems/circuit.git
 cd circuit
-make submodules   # clones the pinned server, what it needs, chez-websocket and jsonparse
+make submodules   # clones the pinned server, what it needs and chez-websocket; fetches hashing and jsonparse
 make test         # builds the libuv shim, then runs every tests/test-*.sps
 #+end_src
 

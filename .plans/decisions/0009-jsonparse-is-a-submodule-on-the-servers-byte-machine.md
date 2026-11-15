@@ -2,7 +2,9 @@
 
 - **Status:** Accepted, 2026-11-10, in slice 11, which brings it in; the owner chose
   jsonparse, its pin and its packaging, and answered the design's questions the same day
-  (design §15.36)
+  (design §15.36). Items 1, 2 and 4 superseded on 2026-11-15 by
+  [ADR-0010](0010-jsonparse-comes-from-akku-on-the-servers-byte-machine.md): jsonparse
+  0.2.0 comes from Akku. Item 3 stands.
 - **Date:** 2026-11-10
 - **Scope:** reading a JSON body for `(circuit json)`, and how jsonparse and the
   byte-machine it runs on reach the build, the container, CI and an app
@@ -64,7 +66,9 @@ after the others, and jsonparse's next release is on 0.9.0 too.
   guard relies on: a body past the cap is a `413`, and a stall under `wrap-timeout` a
   `504`. Kiyomi-Computation-Systems/jsonparse#18, open on 2026-11-10, adds the promise,
   and rows of jsonparse's own, for its next release. The pin move that takes it says so
-  here, and circuit's rows stay.
+  here, and circuit's rows stay. Taken on 2026-11-15: #18, merged on 2026-11-10, is in
+  jsonparse 0.2.0, whose `[0.2.0]` says a port's raise passes through as it was raised,
+  and circuit takes 0.2.0 from Akku (ADR-0010). circuit's rows stay.
 - **The next server release on byte-machine 0.9.0 waits for jsonparse's on it too,**
   and the reverse: circuit can't take either alone.
 - **An app working from a checkout runs `make submodules`,** as it does for the server.

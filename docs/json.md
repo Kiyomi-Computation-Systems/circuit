@@ -145,8 +145,8 @@ nesting-too-deep at byte 3
   the last key sent twice winning.
 - `'null`: what `null` reads as, the symbol `null` by default.
 
-jsonparse's [tree.md](https://github.com/Kiyomi-Computation-Systems/jsonparse/blob/v0.1.0/docs/tree.md)
-and [string.md](https://github.com/Kiyomi-Computation-Systems/jsonparse/blob/v0.1.0/docs/string.md)
+jsonparse's [tree.md](https://github.com/Kiyomi-Computation-Systems/jsonparse/blob/v0.2.0/docs/tree.md)
+and [string.md](https://github.com/Kiyomi-Computation-Systems/jsonparse/blob/v0.2.0/docs/string.md)
 say more. Options `read-json` refuses, such as `'stream 'values`, are
 refused when you call `wrap-json-body`.
 

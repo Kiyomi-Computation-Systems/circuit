@@ -1,9 +1,14 @@
 # build artifacts: the SRFI-64 link tree and anything else we generate
 /build/
 
-# hashing, as Akku.lock pins it, which `make submodules` fetches; outside
-# build/, so `make clean` keeps it
+# hashing and jsonparse, as Akku.lock pins them, which `make submodules`
+# fetches; outside build/, so `make clean` keeps them
 /vendor/akku/
+/vendor/akku-trees/
+
+# jsonparse's old submodule, which a checkout from before jsonparse came from
+# Akku keeps: not on the path, and never to be added back as a gitlink
+/vendor/jsonparse/
 
 # Chez compiled objects / whole-program optimization outputs
 *.so

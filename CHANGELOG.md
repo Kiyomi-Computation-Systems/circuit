@@ -7,6 +7,21 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **jsonparse 0.2.0 comes from the Akku index,** in place of the v0.1.0 submodule.
+  `make submodules` fetches it into `vendor/akku-trees`, as `Akku.lock` pins it, its
+  sha256 checked. In an earlier checkout, run `make submodules` again, then
+  `rm -rf vendor/jsonparse .git/modules/vendor/jsonparse`: the old submodule is no
+  longer used, and git ignores what is left of it. jsonparse's API is the same,
+  and by its own measures it builds a tree full of numbers in up to 25% less time, and
+  one whose strings are long and ASCII in 28% less.
+- **The pins are at chez-http-server v0.11.0 and chez-websocket v0.5.2.** The server
+  moves to chez-httparse v0.6.0 and uriparse v0.9.0, on byte-machine v0.9.0, the one
+  jsonparse 0.2.0 needs. No code under either's `src/` changes, and no name joins or
+  leaves a circuit library. `make check-pins` holds the server's byte-machine to the
+  version `Akku.lock` pins.
+
 ## [0.3.0] - 2026-11-10
 
 The fifth release: JSON. `(circuit json)`, a library of its own, reads a request's JSON
