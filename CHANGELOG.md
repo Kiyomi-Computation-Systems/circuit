@@ -7,20 +7,46 @@ release before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`make akku-deps`, `make lock` and `make check-akku-lock`**, on the host. `make
+  akku-deps` fetches Akku 1.2.0 into `build/akku-tool`, its sha256 checked against
+  `scripts/akku-tool.lock`, and `scripts/akku` runs it on `CHEZ`. `make lock` runs
+  `akku update`, then `akku lock`, which writes `Akku.lock`. `make check-akku-lock`
+  does the same on a copy of `Akku.manifest`, and fails unless every token of each
+  project, symbols and strings alike, is `Akku.lock`'s, so a new release that a range
+  admits fails it until `make lock` moves the lock. CI runs it last. Without Akku it
+  fails, naming `make akku-deps`.
+
 ### Changed
 
+- **Every dependency comes from the Akku index:** chez-http-server, what it brings,
+  chez-websocket, `hashing`, jsonparse, and chez-srfi for the suites. None is a
+  submodule now. `Akku.lock`, which `akku lock` writes, pins each one's archive and
+  sha256. `make fetch` replaces `make submodules`: it fetches `hashing` into
+  `vendor/akku` and the others into `vendor/akku-trees`, each sha256 checked. `make
+  deps` builds chez-libuv's shim in a copy, `build/chez-libuv`, and copies it again
+  when it differs from its tree beyond the build's two products. `make check-pins`
+  holds each tree to its archive, an edit included, the copy to its tree and its
+  build's products, and `Akku.lock` to the packages the Makefile fetches. In an
+  earlier checkout, before pulling, run
+  `git submodule deinit -f vendor/chez-http-server vendor/chez-websocket`. If you've
+  already pulled, remove the two directories, and
+  `"$(git rev-parse --git-common-dir)/modules/vendor/chez-http-server"` and its
+  chez-websocket twin. Then run `make fetch`. `.gitignore` keeps the old directories out
+  of `git add`. The libraries on the path are the same bytes, but chez-websocket 0.6.0,
+  which changes no library from 0.5.2, and chez-srfi akku.291, whose SRFI-1 and SRFI-64
+  are akku.181's for Chez.
 - **jsonparse 0.2.0 comes from the Akku index,** in place of the v0.1.0 submodule.
-  `make submodules` fetches it into `vendor/akku-trees`, as `Akku.lock` pins it, its
-  sha256 checked. In an earlier checkout, run `make submodules` again, then
-  `rm -rf vendor/jsonparse .git/modules/vendor/jsonparse`: the old submodule is no
-  longer used, and git ignores what is left of it. jsonparse's API is the same,
+  `make fetch` fetches it into `vendor/akku-trees`, as `Akku.lock` pins it, its
+  sha256 checked. In an earlier checkout, remove `vendor/jsonparse` and
+  `"$(git rev-parse --git-common-dir)/modules/vendor/jsonparse"` too: the old submodule
+  is no longer used, and git ignores what is left of it. jsonparse's API is the same,
   and by its own measures it builds a tree full of numbers in up to 25% less time, and
   one whose strings are long and ASCII in 28% less.
-- **The pins are at chez-http-server v0.11.0 and chez-websocket v0.5.2.** The server
-  moves to chez-httparse v0.6.0 and uriparse v0.9.0, on byte-machine v0.9.0, the one
-  jsonparse 0.2.0 needs. No code under either's `src/` changes, and no name joins or
-  leaves a circuit library. `make check-pins` holds the server's byte-machine to the
-  version `Akku.lock` pins.
+- **chez-http-server is at 0.11.0.** The server moves to chez-httparse 0.6.0 and
+  chez-uri 0.9.0, on byte-machine 0.9.0, the one jsonparse 0.2.0 needs. No code under
+  its `src/` changes, and no name joins or leaves a circuit library.
 
 ## [0.3.0] - 2026-11-10
 

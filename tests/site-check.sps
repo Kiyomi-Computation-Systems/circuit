@@ -9,7 +9,7 @@
 ;;; a shared object.
 ;;;
 ;;; From the repository root:
-;;;   CHEZSCHEMELIBDIRS=.:vendor/chez-cmark-gfm/src SITE_REF=main \
+;;;   CHEZSCHEMELIBDIRS=.:build/akku/chez-cmark-gfm/src SITE_REF=main \
 ;;;     chez --program tests/site-check.sps
 ;;; or simply `make check-site`.
 ;;;

@@ -2,7 +2,10 @@
 
 - **Status:** Accepted, 2026-11-15, on the owner's answers the same day: wait for the
   server on byte-machine 0.9.0, then move the three pins together with jsonparse from
-  Akku; unpack its tree in a second directory; hold the server's byte-machine to the lock
+  Akku; unpack its tree in a second directory; hold the server's byte-machine to the lock.
+  Items 3 and 4 superseded on 2026-11-20 by
+  [ADR-0011](0011-every-dependency-comes-from-akku.md): the lock's byte-machine is the
+  path's one, and `make fetch` replaces `make submodules` in item 2.
 - **Date:** 2026-11-15
 - **Supersedes:** [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md)'s
   items 1, 2 and 4. Its item 3, what `(circuit json)` imports and the audit's rules (n),

@@ -1,7 +1,8 @@
 # Design: every dependency from Akku
 
-- **Status:** Draft, 2026-11-20. The owner answered §8 the same day. Nothing is built
-  yet. Its decisions become ADR-0011.
+- **Status:** Approved, 2026-11-20, on the owner's answers in §8, and built in PR #50.
+  [ADR-0011](decisions/0011-every-dependency-comes-from-akku.md) records its decisions,
+  and the review's.
 - **Scope:** how chez-http-server, chez-websocket and everything the server carries reach
   the build, the container, CI and an app; `Akku.manifest`, `Akku.lock`, `make
   submodules`, `make deps`, `make check-pins`, `make check-imports`'s paths,
@@ -170,8 +171,10 @@ into Akku's copy under `.akku/src`.
 So circuit does what Akku does:
 
 - **`make deps`, in the container,** copies `vendor/akku-trees/chez-libuv` to
-  `build/chez-libuv`. It copies again whenever the tree's recorded sha256 differs from the
-  copy's. Then it runs `make -C build/chez-libuv build` there.
+  `build/chez-libuv`. It copies again whenever the copy differs from the tree by more
+  than the build's two products, and `make check-pins` fails on such a copy. (The plan
+  was a sha256 record; the review showed that kept an edited copy.) Then it runs
+  `make -C build/chez-libuv build` there.
 - **`LIBDIRS` takes the copy's `src/`, and `GATE_LIBDIRS` its `tests/`.**
 - **`make clean` removes the copy along with `build/`.** Its separate call to chez-libuv's
   `clean` goes.
@@ -227,9 +230,11 @@ paths.
 
 ### 3.9 CI
 
-- **The `linux` job:** `make fetch` and `make check-pins`, then the Chez build as today,
-  then `make akku-deps` and `make check-akku-lock`, which run Akku on that Chez, then
-  `make test` and `make gate`. There's no submodule step.
+- **The `linux` job:** `make fetch`, then the Chez build as today, then `make test`, the
+  site and `make gate`. Then `make check-pins`, which also holds that they wrote nothing
+  into a tree. Last, `make akku-deps` and `make check-akku-lock`, which run Akku on that
+  Chez, so a red from an upstream release hides no other result. There's no submodule
+  step. (The plan ran both checks earlier; the review moved them.)
 - **The `site` job:** `make fetch`, then `make srfi`, which takes chez-srfi from its tree.
 - **`pages.yml`:** the same change.
 - **The comments** that name submodules are rewritten.
@@ -313,3 +318,7 @@ The owner answered on 2026-11-20:
    is locked at akku.291, with a caret range like the others.
 3. **`make fetch`** replaces `make submodules`, which is removed.
 4. **Publishing circuit on Akku is a slice of its own,** after this one, with a release.
+5. **After the review: circuit runs the newest release that each range admits.** It no
+   longer runs only the combination each sibling's own lock was tested on. "Accept, and
+   record it" was chosen over a check holding circuit's lock to the siblings' locks
+   (ADR-0011's consequences).

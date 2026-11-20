@@ -27,44 +27,43 @@
 ;;;       value chez-http-server's or chez-websocket's facade does, by eq?,
 ;;;       or, for syntax, which has no value, when both export it and src/
 ;;;       defines it nowhere. Its entry has no block, and one link to that
-;;;       one's docs/reference.md at its pin's tag, whose anchored section,
-;;;       down to the next heading of its level or a higher one, names it in
-;;;       a code span;
+;;;       one's docs/reference.md at its tag, whose anchored section, down
+;;;       to the next heading of its level or a higher one, names it in a
+;;;       code span;
 ;;;   (f) every link in docs/*.md and README.org into chez-http-server's,
 ;;;       chez-websocket's or jsonparse's repository, at blob/<ref>/ or
-;;;       tree/<ref>/, names its tag as <ref>: the pin's for the first two,
-;;;       and for jsonparse, which comes from the Akku index, v and the
-;;;       version Akku.lock pins;
+;;;       tree/<ref>/, names its tag as <ref>;
 ;;;   (g) every re-export that is a procedure has one signature comment in
 ;;;       the library under src/ that re-exports it, and its text is the one
-;;;       signature that one's docs/reference.md, as vendored at its pin,
-;;;       gives it: in a text fence, as a table row's name and type cells,
-;;;       or as an inline code span, whitespace runs collapsed. As in (d),
-;;;       a comment is held to a reference, never to what the code does.
+;;;       signature that one's docs/reference.md, as its tree under
+;;;       vendor/akku-trees holds it, gives it: in a text fence, as a table
+;;;       row's name and type cells, or as an inline code span, whitespace
+;;;       runs collapsed. As in (d), a comment is held to a reference, never
+;;;       to what the code does.
 ;;;
-;;; A pin's tag is v and the version its vendored copy's Akku.manifest
-;;; gives, which the Makefile's comment on the pin, `SERVER_PIN := <sha>  #
-;;; vX.Y.Z`, must name too. The records name each pin as the Makefile does,
-;;; its tag and its sha's first seven digits, the server's, then
-;;; chez-websocket's: the global constraints as `now vX.Y.Z (`sha`)`, and
-;;; ADR-0003 as `vX.Y.Z (`sha`) since <date>`. The version Akku.lock pins
-;;; jsonparse at is the one its archive's file name gives,
-;;; jsonparse_<version>_repack.tar.xz, a release, and the Akku.manifest of
-;;; the tree unpacked from it, under vendor/akku-trees, gives it too.
-;;; And the page's own shape: no heading out of the
-;;; convention; each type alias in its intro is the alias comment in src/,
-;;; `;; NAME = TYPE`, where two that name one type agree; every entry has
-;;; words, and every entry but a re-export a link to a guide page, a
-;;; relative .md with no anchor that names it in code, inline or fenced; every #anchor
-;;; into the server's or chez-websocket's reference names a heading there,
-;;; as vendored at its pin. The readers are pure, and rows of their own hold
-;;; them to inputs written here by hand.
+;;; Each of those three comes from the Akku index, and its tag is v and the
+;;; version Akku.lock pins it at: the one its archive's file name gives,
+;;; <name>_<version>_repack.tar.xz, a release, which the Akku.manifest of
+;;; its tree, as `make fetch` unpacks it under vendor/akku-trees, gives too.
+;;; The global constraints' Dependency section names each project Akku.lock
+;;; pins but chez-cmark-gfm once, as `<package>, now <version>`, at the
+;;; version the lock pins, and names no other that way. And the page's own
+;;; shape: no heading out of the convention; each type alias in its intro
+;;; is the alias comment in src/, `;; NAME = TYPE`, where two that name one
+;;; type agree; every entry has words, and every entry but a re-export a
+;;; link to a guide page, a relative .md with no anchor that names it in
+;;; code, inline or fenced; every #anchor into the server's or
+;;; chez-websocket's reference names a heading there, as its tree holds it.
+;;; The readers are pure, and rows of their own hold them to inputs written
+;;; here by hand.
 ;;;
 ;;; Run it from the checkout's root, as make test does. To run it on mutant
 ;;; copies, name a docs directory, which holds reference.md, a README, and,
 ;;; if you like, a src directory, whose comments and definitions it reads.
 ;;; The exports and their values are always those of the libraries on the
-;;; library path: put a mutant src first on it to change them.
+;;; library path: put a mutant src first on it to change them. Akku.lock,
+;;; the trees and the global constraints are read from where it runs: run
+;;; it from a copy of the checkout's root to change them.
 ;;;
 ;;;   $CHEZ --libdirs ... --program tests/test-reference.sps build/m/docs build/m/README.org [build/m/src]
 (import (rnrs)
@@ -104,8 +103,6 @@
 (define page (string-append docs-dir "/reference.md"))
 (define src-dir
   (if (and (pair? arguments) (pair? (cdr arguments)) (pair? (cddr arguments))) (caddr arguments) "src"))
-(define makefile "Makefile")
-
 ;; public-libraries : (Listof (Listof Symbol))
 ;; The twelve, in the page's order.
 (define public-libraries
@@ -123,29 +120,21 @@
      res-tapped-body-inner res-tapped-body-proc res-tapped-body?
      res-wrapped-body-inner res-wrapped-body-proc res-wrapped-body?)))
 
-;; upstream-specs : (Listof (List (Listof Symbol) String String String String))
-;; Each library circuit re-exports from: its facade, its repository, the
-;; Makefile variable that pins it, its vendored reference and Akku.manifest.
+;; upstream-specs : (Listof (List (Listof Symbol) String String))
+;; Each library circuit re-exports from: its facade, its repository, which
+;; is its project's name in Akku.lock, and its reference, in its tree.
 (define upstream-specs
-  '(((http-server) "chez-http-server" "SERVER_PIN"
-     "vendor/chez-http-server/docs/reference.md" "vendor/chez-http-server/Akku.manifest")
-    ((websocket) "chez-websocket" "WEBSOCKET_PIN"
-     "vendor/chez-websocket/docs/reference.md" "vendor/chez-websocket/Akku.manifest")))
-
-;; pin-specs : (Listof (List String String String))
-;; Each repository circuit pins by gitlink: its name, the Makefile variable
-;; that pins it, and its vendored Akku.manifest, in the order the records
-;; name the pins. They are upstream-specs's.
-(define pin-specs
-  '(("chez-http-server" "SERVER_PIN" "vendor/chez-http-server/Akku.manifest")
-    ("chez-websocket" "WEBSOCKET_PIN" "vendor/chez-websocket/Akku.manifest")))
+  '(((http-server) "chez-http-server" "vendor/akku-trees/chez-http-server/docs/reference.md")
+    ((websocket) "chez-websocket" "vendor/akku-trees/chez-websocket/docs/reference.md")))
 
 ;; locked-specs : (Listof (List String String))
-;; Each repository circuit takes from the Akku index whose docs the pages
-;; link to: its name, which is its project's in Akku.lock, and the
-;; Akku.manifest of its tree as `make submodules` unpacks it.
+;; Each repository whose docs the pages link to: its name, which is its
+;; project's in Akku.lock, and the Akku.manifest of its tree as `make
+;; fetch` unpacks it. The upstreams are among them.
 (define locked-specs
-  '(("jsonparse" "vendor/akku-trees/jsonparse/Akku.manifest")))
+  '(("chez-http-server" "vendor/akku-trees/chez-http-server/Akku.manifest")
+    ("chez-websocket" "vendor/akku-trees/chez-websocket/Akku.manifest")
+    ("jsonparse" "vendor/akku-trees/jsonparse/Akku.manifest")))
 
 (define lock-file "Akku.lock")
 
@@ -519,7 +508,7 @@
 (define (relative-link? url)
   (not (or (string-search url "://" 0) (prefix? "#" url) (prefix? "mailto:" url))))
 
-;; --- links into the pinned repositories, in any text ---------------------------
+;; --- links into the siblings' repositories, in any text ---------------------------
 
 ;; repository-refs : String (Listof String) -> (Listof (List String String String))
 ;; Every link in TEXT into one of the REPOS of Kiyomi-Computation-Systems
@@ -983,40 +972,7 @@
               (listed listed)
               (else "none")))))
 
-;; --- the pins --------------------------------------------------------------------------
-
-;; pin-value : String String -> (U String #f)
-;; What follows := on the first Makefile line `VARIABLE := ...`.
-(define (pin-value text variable)
-  (let loop ((lines (string-lines text)))
-    (if (null? lines)
-        #f
-        (let* ((line (car lines))
-               (rest (and (prefix? variable line)
-                          (trim-left (substring line (string-length variable) (string-length line))))))
-          (if (and rest (prefix? ":=" rest))
-              (substring rest 2 (string-length rest))
-              (loop (cdr lines)))))))
-
-;; pin-tag : String String -> (U String #f)
-;; The tag after # on the Makefile line `VARIABLE := <sha>  # <tag>`.
-(define (pin-tag text variable)
-  (let* ((value (pin-value text variable))
-         (hash (and value (string-search value "#" 0)))
-         (tag (and hash (trim (substring value (+ hash 1) (string-length value))))))
-    (and tag (not (string=? tag "")) tag)))
-
-;; pin-sha : String String -> (U String #f)
-;; The sha on the Makefile line `VARIABLE := <sha>  # <tag>`: what stands
-;; before the first whitespace or #.
-(define (pin-sha text variable)
-  (let ((value (pin-value text variable)))
-    (and value
-         (let* ((v (trim-left value)) (n (string-length v)))
-           (let loop ((i 0))
-             (if (and (< i n) (not (char-whitespace? (string-ref v i))) (not (char=? (string-ref v i) #\#)))
-                 (loop (+ i 1))
-                 (and (> i 0) (substring v 0 i))))))))
+;; --- the lock and the records ---------------------------------------------------------
 
 ;; spaced-words : String -> (Listof String)
 ;; S split at whitespace alone, line breaks included.
@@ -1029,27 +985,57 @@
                 ((char=? (string-ref s i) #\space) (loop (+ i 1) (+ i 1) (cons (substring s start i) out)))
                 (else (loop start (+ i 1) out)))))))
 
-;; pin-mentions : String -> (Listof (List (U String #f) String String (U String #f)))
-;; Each `VERSION (`SHA`)` in TEXT whose VERSION is a release tag, in order:
-;; the word before it, VERSION, SHA and the word after it, #f where there
-;; is none. A word is split at whitespace alone, so it keeps its
-;; punctuation, and a line break counts as a space.
-(define (pin-mentions text)
+;; package-name? : String -> Boolean
+;; A run of lower-case letters, digits and -, as Akku's names are.
+(define (package-name? s)
+  (and (> (string-length s) 0)
+       (for-all (lambda (c) (or (char<=? #\a c #\z) (char-numeric? c) (char=? c #\-))) (string->list s))))
+
+;; version-word : String -> (U String #f)
+;; W with the punctuation a sentence puts after it cut, when what is left
+;; begins with a digit and holds only letters, digits, ., + and -.
+(define (version-word w)
+  (let* ((n (let loop ((n (string-length w)))
+              (if (and (> n 0) (memv (string-ref w (- n 1)) '(#\, #\; #\: #\. #\))))
+                  (loop (- n 1))
+                  n)))
+         (v (substring w 0 n)))
+    (and (> n 0)
+         (char-numeric? (string-ref v 0))
+         (for-all (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (memv c '(#\. #\+ #\-))))
+                  (string->list v))
+         v)))
+
+;; record-versions : String -> (Listof (Pair String String))
+;; Each `NAME, now VERSION` in TEXT, in order, as (NAME . VERSION): the
+;; word before now is a package's name and a comma, and the word after it a
+;; version, its trailing punctuation cut. A word is split at whitespace
+;; alone, and a line break counts as a space.
+(define (record-versions text)
   (let* ((ws (list->vector (spaced-words text))) (n (vector-length ws)))
     (let loop ((k 1) (out '()))
-      (if (>= k n)
+      (if (>= (+ k 1) n)
           (reverse out)
-          (let* ((w (vector-ref ws k))
-                 (close (and (prefix? "(`" w) (string-search w "`)" 2)))
-                 (version (vector-ref ws (- k 1))))
-            (if (and close (> close 2) (release-tag? version))
-                (loop (+ k 1)
-                      (cons (list (and (>= k 2) (vector-ref ws (- k 2)))
-                                  version
-                                  (substring w 2 close)
-                                  (and (< (+ k 1) n) (vector-ref ws (+ k 1))))
-                            out))
-                (loop (+ k 1) out)))))))
+          (let* ((before (vector-ref ws (- k 1)))
+                 (name (and (string=? (vector-ref ws k) "now")
+                            (suffix? before ",")
+                            (substring before 0 (- (string-length before) 1))))
+                 (version (and name (package-name? name) (version-word (vector-ref ws (+ k 1))))))
+            (loop (+ k 1) (if version (cons (cons name version) out) out)))))))
+
+;; lock-projects : (Listof Any) -> (Listof String)
+;; The name of each project an Akku.lock's data pin, in order, in
+;; (projects ((name NAME) ...) ...).
+(define (lock-projects data)
+  (let ((projects (find (lambda (d) (and (pair? d) (list? d) (eq? (car d) 'projects))) data)))
+    (if projects
+        (fold-right (lambda (p names)
+                      (let ((field (and (list? p)
+                                        (find (lambda (f) (and (list? f) (= (length f) 2) (eq? (car f) 'name)))
+                                              p))))
+                        (if (and field (string? (cadr field))) (cons (cadr field) names) names)))
+                    '() (cdr projects))
+        '())))
 
 ;; manifest-package : (Listof Any) -> (U (Pair String String) #f)
 ;; The name and the version an Akku.manifest's data give, in
@@ -1123,57 +1109,6 @@
         (guard (e (#t (list 'syntax)))
           (cons 'value (eval name env))))))
 
-;; An upstream: the library circuit re-exports from, its repository, the
-;; Makefile variable that pins it, its reference and manifest as vendored,
-;; and, read, its exports, its package's name and version, its tag (v and
-;; that version), the Makefile's tag, its reference's text, and that
-;; reference's sections by anchor.
-(define-record-type upstream
-  (fields library repo variable reference manifest exports package tag makefile-tag
-          reference-text sections))
-
-(define makefile-text (or (read-text makefile) ""))
-
-;; upstreams : (Listof Upstream)
-;; None when reading them raises: every re-export then fails, as defined
-;; nowhere.
-(define upstreams
-  (guard (e (#t '()))
-    (map (lambda (spec)
-           (let* ((reference (list-ref spec 3))
-                  (manifest (list-ref spec 4))
-                  (package (manifest-package (or (read-data manifest) '())))
-                  (text (or (read-text reference) "")))
-             (make-upstream (car spec) (cadr spec) (caddr spec) reference manifest
-                            (or (exports-of (car spec)) '())
-                            package
-                            (and package (string-append "v" (cdr package)))
-                            (pin-tag makefile-text (caddr spec))
-                            text
-                            (anchor-sections text))))
-         upstream-specs)))
-
-(define (upstream-of-repo repo)
-  (find (lambda (u) (string=? (upstream-repo u) repo)) upstreams))
-
-(define-record-type pinned
-  (fields repo variable manifest package tag makefile-tag))
-
-;; pins : (Listof pinned)
-;; Each of pin-specs: its manifest's package, its tag, v and the manifest's
-;; version, and the tag the Makefile's comment on it names.
-(define pins
-  (guard (e (#t '()))
-    (map (lambda (spec)
-           (let ((package (manifest-package (or (read-data (caddr spec)) '()))))
-             (make-pinned (car spec) (cadr spec) (caddr spec) package
-                          (and package (string-append "v" (cdr package)))
-                          (pin-tag makefile-text (cadr spec)))))
-         pin-specs)))
-
-(define (pinned-of-repo repo)
-  (find (lambda (p) (string=? (pinned-repo p) repo)) pins))
-
 (define lock-data (or (read-data lock-file) '()))
 
 ;; locked-tags : (Listof (Pair String (U String #f)))
@@ -1188,15 +1123,38 @@
 
 ;; link-repos : (Listof String)
 ;; Every repository whose links the pages must hold to a tag.
-(define link-repos (append (map car pin-specs) (map car locked-specs)))
+(define link-repos (map car locked-specs))
 
 ;; link-tag : String -> (U String #f)
-;; The tag the pages' links into REPO name: its pin's, or, for a repository
-;; from the Akku index, v and the version Akku.lock pins.
+;; The tag the pages' links into REPO name: v and the version Akku.lock
+;; pins it at.
 (define (link-tag repo)
-  (cond ((pinned-of-repo repo) => pinned-tag)
-        ((assoc repo locked-tags) => cdr)
+  (cond ((assoc repo locked-tags) => cdr)
         (else #f)))
+
+;; An upstream: the library circuit re-exports from, its repository, its
+;; reference in its tree, and, read, its exports, its tag (link-tag's), its
+;; reference's text, and that reference's sections by anchor.
+(define-record-type upstream
+  (fields library repo reference exports tag reference-text sections))
+
+;; upstreams : (Listof Upstream)
+;; None when reading them raises: every re-export then fails, as defined
+;; nowhere.
+(define upstreams
+  (guard (e (#t '()))
+    (map (lambda (spec)
+           (let* ((reference (caddr spec))
+                  (text (or (read-text reference) "")))
+             (make-upstream (car spec) (cadr spec) reference
+                            (or (exports-of (car spec)) '())
+                            (link-tag (cadr spec))
+                            text
+                            (anchor-sections text))))
+         upstream-specs)))
+
+(define (upstream-of-repo repo)
+  (find (lambda (u) (string=? (upstream-repo u) repo)) upstreams))
 
 ;; upstream-signatures : (Listof (Pair String (Listof (Pair Symbol String))))
 ;; Each upstream's repository, with every signature its reference gives.
@@ -1515,27 +1473,30 @@
     (code-names (joined "\n" '("Use `x` and ``y `z` w``," "```scheme" "`inside`" "```"
                                "and `(f g [h])`, `'k`, `res-body->bytevector`.")))))
 
-(test-equal "pin-tag reads the tag after a pin's sha, and release-tag? takes vX.Y.Z alone"
-  '("v1.2.3" #f #f (#t #f #f #f))
+(test-equal "release-tag? takes vX.Y.Z alone"
+  '(#t #t #f #f #f #f #f)
   (guard (e (#t (list 'raised (describe e))))
-    (let ((text (joined "\n" '("SERVER_PIN_DIR := x  # v9.9.9" "SERVER_PIN := 0123abc  # v1.2.3"
-                               "WEBSOCKET_PIN := 0123abc" "OTHER_PIN := 0123abc #  "))))
-      (list (pin-tag text "SERVER_PIN") (pin-tag text "WEBSOCKET_PIN") (pin-tag text "OTHER_PIN")
-            (map release-tag? '("v0.9.1" "v0.9" "0.9.1" "v0.9.x"))))))
+    (map release-tag? '("v0.9.1" "v10.0.12" "v0.9" "0.9.1" "v0.9.x" "v0.9.1-rc1" 7))))
 
-(test-equal "pin-sha reads the sha before a pin's comment"
-  '("0123abc" #f #f "fedcba9")
+(test-equal "record-versions reads each `NAME, now VERSION`, its trailing punctuation cut, across a line break, and no other now"
+  '(("a" . "1.2.3") ("b-c" . "0.0.0-akku.291.5219353") ("d" . "10.0.0") ("e2" . "2.0.0"))
   (guard (e (#t (list 'raised (describe e))))
-    (let ((text (joined "\n" '("SERVER_PIN_DIR := x  # v9.9.9" "SERVER_PIN := 0123abc  # v1.2.3"
-                               "WEBSOCKET_PIN :=   # v1" "OTHER_PIN := fedcba9#v1"))))
-      (list (pin-sha text "SERVER_PIN") (pin-sha text "WEBSOCKET_PIN") (pin-sha text "MISSING_PIN")
-            (pin-sha text "OTHER_PIN")))))
+    (record-versions (joined "\n" '("- a, now 1.2.3, and b-c, now 0.0.0-akku.291.5219353; d,"
+                                    "  now 10.0.0. Not f now 1.0.0, nor `g`, now 1.0.0, nor h, now v1.0.0,"
+                                    "nor i, now that, nor J, now 1.0.0, nor k, now: but e2, now 2.0.0)"
+                                    "and the last, now")))))
 
-(test-equal "pin-mentions reads each release tag's (`sha`), with the words around it, across a line break"
-  '((#f "v0.1.0" "0000000" "since") ("now" "v1.2.3" "abc1234" "Next") ("server's" "v2.0.0" "fff0000" #f))
+(test-equal "lock-projects reads each project's name from an Akku.lock's data, in order"
+  '(("b" "a" "c") ())
   (guard (e (#t (list 'raised (describe e))))
-    (pin-mentions (joined "\n" '("v0.1.0 (`0000000`) since a file (`x`), v0.9 (`1234567`) and v3.0.0 (``) now v1.2.3"
-                                 "  (`abc1234`). Next the server's v2.0.0 (`fff0000`)")))))
+    (list (lock-projects '((import (akku format lockfile))
+                           (projects ((name "b") (location (url "u")) (content (sha256 "00")))
+                                     ((name "a") (scripts (run "x")))
+                                     ((location (url "v")))
+                                     ((name 3))
+                                     7
+                                     ((name "c")))))
+          (lock-projects '((import (akku format lockfile)))))))
 
 (test-equal "manifest-package reads an Akku.manifest's name and version"
   '(("x" . "1.2.3") #f)
@@ -1561,26 +1522,10 @@
       (map (lambda (name) (lock-version data name))
            '("byte-machine" "jsonparse" "other" "plain" "empty" "nameless" "missing")))))
 
-;; --- the pins ------------------------------------------------------------------------------
-
-(test-equal "each vendored Akku.manifest names its package and a release version, vX.Y.Z"
-  '(("chez-http-server" #t) ("chez-websocket" #t))
-  (map (lambda (p) (list (and (pinned-package p) (car (pinned-package p))) (release-tag? (pinned-tag p))))
-       pins))
-
-(for-each
- (lambda (p)
-   (test-equal (string-append makefile ": " (pinned-variable p) "'s comment names "
-                              (or (pinned-tag p) "<no tag>") ", v and the version "
-                              (pinned-manifest p) " gives")
-     (pinned-tag p)
-     (pinned-makefile-tag p)))
- pins)
-
 ;; --- from the Akku index -------------------------------------------------------------------
-;; jsonparse has no pin: the pages' links into it name v and the version
-;; Akku.lock pins, which is the version of the tree `make submodules`
-;; unpacked from that archive.
+;; The pages' links into each sibling name v and the version Akku.lock
+;; pins, which is the version of the tree `make fetch` unpacked from that
+;; archive.
 
 (test-equal (string-append lock-file ": it pins " (joined ", " (map car locked-specs))
                            " at a release, vX.Y.Z by its archive's file name")
@@ -1595,37 +1540,36 @@
   (guard (e (#t (list 'raised (describe e))))
     (map (lambda (spec) (manifest-package (or (read-data (cadr spec)) '()))) locked-specs)))
 
-;; --- the records' pins -----------------------------------------------------------------------
-;; The global constraints say which release each dependency is pinned at
-;; now, and ADR-0003 since when: each is the Makefile's pin, its tag and its
-;; sha's first seven digits, the server's, then chez-websocket's.
+;; --- the records' versions -----------------------------------------------------------------
+;; The global constraints' Dependency section says which version each
+;; package is at now, as `<package>, now <version>`: each is the version
+;; Akku.lock pins, and each project the lock pins is named so once, but
+;; chez-cmark-gfm, the docs site's renderer alone. So a lock that moves
+;; without its line fails, and so does a line naming a package the lock
+;; doesn't have.
 
 (define constraints ".plans/global-constraints.md")
-(define adr-0003 ".plans/decisions/0003-chez-http-server-is-a-submodule-pinned-at-a-release-tag.md")
 
-;; record-pins : (Listof (List (U String #f) (U String #f)))
-;; SERVER_PIN and WEBSOCKET_PIN as the records write them.
-(define record-pins
-  (guard (e (#t (list 'raised (describe e))))
-    (map (lambda (variable)
-           (let ((sha (pin-sha makefile-text variable)))
-             (list (pin-tag makefile-text variable)
-                   (and sha (>= (string-length sha) 7) (substring sha 0 7)))))
-         (map cadr pin-specs))))
+;; recorded-versions : (Listof (Pair String String))
+;; Each `<package>, now <version>` the Dependency section holds, in order;
+;; none when the file or the section can't be read.
+(define recorded-versions
+  (guard (e (#t '()))
+    (let* ((text (read-text constraints))
+           (section (and text (assoc "dependency" (anchor-sections text)))))
+      (if section (record-versions (cdr section)) '()))))
 
-(test-equal (string-append constraints ": each pin it says a dependency is at now is the Makefile's, "
-                           "SERVER_PIN's, then WEBSOCKET_PIN's")
-  record-pins
-  (guard (e (#t (list 'raised (describe e))))
-    (map (lambda (m) (list (cadr m) (caddr m)))
-         (filter (lambda (m) (equal? (car m) "now")) (pin-mentions (or (read-text constraints) ""))))))
+(define (pair-name<? a b) (string<? (car a) (car b)))
 
-(test-equal (string-append adr-0003 ": each pin it says a dependency is at since a date is the Makefile's, "
-                           "SERVER_PIN's, then WEBSOCKET_PIN's")
-  record-pins
-  (guard (e (#t (list 'raised (describe e))))
-    (map (lambda (m) (list (cadr m) (caddr m)))
-         (filter (lambda (m) (equal? (cadddr m) "since")) (pin-mentions (or (read-text adr-0003) ""))))))
+(test-equal (string-append constraints ", its Dependency section: each `<package>, now <version>` names the version "
+                           lock-file " pins that package at")
+  (map (lambda (r) (cons (car r) (lock-version lock-data (car r)))) recorded-versions)
+  recorded-versions)
+
+(test-equal (string-append constraints ", its Dependency section: it names each project " lock-file
+                           " pins but chez-cmark-gfm once, as `<package>, now <version>`, and no other")
+  (list-sort string<? (filter (lambda (name) (not (string=? name "chez-cmark-gfm"))) (lock-projects lock-data)))
+  (list-sort string<? (map car recorded-versions)))
 
 ;; --- (a) the sections ------------------------------------------------------------------------
 
@@ -1791,7 +1735,7 @@
                   (test-equal (string-append page ", " (written library) ", " (symbol->string name)
                                              ": re-exported from " (upstream-repo u)
                                              ", so no block, and one link to its reference at "
-                                             (or (upstream-tag u) "its pin's tag")
+                                             (or (upstream-tag u) "the tag of the version Akku.lock pins")
                                              ", whose section there names it")
                     (list 'blocks '() 'reference-links (list (reference-url u)) 'section-names-it '(#t))
                     (list 'blocks (entry-blocks e)
@@ -1873,7 +1817,7 @@
                  (entries-of library)))))
  public-libraries)
 
-(test-equal (string-append page ": every #anchor into the server's or chez-websocket's reference names a heading there, as vendored at its pin")
+(test-equal (string-append page ": every #anchor into the server's or chez-websocket's reference names a heading there, as its tree holds it")
   '()
   (filter (lambda (url)
             (let ((t (github-target url)))
@@ -1885,13 +1829,13 @@
                           (not (assoc (list-ref t 4) (upstream-sections u))))))))
           (markdown-links (joined " " page-outside))))
 
-;; --- (f) pinned links -----------------------------------------------------------------------------
+;; --- (f) the links' tags -----------------------------------------------------------------------------
 
 (for-each
  (lambda (path)
    (let ((text (read-text path)))
-     (test-equal (string-append path ": every link into chez-http-server's, chez-websocket's or jsonparse's repository at a ref names its pin's tag, "
-                                "or the tag of the version " lock-file " pins: "
+     (test-equal (string-append path ": every link into chez-http-server's, chez-websocket's or jsonparse's repository at a ref names "
+                                "the tag of the version " lock-file " pins: "
                                 (joined ", " (map (lambda (repo) (or (link-tag repo) "<none>")) link-repos)))
        '()
        (if text

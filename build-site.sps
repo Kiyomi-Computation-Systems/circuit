@@ -3,7 +3,7 @@
 ;;;
 ;;;   make site
 ;;; or directly, from the repository root:
-;;;   CHEZSCHEMELIBDIRS=.:vendor/chez-cmark-gfm/src chez --program build-site.sps
+;;;   CHEZSCHEMELIBDIRS=.:build/akku/chez-cmark-gfm/src chez --program build-site.sps
 ;;;
 ;;; SITE_REF pins the ../-escape rewrite in (site links) to a git ref for the
 ;;; GitHub blob URLs it produces (default "main"). SITE_OUT overrides the

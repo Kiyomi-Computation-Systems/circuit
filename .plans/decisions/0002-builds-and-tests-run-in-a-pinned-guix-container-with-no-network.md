@@ -2,6 +2,10 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-25
+- **Amended:** 2026-11-20: no dependency is a submodule. Fetching the trees (`make
+  fetch`), Akku itself (`make akku-deps`), and locking (`make lock`,
+  `make check-akku-lock`) run on the host, where the network is
+  ([ADR-0011](0011-every-dependency-comes-from-akku.md)) (item 2)
 - **Scope:** development tooling. No library change.
 - **Prior art:** chez-curl ADR-0006, whose launcher, self-test and launcher tests this
   copies; chez-http-server's `manifest.scm`, whose Chez 10.4.1 recipe this copies

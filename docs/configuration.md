@@ -83,7 +83,7 @@ CHEZ_WS_MAX_MESSAGE_BYTES=16777216 CHEZ_WS_PING_INTERVAL=30 make run PROGRAM=app
 - An `env` you give `run-server` doesn't reach them: see
   [Upgrades and WebSockets](upgrades.md) to build limits from one.
 - What each limit does is on chez-websocket's
-  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.5.2/docs/configuration.md)
+  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.6.0/docs/configuration.md)
   page.
 
 ## Give run-server an env of your own

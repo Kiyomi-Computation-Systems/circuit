@@ -1488,7 +1488,7 @@ See [Sessions](sessions.md).
 
 Answers a WebSocket's handshake; the rest is chez-websocket's
 `(websocket)`, in
-[its reference](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.5.2/docs/reference.md).
+[its reference](https://github.com/Kiyomi-Computation-Systems/chez-websocket/blob/v0.6.0/docs/reference.md).
 
 ```scheme
 (import (rnrs) (circuit) (circuit http-server) (circuit websocket) (websocket))

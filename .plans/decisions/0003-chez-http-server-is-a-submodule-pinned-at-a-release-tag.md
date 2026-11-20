@@ -1,6 +1,9 @@
 # ADR-0003: chez-http-server is a submodule pinned at a release tag
 
-- **Status:** Accepted
+- **Status:** Accepted. Items 1 to 6 and 8 superseded on 2026-11-20 by
+  [ADR-0011](0011-every-dependency-comes-from-akku.md): every dependency comes from the
+  Akku index, and no dependency is a submodule. Item 7 stands. The lines below are its
+  history up to then.
 - **Date:** 2026-10-25
 - **Amended:** 2026-10-26: the pin moved to v0.9.0 (`d928e41`), and the server's package now
   installs the test host circuit's tests use; 2026-10-28, in slice 6c: chez-websocket is a

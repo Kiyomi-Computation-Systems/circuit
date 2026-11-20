@@ -4,7 +4,7 @@
 ;;; each page templated.  Imports (cmark gfm), which loads libcmark-gfm.  Not
 ;;; named test-*.sps, so `make test` does not run it; `make check-site` does.
 ;;; From the repository root:
-;;;   CHEZSCHEMELIBDIRS=.:tests:build/scheme-libs:vendor/chez-cmark-gfm/src \
+;;;   CHEZSCHEMELIBDIRS=.:tests:build/scheme-libs:build/akku/chez-cmark-gfm/src \
 ;;;     chez --program tests/site-render-unit.sps
 (import (rnrs) (srfi :64) (circuit-testing) (site render) (site serializer)
         (only (site pages) pages page-file-name))

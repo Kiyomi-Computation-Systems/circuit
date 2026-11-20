@@ -5,7 +5,9 @@
 - **Date:** 2026-11-01
 - **Amended:** 2026-11-06, after slice 10b: the fetch downloads an archive missing from
   `dl/` again, `make deps` refuses a tree that records another sum, and `make check-pins`
-  holds the tree to its archive (items 2 and 3)
+  holds the tree to its archive (items 2 and 3); 2026-11-20: `make fetch` replaces `make
+  submodules` in items 2 and 3 and the consequences, and every dependency now comes from
+  the index ([ADR-0011](0011-every-dependency-comes-from-akku.md))
 - **Scope:** HMAC-SHA-256 for `(circuit session)`, and how a runtime dependency from Akku
   reaches the build, the container, CI and an app
 - **Plan:** [the sessions design](../2026-11-01-sessions-design.md) §4, §7, §8 item 1

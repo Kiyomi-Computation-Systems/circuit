@@ -6,7 +6,7 @@
 #
 # The container holds the toolchain and nothing of yours: no git config,
 # no agents, no tokens, no git, and no network but loopback. Edit, commit
-# and push on the host, and fetch the submodules there (`make submodules`);
+# and push on the host, and fetch the dependencies there (`make fetch`);
 # send builds and tests through here.
 #
 # GUIX_ENV_DRY_RUN=1 prints `cd <dir>` and the guix command, one argument

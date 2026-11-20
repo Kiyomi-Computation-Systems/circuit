@@ -1,7 +1,8 @@
 # Installing
 
-Circuit is a set of R6RS libraries. You clone it with the server it runs on,
-build one small C library, and run your program from the checkout.
+Circuit is a set of R6RS libraries. You clone it, fetch the server it runs
+on and the rest of its dependencies, build one small C library, and run your
+program from the checkout.
 
 ## What you need
 
@@ -14,8 +15,8 @@ build one small C library, and run your program from the checkout.
   such as Debian 12's 1.44, won't do.
 - **A C compiler, `make`, `git` and `curl`, and `xz` on Linux.** The
   compiler builds the small C library under the server's libuv binding.
-  `make submodules` downloads two dependencies with curl, or wget, and
-  unpacks them with tar, which on Linux needs `xz`. The tests run curl.
+  `make fetch` downloads the dependencies with curl, or wget, and unpacks
+  them with tar, which on Linux needs `xz`. The tests run curl.
 - **GNU `timeout`**, which `make test` runs each suite under. On macOS,
   `brew install coreutils`.
 
@@ -24,21 +25,19 @@ build one small C library, and run your program from the checkout.
 ```sh
 git clone https://github.com/Kiyomi-Computation-Systems/circuit.git
 cd circuit
-make submodules
+make fetch
 make test
 ```
 
-- `make submodules` clones the pinned dependencies, and downloads
-  `hashing` into `vendor/akku` and jsonparse into `vendor/akku-trees`,
-  checking each one's sha256. It needs git and the network.
+- `make fetch` downloads every dependency as `Akku.lock` pins it, and
+  checks each one's sha256. It needs the network.
 - `make test` builds the C library, then runs every suite under `tests/`.
   Its last line counts them: none should fail or hang.
 
 `make help` lists every other target.
 
-To build a release, clone its tag: `git clone --branch v0.3.0` and the URL
-above. A release's source download leaves `vendor/` empty, as every git
-archive leaves out submodules.
+To build a release, clone its tag, `git clone --branch v0.3.0` and the URL
+above, then follow that tag's own `docs/installing.md`.
 
 ## On a Guix host
 
@@ -48,27 +47,22 @@ Run builds and tests in the project's pinned container:
 scripts/guix-env make test
 ```
 
-It has no network and no git, so run `make submodules` on the host first.
+It has no network and no git, so run `make fetch` on the host first.
 
-## The pinned dependencies
+## Every dependency from Akku
 
-chez-http-server v0.11.0 and chez-websocket v0.5.2 are git submodules
-under `vendor/`, pinned at their release tags, and `make check-pins`
-checks them. The Akku package index has no chez-websocket, and only an
-older server, so Akku can't install circuit: the checkout is the way in.
+Every dependency comes from the Akku package index: chez-http-server and
+what it needs, chez-websocket, `hashing`, Gwen Weinholt's SHA-2 and HMAC,
+and jsonparse. `Akku.lock` pins each one's archive and sha256.
 
-`hashing` 1.4.0, Gwen Weinholt's SHA-2 and HMAC, comes from the Akku
-package index: `Akku.lock` pins its archive and sha256,
-and `make submodules` puts it in `vendor/akku`, which `make clean` keeps.
-`make check-pins` checks it too.
-`(circuit session)` signs its cookie with it, and no other library uses
-it.
+`make fetch` puts `hashing` in `vendor/akku` and the rest in
+`vendor/akku-trees`. `make clean` keeps both, and `make check-pins` checks
+each one is still its archive.
 
-jsonparse 0.2.0 comes from the index the same way, into
-`vendor/akku-trees`. It runs on the server's own byte-machine, and
-`make check-pins` checks that is the version `Akku.lock` pins, and one
-jsonparse takes.
-`(circuit json)` reads JSON with jsonparse, and no other library uses it.
+`(circuit session)` signs its cookie with `hashing`, and `(circuit json)`
+reads JSON with jsonparse. No other library uses either.
+
+Akku can't install circuit itself yet: run it from the checkout.
 
 ## Run a program
 
