@@ -296,7 +296,10 @@ On the owner's word, in four steps:
 - after the review, "Accept, and record it".
 
 Commits on `plan/akku-dependencies`: the design (c9f6bf1), the build (fccbff0), Now, Open
-and this close-out, and its CI run named here.
+and this close-out (d9f9843), and its CI run named here. It passed on the PR (run
+44739567429, 5m10s), on amd64, arm64 and the site job. In both linux jobs, `make
+check-pins` held the trees, the chez-libuv copy and the lock's ten projects after the
+gate, and `make check-akku-lock` passed against that day's index as the last step.
 
 - **What the index showed,** read on 2026-11-20:
   - every archive circuit locks matched the index's sha256;
