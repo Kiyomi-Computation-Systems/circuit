@@ -1,0 +1,48 @@
+#!/bin/sh
+# scripts/check-lock-projects NAME...
+#
+# Fails unless Akku.lock's projects are exactly the NAMEs, each once: the
+# NAMEs are every project something fetches, so a project the lock pins
+# that nothing fetches, and a name to fetch that the lock doesn't pin, each
+# fail it, by name. So does a project the lock pins twice, and a NAME given
+# twice. `make check-pins` and `make deps` run it.
+#
+# AKKU_LOCK (default Akku.lock) exists so tests/check-pins.sh can run it on
+# a lock of its own. It reads each project's (name "...") as
+# scripts/fetch-akku-lock does. Prints one line and exits 0, or names each
+# fault on stderr and exits 1.
+set -u
+
+lock=${AKKU_LOCK:-Akku.lock}
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: check-lock-projects NAME..." >&2
+  exit 2
+fi
+if [ ! -f "$lock" ]; then
+  echo "check-lock-projects: $lock not found" >&2
+  exit 1
+fi
+
+pinned=$(awk '/\(name "/ { split($0, a, "\""); print a[2] }' "$lock")
+
+status=0
+for name in $pinned; do
+  case " $* " in
+    *" $name "*) ;;
+    *) echo "check-lock-projects: $lock pins $name, which nothing fetches" >&2; status=1 ;;
+  esac
+done
+for name in "$@"; do
+  printf '%s\n' "$pinned" | grep -qxF -- "$name" \
+    || { echo "check-lock-projects: $name is to be fetched, but $lock doesn't pin it" >&2; status=1; }
+done
+for name in $(printf '%s\n' "$pinned" | sort | uniq -d); do
+  echo "check-lock-projects: $lock pins $name more than once" >&2; status=1
+done
+for name in $(printf '%s\n' "$@" | sort | uniq -d); do
+  echo "check-lock-projects: $name is named more than once" >&2; status=1
+done
+
+[ "$status" -eq 0 ] && echo "check-lock-projects: $lock pins exactly the projects named, each once"
+exit $status

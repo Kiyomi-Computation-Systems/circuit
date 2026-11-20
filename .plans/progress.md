@@ -196,7 +196,15 @@ close-out under **Close-outs**, newest first.
   path, and runs on the server's byte-machine 0.9.0, which `make check-pins` holds to the
   lock's version and to jsonparse's range (ADR-0010, which supersedes ADR-0009's items 1,
   2 and 4).
-- **Next:** the owner's call. The Open list below holds what is known.
+- **Every dependency comes from Akku**, squashed from
+  [PR #50](https://github.com/Kiyomi-Computation-Systems/circuit/pull/50) on 2026-11-20;
+  its close-out is below. `Akku.lock`, `akku lock`'s output on Akku 1.2.0, pins
+  chez-http-server 0.11.0 and what it brings, chez-websocket 0.6.0, hashing, jsonparse
+  and chez-srfi. `make fetch` replaces `make submodules`, and no dependency is a
+  submodule (ADR-0011, which supersedes ADR-0003's items 1 to 6 and 8, and ADR-0010's
+  items 3 and 4).
+- **Next:** the owner's call. The Open list below holds what is known. Publishing
+  circuit on Akku is a slice of its own (ADR-0011).
 
 ## Open
 
@@ -216,12 +224,25 @@ close-out under **Close-outs**, newest first.
   checkout. Absolute ones, by `abspath`, would be the owner's call.
 - **Upstream asks** (design §12): all eight filed on 2026-10-25 and landed by
   2026-10-26, with the docs fix; see PR #2's close-out. **The Akku index**, read on
-  2026-11-15 (its `Akku-index.scm` last modified 2026-11-14), lists chez-http-server at
-  0.9.1 alone, on byte-machine `^0.8.0`, and no chez-websocket; the owner is publishing
-  the server's v0.11.0 there, which may take some days. jsonparse 0.2.0 is there, and
-  circuit takes it (ADR-0010). Until the index has the server at `SERVER_PIN`'s release
-  and chez-websocket, circuit can't be installed with Akku, and the two submodules stay
-  its only way in (ADR-0003).
+  2026-11-20 (last modified 2026-11-19), has every dependency circuit has, and circuit
+  takes each one from it (ADR-0011). Publishing circuit there is a slice of its own;
+  until then `.akkuignore` keeps its libraries out of `akku install`.
+- **chez-srfi's `main` has `dd0e4c9`, from 2026-11-17, which isn't on Akku yet.** Once
+  it's released, `make check-akku-lock` turns CI red. Taking it means checking SRFI-1's
+  and SRFI-64's import closure again, as the Akku design's §2 did for akku.291.
+- **Left from the review of PR #50:**
+  - the chez-libuv copy check passes a copy missing one of its build's products: `make
+    deps` builds them, and requiring both would fail `make check-pins` between the copy
+    and the build;
+  - `scripts/check-libuv-copy` runs `diff` in the C locale, and no row tests another
+    locale: the container has none installed;
+  - `tests/check-pins.sh`, like `tests/fetch-akku-lock.sh`, needs curl for its `file://`
+    URLs;
+  - `make deps` now clears `build/scheme-libs/srfi` before linking SRFI-64 again, so a
+    program started beside another make's `deps` in the same checkout may not find
+    `(srfi :78)` or `(srfi :64)`. On 2026-11-20, six of hashing's suites exited 255 while
+    `make check-guix`, which runs `make test`, ran beside them. Run alone, all nine pass.
+    The cause is inferred, not reproduced.
 - **A wrap's `f` can meet a closed port in the test host** once the client has gone while
   the app waited (design §6, §9), and the test host drops `f`'s raise. Over a real socket,
   a FIN is heard at once, but the request stays open until its response is written: `f`
@@ -263,6 +284,95 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-20: every dependency from Akku, in PR #50
+
+On the owner's word, in four steps:
+- "check for websocket on akku": chez-websocket 0.6.0 was listed in the index of
+  2026-11-19;
+- "do it", for the plan, then the owner's four answers ([the
+  design](2026-11-20-akku-dependencies-design.md)'s §8);
+- "Commit and open the pr then start the build";
+- after the review, "Accept, and record it".
+
+Commits on `plan/akku-dependencies`: the design (c9f6bf1), the build (fccbff0), Now, Open
+and this close-out (d9f9843), and its CI run named here. It passed on the PR (run
+44739567429, 5m10s), on amd64, arm64 and the site job. In both linux jobs, `make
+check-pins` held the trees, the chez-libuv copy and the lock's ten projects after the
+gate, and `make check-akku-lock` passed against that day's index as the last step.
+
+- **What the index showed,** read on 2026-11-20:
+  - every archive circuit locks matched the index's sha256;
+  - each held the files of `git archive` of the commit circuit's path used, with two
+    exceptions: chez-websocket 0.6.0, which changes no library since 0.5.2, and chez-srfi
+    akku.291, its newest. In akku.291, the files Chez loads for `(srfi :1)` and
+    `(srfi :64)`, and their whole import closure, are akku.181's; the four files in the
+    closure that differ are for Loko and Ypsilon. Those two SRFIs are the only ones
+    circuit's paths import;
+  - hashing's own suites, which import `:13`, `:14` and `:78`, pass on akku.291;
+- **Akku 1.2.0:** Guix and `guix shell akku` have 1.1.0, which knows only the archive's
+  old key. The tarball and sha256 jsonparse pins are the ones used. Its `akku lock`
+  reproduced the old lock's four entries, laid out differently, and resolved the new
+  manifest to ten packages. `make lock` rewrites that lock byte for byte;
+- **the build,** by an Opus agent, test first:
+  - `make fetch`, `akku-deps`, `lock` and `check-akku-lock`;
+  - `deps` with the chez-libuv copy, and `check-pins` on the trees alone;
+  - the reference suite's records rows, holding each `<package>, now <version>` to the
+    lock and every locked project named once;
+  - the docs' three chez-websocket links at v0.6.0;
+  - CI, `.gitignore`, AGENTS.md, README.org and the CHANGELOG.
+
+  The submodules and `.gitmodules` were removed first, so no stale directory could hide
+  a wrong path;
+- **watched failing:** every new row, on the agent's mutants:
+  - `tests/check-akku-lock.sh`: 21 rows, against 16 mutants;
+  - `tests/check-pins.sh`: 20 rows, against 17;
+  - `tests/akku.sh`: 3 rows, against 5;
+  - `tests/fetch-akku-lock.sh`'s new row for Akku 1.2.0's layout;
+  - the reference rows, on a records line at 0.5.2, a dropped line, an extra one, a
+    moved lock and a docs link at v0.5.2.
+
+  On the real index I watched `make check-akku-lock` fail on three cases: a range that
+  locks another chez-srfi, an archive it can't reach, and a package the index lacks. The
+  last one named the package twice, because Akku 1.2.0 warns twice; the fake now does
+  too, and the row failed before the fix;
+- **the review,** read-only, on Opus. Fixed:
+  1. the chez-libuv copy, on the path, was held by nothing, so an edited copy passed
+     `check-pins` and `deps` (reproduced). `deps` now copies again, and `check-pins`
+     fails, on a copy that differs from its tree beyond its build's two products;
+  2. nothing tied `AKKU_TREES` to the lock or the library path, so a lock that added a
+     package passed `check-pins` (reproduced). Both targets now hold the lock's projects
+     to `AKKU_TREES`, and make stops on a tree it doesn't name. `tests/check-pins.sh` runs
+     the real targets on fake trees;
+  3. CI ran the lock check before the tests, and `check-pins` right after the fetch,
+     where it couldn't fail. The lock check is now the last step, and `check-pins` runs
+     after the gate;
+  4. the lock check compared strings alone, so a symbol's difference passed. It now
+     compares every token;
+  5. `AKKU_SETTINGS=no-network` kept Akku on the old index. `scripts/akku` unsets it;
+  6. a missing Akku was reported as a network failure, and now isn't;
+  7. stale lines: the trees' `src/` on the path, the old-checkout steps in a linked
+     worktree, a self-test comment, and the site scripts' usage lines.
+
+  The owner chose to accept one finding and record it in ADR-0011: circuit now runs the
+  newest release each range admits, not the combination each sibling's own lock was
+  tested on. On 2026-11-20, the server's, chez-websocket's and jsonparse's locks agree
+  with circuit's on every project they share;
+- **checks,** on the final tree:
+  - in the container, `make test` passed 26 of 26, and `make gate` passed with every
+    gate within its bound and the numbers as before;
+  - `make check-site`, `check-help` and `check-site-deps` passed, and the latter's four
+    script tests passed;
+  - on the host, `make check-pins`, `make check-guix`, `make lock`, which changed
+    nothing, and `make check-akku-lock` passed;
+- **records:** ADR-0011, new; status lines in ADR-0002, ADR-0003, ADR-0008 and ADR-0010;
+  the global constraints' Dependency and Tooling sections; the design's status and §8;
+  and the Open list's index item, with two new items;
+- **agents,** all on Opus:
+  - the build: 394,104 tokens, 140 tool uses, 30m55s;
+  - the build's second round, on the review's fixes: 515,373 tokens, 52 tool uses,
+    19m18s;
+  - the read-only review: 253,964 tokens, 85 tool uses, 17m42s.
 
 ### 2026-11-15: the pins at the server's v0.11.0 and chez-websocket's v0.5.2, and jsonparse 0.2.0 from Akku, in PR #49
 

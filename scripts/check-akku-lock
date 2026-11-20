@@ -1,0 +1,131 @@
+#!/bin/sh
+# scripts/check-akku-lock
+#
+# Checks that Akku.lock is what `akku lock` makes of Akku.manifest against
+# today's index. It runs `akku update` first, so that akku reads today's
+# index, not the one its last run left. Then it runs akku lock on a copy of
+# the manifest in a scratch directory, and compares the two locks project
+# by project: every token of each, symbols and strings alike, in order, so
+# locks that differ only in layout or comments agree, and so do ones that
+# list the same projects in another order. So a release on the index that a
+# range in the manifest admits fails the check, until `make lock` makes
+# Akku.lock again.
+#
+# It needs a working akku: scripts/akku, which runs the Akku 1.2.0 `make
+# akku-deps` fetches, and the network. It never skips. Where akku isn't
+# there, or akku update exits 2, as scripts/akku does with no Akku 1.2.0 to
+# run, it fails naming `make akku-deps`; where akku update fails otherwise,
+# it fails naming the network.
+#
+# AKKU (default scripts/akku), AKKU_MANIFEST (default Akku.manifest) and
+# AKKU_LOCK (default Akku.lock) exist so tests/check-akku-lock.sh can run it
+# with a fake akku. AKKU is a path, taken from where the check starts, or a
+# name on PATH. Exits 0 when the locks agree, and 1 otherwise.
+set -u
+
+manifest=${AKKU_MANIFEST:-Akku.manifest}
+lock=${AKKU_LOCK:-Akku.lock}
+
+fail() { echo "check-akku-lock: FAIL: $*" >&2; exit 1; }
+
+# akku runs in a scratch directory, so a relative path is made absolute
+# here first.
+akku=${AKKU:-$(cd "$(dirname "$0")" && pwd)/akku}
+case $akku in
+  */*)
+    case $akku in /*) ;; *) akku=$PWD/$akku ;; esac
+    [ -f "$akku" ] && [ -x "$akku" ] \
+      || fail "no Akku at $akku: run make akku-deps, which fetches Akku 1.2.0" ;;
+  *)
+    name=$akku
+    akku=$(command -v "$name") \
+      || fail "no $name on PATH: run make akku-deps, which fetches Akku 1.2.0" ;;
+esac
+[ -f "$manifest" ] || fail "$manifest not found"
+[ -f "$lock" ] || fail "$lock not found"
+
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/check-akku-lock.XXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+mkdir "$scratch/made"
+cp "$manifest" "$scratch/made/Akku.manifest"
+
+rc=0
+(cd "$scratch/made" && "$akku" update) > "$scratch/update.log" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ]; then
+  sed 's/^/  /' "$scratch/update.log" >&2
+  [ "$rc" -eq 2 ] && fail "no Akku 1.2.0: run make akku-deps"
+  fail "$akku update could not fetch today's index: it needs the network"
+fi
+
+if ! (cd "$scratch/made" && "$akku" lock) > "$scratch/made.log" 2>&1 \
+   || [ ! -f "$scratch/made/Akku.lock" ]; then
+  sed 's/^/  /' "$scratch/made.log" >&2
+  # akku warns of each package its index lacks, twice in Akku 1.2.0's
+  # lock: each is named once, in the order akku first names it. The index
+  # is today's, so the name is the likelier fault.
+  unknown=$(sed -n 's/.*Unknown package: "\([^"]*\)".*/\1/p' "$scratch/made.log" | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//')
+  [ -n "$unknown" ] && fail "today's index does not know $unknown: check their names in $manifest"
+  fail "$akku lock could not lock $manifest"
+fi
+
+# projects LOCK: the lock as lines, sorted: one line a project, `project`
+# and the project's form, and one `lock` line, everything outside the
+# projects. A form is written in its tokens, in order, each string whole:
+# a space between two, but none after ( or before ). A comment, ; to the
+# end of its line outside a string, and #!r6rs are no tokens, and nor is
+# layout, so locks that differ only in those read the same.
+projects() {
+  awk '
+    function flush() { if (atom != "") { token(atom); atom = "" } }
+    function token(t) {
+      if (t ~ /^#!/) return
+      if (t == ")") {
+        depth--
+        if (inproj) {
+          cur = cur ")"
+          if (depth == 1) { print "project " cur; cur = ""; inproj = 0 }
+        } else head = head ")"
+        if (depth == 0) inprojects = 0
+        prev = t
+        return
+      }
+      if (t == "(") {
+        depth++
+        if (inprojects && depth == 2 && !inproj) { inproj = 1; cur = "("; prev = t; return }
+      }
+      if (inproj) cur = cur ((prev == "(" || cur == "") ? "" : " ") t
+      else head = head ((prev == "(" || head == "") ? "" : " ") t
+      if (depth == 1 && prev == "(" && t == "projects") inprojects = 1
+      prev = t
+    }
+    {
+      n = length($0)
+      for (i = 1; i <= n; i++) {
+        c = substr($0, i, 1)
+        if (instr) {
+          str = str c
+          if (esc) esc = 0
+          else if (c == "\\") esc = 1
+          else if (c == "\"") { token(str); instr = 0 }
+          continue
+        }
+        if (c == ";") break
+        if (c == "\"") { flush(); instr = 1; str = c; continue }
+        if (c == "(" || c == ")") { flush(); token(c); continue }
+        if (c == " " || c == "\t" || c == "\r") { flush(); continue }
+        atom = atom c
+      }
+      if (instr) str = str "\n"
+      else flush()
+    }
+    END { flush(); print "lock " head }' "$1" | LC_ALL=C sort
+}
+
+projects "$lock" > "$scratch/committed"
+projects "$scratch/made/Akku.lock" > "$scratch/made.projects"
+if ! cmp -s "$scratch/committed" "$scratch/made.projects"; then
+  echo "< $lock, > akku lock:" >&2
+  diff "$scratch/committed" "$scratch/made.projects" >&2
+  fail "$lock is not what akku lock makes of $manifest: run make lock, and commit it"
+fi
+echo "check-akku-lock: $lock is akku lock's output for $manifest ($(grep -c '^project ' "$scratch/committed") project(s))"

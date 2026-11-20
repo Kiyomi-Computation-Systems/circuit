@@ -1802,11 +1802,10 @@
   "check-imports: ok, the closure of (hashing sha-2) in vendor/akku imports only the (rnrs ...) libraries except (rnrs eval), (hashing fixnums) and (hashing hmac): 3 libraries read")
 
 ;; make-jsonparse-closure-line : String
-;; Rule (o)'s pass line through make, on the src/ of the jsonparse
-;; Akku.lock pins, in vendor/akku-trees, and the byte-machine chez-httparse
-;; pins.
+;; Rule (o)'s pass line through make, on the src/ of the jsonparse and of
+;; the byte-machine Akku.lock pins, each in vendor/akku-trees.
 (define make-jsonparse-closure-line
-  (string-append "check-imports: ok, the closure of (jsonparse easy) in vendor/akku-trees/jsonparse/src and vendor/chez-http-server/vendor/chez-httparse/vendor/byte-machine/src imports only "
+  (string-append "check-imports: ok, the closure of (jsonparse easy) in vendor/akku-trees/jsonparse/src and vendor/akku-trees/byte-machine/src imports only "
                  jsonparse-allows ": 12 libraries read"))
 
 ;; The Makefile's wiring: check-imports passes the audit every directory
@@ -1822,7 +1821,7 @@
    (lambda (dir)
      (let* ((build (string-append dir "/build"))
             (libs (string-append build "/scheme-libs"))
-            (deps-line (string-append "deps: chez-libuv's shim built; vendor/chez-http-server/vendor/chez-srfi linked into "
+            (deps-line (string-append "deps: chez-libuv's shim built in build/chez-libuv; vendor/akku-trees/chez-srfi linked into "
                                       libs "/srfi\n"))
             (passed (make-check-imports build))
             (planted (begin (make-tree build '("scheme-libs/circuit/request.sls"))
@@ -1863,7 +1862,7 @@
    (lambda (dir)
      (let* ((build (string-append dir "/build"))
             (libs (string-append build "/scheme-libs"))
-            (deps-line (string-append "deps: chez-libuv's shim built; vendor/chez-http-server/vendor/chez-srfi linked into "
+            (deps-line (string-append "deps: chez-libuv's shim built in build/chez-libuv; vendor/akku-trees/chez-srfi linked into "
                                       libs "/srfi\n"))
             (planted (begin (make-tree build '("scheme-libs/hashing/sha-2.scm"))
                             (make-check-imports build)))
@@ -1882,7 +1881,7 @@
    (lambda (dir)
      (let* ((build (string-append dir "/build"))
             (libs (string-append build "/scheme-libs"))
-            (deps-line (string-append "deps: chez-libuv's shim built; vendor/chez-http-server/vendor/chez-srfi linked into "
+            (deps-line (string-append "deps: chez-libuv's shim built in build/chez-libuv; vendor/akku-trees/chez-srfi linked into "
                                       libs "/srfi\n"))
             (planted (begin (make-tree build '("scheme-libs/jsonparse/easy.sls" "scheme-libs/generated/jsonparse.sls"
                                                "scheme-libs/byte-machine/runtime.sls"))
@@ -1893,7 +1892,7 @@
                                        (on-generated-path libs "generated" "jsonparse.sls" "vendor/akku-trees/jsonparse/src") "\n"
                                        "check-imports: "
                                        (on-byte-machine-path libs "byte-machine"
-                                                             "vendor/chez-http-server/vendor/chez-httparse/vendor/byte-machine/src")
+                                                             "vendor/akku-trees/byte-machine/src")
                                        "\n"
                                        "make: *** [check-imports] Error 1\n"))))
        (if (equal? planted want) 'refused planted)))))

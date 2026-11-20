@@ -34,48 +34,48 @@
 
 ### Dependencies
 
-* chez-http-server https://github.com/Kiyomi-Computation-Systems/chez-http-server,
-  a submodule under `vendor/` pinned at a release tag. It carries its own
-  pins, which circuit uses through it: chez-libuv, chez-httparse (with
-  byte-machine), uriparse, and chez-srfi for the tests.
-* chez-websocket https://github.com/Kiyomi-Computation-Systems/chez-websocket,
-  a second submodule under `vendor/`, pinned at a release tag
-  (`WEBSOCKET_PIN`), for `(circuit websocket)`. Its own server submodule
-  isn't cloned: circuit's server is the one on the path, so chez-websocket's
-  server gitlink must equal `SERVER_PIN`. The server's pin moves only with a
-  chez-websocket release on that server.
-* hashing, Gwen Weinholt's SHA-2 and HMAC, from the Akku index, for
-  `(circuit session)` (ADR-0008). `Akku.manifest` names it in `depends`,
-  and `Akku.lock` pins its archive and sha256.
-* jsonparse https://github.com/Kiyomi-Computation-Systems/jsonparse, from
-  the Akku index too, for `(circuit json)` (ADR-0010). `depends` names it
-  and `Akku.lock` pins it. Its tree goes in `vendor/akku-trees`, with only
-  its `src/` on the library path. It runs on the server's byte-machine,
-  under chez-httparse, the path's one: the lock's byte-machine, which
-  `akku lock` adds for jsonparse, is never fetched. A server pin that moves
-  that byte-machine moves the lock's byte-machine and jsonparse on the same
-  commit.
-* `make submodules`, on the host, clones the server and the pins it
-  carries, not its test clients, and chez-websocket, not its server. Then
-  it fetches hashing into `vendor/akku` and jsonparse into
-  `vendor/akku-trees`, as `Akku.lock` pins them. Both are git-ignored and
-  kept by `make clean`; `make deps` fails without either, or on another
-  than the one the lock pins.
-  `make check-pins`, on the host and in CI, holds the server at
-  `SERVER_PIN`, each pin it carries where the server records it,
-  chez-websocket at `WEBSOCKET_PIN` with its server gitlink at `SERVER_PIN`,
-  the server's byte-machine at the version the lock pins and in the range
-  jsonparse's tree names, and hashing's and
-  jsonparse's trees to the archives the lock pins, and refuses a checkout or
-  a tree with local edits. Move a gitlink and its pin (`SERVER_PIN` or
-  `WEBSOCKET_PIN`) on one commit, with the docs' links into that repository
-  and the records' lines on the pin, the global constraints' "now" and
-  ADR-0003's "since": `tests/test-reference.sps` holds the links at the
-  pin's tag and the lines to the pin, and the links into jsonparse at the
-  tag of the version the lock pins.
-* The Akku index has chez-http-server only at a release older than
-  `SERVER_PIN`, and no chez-websocket, so Akku can't install them for
-  circuit: the submodules are the only way in.
+* Every dependency comes from the Akku index (ADR-0011). `Akku.manifest`
+  names each one, and `Akku.lock` pins its archive and sha256:
+  * chez-http-server https://github.com/Kiyomi-Computation-Systems/chez-http-server,
+    and what it brings: chez-libuv, chez-httparse, chez-uri and
+    byte-machine, the path's one byte-machine, which jsonparse runs on too;
+  * chez-websocket https://github.com/Kiyomi-Computation-Systems/chez-websocket,
+    for `(circuit websocket)`;
+  * hashing, Gwen Weinholt's SHA-2 and HMAC, for `(circuit session)`
+    (ADR-0008);
+  * jsonparse https://github.com/Kiyomi-Computation-Systems/jsonparse, for
+    `(circuit json)` (ADR-0010);
+  * chez-srfi, a development dependency, for the suites' SRFI-64.
+* `akku lock` writes `Akku.lock`, never a hand. `make lock`, on the host,
+  runs `akku update`, then `akku lock`, on Akku 1.2.0: `scripts/akku` runs
+  it, and `make akku-deps` fetches it as `scripts/akku-tool.lock` pins it.
+  `make check-akku-lock`, on the host and in CI, fails unless the lock is
+  what Akku makes of the manifest against today's index, so a release that
+  a range admits turns CI red until `make lock` moves the lock. Try a lock
+  move first: the suites, the gate, the site and hashing's own suites pass
+  on it before it lands.
+* `make fetch`, on the host, fetches each tree as the lock pins it, its
+  sha256 checked: hashing into `vendor/akku`, and the others into
+  `vendor/akku-trees/<name>`. Both are git-ignored and kept by `make clean`.
+  On the library path are `vendor/akku`, and each tree's `src/` but two:
+  chez-libuv's copy, `build/chez-libuv`, has its `src/` there in the
+  tree's place, and chez-srfi's SRFIs are linked into `build/scheme-libs`,
+  which is there instead.
+* `make deps` never fetches. It fails unless `Akku.lock` pins exactly
+  hashing, chez-cmark-gfm and the Makefile's `AKKU_TREES`, each once, and
+  without a tree, or on another than the lock's. It builds chez-libuv's
+  shim in the copy, so the fetched tree stays its archive, and copies the
+  tree again when the copy differs from it beyond its build's two
+  products. `make check-pins`, on the host and in CI, holds the lock to
+  those names, each tree to its archive, an edit included, and the copy to
+  its tree and its build's products.
+* Move the lock and the records on one commit: the docs' links into a
+  sibling name the tag of the version the lock pins, and the global
+  constraints' Dependency section names each locked package as
+  `<package>, now <version>`. `tests/test-reference.sps` holds both to
+  `Akku.lock`.
+* circuit isn't installed through Akku yet: `.akkuignore` keeps its own
+  libraries out of `akku install`.
 * chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
   development dependency of `Akku.manifest`. `make site-deps`, on the host,
   fetches it into `build/akku/`, off the library path.
@@ -120,10 +120,11 @@
   under the checkout's `build/`, which is git-ignored.
 * The container exports `CHEZ` (the real `scheme` binary) and `CC` (gcc;
   the toolchain has no `cc`), which builds chez-libuv's shim.
-* Anything that needs the network or git runs on the host: fetches, pushes,
-  downloads, `make check-pins`, and `make submodules`, which a fresh clone
-  needs once before `make deps`, and `make site-deps` once before
-  `make site`. The container has no git.
+* Anything that needs the network or git runs on the host: fetches, pushes
+  and downloads. Among them are `make fetch`, which a fresh clone needs
+  once before `make deps`, `make akku-deps`, `make lock`,
+  `make check-akku-lock`, and `make site-deps`, once before `make site`.
+  The container has no git.
 
 ### Testing & mutation discipline
 
@@ -137,9 +138,8 @@
   exception, holding comments to the docs: `tests/test-reference.sps` holds
   each signature comment to `docs/reference.md` and its procedure's arity,
   each type alias comment to the page's, each re-export's to the server's or
-  chez-websocket's reference, the Makefile's comment on a pin to the
-  pin's tag, and the global constraints' and ADR-0003's pins to the
-  Makefile's.
+  chez-websocket's reference, and the global constraints' versions to
+  `Akku.lock`'s.
 * Chez must be a threaded build: chez-http-server needs one, so circuit has
   no `--nothreads` lane.
 * `make test` runs every suite under GNU `timeout`, which kills a hung

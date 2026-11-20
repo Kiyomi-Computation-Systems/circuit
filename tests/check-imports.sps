@@ -124,7 +124,7 @@
 ;;;       nothing named jsonparse or jsonparse.<anything>, in any case, nor
 ;;;       does a generated directory in it, in any case: Chez takes
 ;;;       (generated jsonparse) from the first LIBDIR whose generated/ has
-;;;       it, and chez-httparse's and uriparse's src/ hold generated/
+;;;       it, and chez-httparse's and chez-uri's src/ hold generated/
 ;;;       directories of their own, of other names. A generated directory it
 ;;;       cannot list is named, as what it holds is unknown. Each LIBDIR but
 ;;;       the directory and BYTE-MACHINE holds nothing named byte-machine or

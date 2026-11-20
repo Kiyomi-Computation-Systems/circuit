@@ -1,0 +1,39 @@
+#!/bin/sh
+# scripts/check-libuv-copy TREE COPY
+#
+# Fails unless COPY, the copy of chez-libuv's TREE that `make deps` builds
+# the shim in, is TREE plus its build's two products and nothing else: by
+# `diff -rq TREE COPY`, whose every line must be one of
+#   Only in COPY: build
+#   Only in COPY/src/libuv/private: config.sls
+# each matched whole, so a build/ or a config.sls anywhere else is a file
+# added like any other. A file changed, added or removed fails it, named.
+# A COPY that isn't there passes: deps hasn't made it yet. diff runs in the
+# C locale, whose words these are, on GNU's diff and macOS's alike.
+#
+# `make deps` copies TREE again when it fails, and `make check-pins` fails
+# with it. Prints one line and exits 0, or names each line that differs on
+# stderr and exits 1.
+set -u
+
+if [ "$#" -ne 2 ]; then
+  echo "usage: check-libuv-copy TREE COPY" >&2
+  exit 2
+fi
+tree=${1%/} copy=${2%/}
+
+if [ ! -e "$copy" ]; then
+  echo "check-libuv-copy: $copy isn't made yet"
+  exit 0
+fi
+
+out=$(LC_ALL=C diff -rq "$tree" "$copy" 2>&1)
+rc=$?
+extra=$(printf '%s\n' "$out" | grep -vxF -e "Only in $copy: build" \
+  -e "Only in $copy/src/libuv/private: config.sls" -e '')
+if [ "$rc" -gt 1 ] || [ -n "$extra" ]; then
+  echo "check-libuv-copy: $copy differs from $tree beyond its build's products:" >&2
+  printf '%s\n' "${extra:-$out}" | sed 's/^/  /' >&2
+  exit 1
+fi
+echo "check-libuv-copy: $copy is $tree, and its build's products"

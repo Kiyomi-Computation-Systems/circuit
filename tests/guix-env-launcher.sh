@@ -311,7 +311,7 @@ check "M1 make check-guix without guix: runs no test" [ ! -s "$started" ]
 # prerequisite. It runs in a copy of the tree, with the real PATH, so
 # check-chez is what stops it, before chez-libuv's build or any suite
 # runs. The copy has no .git, no build/ and no vendor/: it stops
-# before deps looks for the submodules, and in a worktree .git points
+# before deps looks for the fetched trees, and in a worktree .git points
 # outside the one directory the container shares. Only the hint's first
 # line is compared: the line after it depends on whether the host has guix.
 # make's own "***" line carries a Makefile line number.
