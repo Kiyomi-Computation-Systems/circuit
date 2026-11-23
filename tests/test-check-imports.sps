@@ -102,11 +102,25 @@
 (define impure-tail
   "but an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme) through only, and the (http-server ...) libraries except (http-server private ...)")
 
-(define chez-tail
-  "but an impure library imports (chezscheme) only through only, right around it, naming getenv, port-has-port-length?, port-length, real-time, display-condition, print-record, parameterize alone: anything wider gives its body import and eval, which reach any library")
+(define adapter-names-text
+  "getenv, port-has-port-length?, port-length, real-time, display-condition, print-record, parameterize")
+
+(define shell-names-text
+  "fork-thread, thread-join, make-mutex, mutex-acquire, mutex-release, make-condition, condition-wait, condition-signal, condition-broadcast, disable-interrupts, enable-interrupts, make-thread-parameter, get-thread-id")
+
+;; chez-tail : String String -> String
+;; The words a complaint about (chezscheme) imported by the impure library LIB
+;; ends with, NAMES being what it may take from it.
+(define (chez-tail lib names)
+  (string-append "but " lib " imports (chezscheme) only through only, right around it, naming "
+                 names " alone: anything wider gives its body import and eval, which reach any library"))
+
+;; The adapter's and the waits library's, and the shell's.
+(define (adapter-chez-tail lib) (chez-tail lib adapter-names-text))
+(define (shell-chez-tail) (chez-tail "(circuit worker shell)" shell-names-text))
 
 (define edge-tail
-  "but only an impure library, (circuit http-server) or (circuit middleware waits), may import (chezscheme) or an (http-server ...) library")
+  "but only an impure library, (circuit http-server), (circuit middleware waits) or (circuit worker shell), may import (chezscheme) or an (http-server ...) library")
 
 (define private-tail
   "but no library may import an (http-server private ...) library")
@@ -232,7 +246,7 @@
          (apply refused
                 (map (lambda (i)
                        (imports "impure-chezscheme" "circuit/http-server.sls" "(circuit http-server)"
-                                "(chezscheme)" chez-tail))
+                                "(chezscheme)" (adapter-chez-tail "(circuit http-server)")))
                      (iota 11))))
    (list "impure-port-length"
          "rule (d): both impure libraries take port-has-port-length? and port-length from (chezscheme), with getenv and without it, through only right around it, bare and under prefix and rename"
@@ -242,7 +256,7 @@
          (apply refused
                 (map (lambda (i)
                        (imports "impure-port-length-wider" "circuit/http-server.sls"
-                                "(circuit http-server)" "(chezscheme)" chez-tail))
+                                "(circuit http-server)" "(chezscheme)" (adapter-chez-tail "(circuit http-server)")))
                      (iota 4))))
    (list "impure-real-time"
          "rule (d): both impure libraries take real-time, display-condition, print-record and parameterize from (chezscheme), with the other allowed names and without, through only right around it, bare and under prefix and rename"
@@ -252,8 +266,70 @@
          (apply refused
                 (map (lambda (i)
                        (imports "impure-real-time-wider" "circuit/middleware/waits.sls"
-                                "(circuit middleware waits)" "(chezscheme)" chez-tail))
+                                "(circuit middleware waits)" "(chezscheme)" (adapter-chez-tail "(circuit middleware waits)")))
                      (iota 9))))
+   (list "worker-legal"
+         "rules (b), (d) and (q): the shell imports exactly what the interface names, the rnrs libraries, its machine, (http-server) through only naming all three of its names, and (chezscheme) through only naming all thirteen of its list; the facade imports the shell, the machine and a core library"
+         (ok 4))
+   (list "worker-shell-wrapped"
+         "rule (d): the shell takes (http-server) and (chezscheme) names through only, right around the reference or inside prefix, rename, for and library, one name or several, spread over many imports"
+         (ok 2))
+   (list "worker-shell-chez"
+         "rule (d): the shell takes from (chezscheme) only its own thirteen names: getenv, which is the adapter's, fork-thread beside getenv, real-time and parameterize, bare (chezscheme) and eval are each named; fork-thread alone is not"
+         (apply refused
+                (map (lambda (i)
+                       (imports "worker-shell-chez" "circuit/worker/shell.sls" "(circuit worker shell)"
+                                "(chezscheme)" (shell-chez-tail)))
+                     (iota 5))))
+   (list "worker-adapter-chez"
+         "rule (d): the adapter and the waits library take from (chezscheme) only their own seven names: fork-thread, the shell's, and get-thread-id beside getenv are each named; getenv and real-time are not"
+         (refused (imports "worker-adapter-chez" "circuit/http-server.sls" "(circuit http-server)"
+                           "(chezscheme)" (adapter-chez-tail "(circuit http-server)"))
+                  (imports "worker-adapter-chez" "circuit/middleware/waits.sls" "(circuit middleware waits)"
+                           "(chezscheme)" (adapter-chez-tail "(circuit middleware waits)"))))
+   (list "worker-shell-server"
+         "rule (d): the shell takes the server's names only through (http-server) in an only naming some of await-outside, deadline-passed? and client-closed?: bare, an only naming with-deadline, one beside await-outside, one naming nothing, and except are each named, (http-server testing) twice, bare and in an only, and (http-server waits) as other (http-server ...) libraries, and (http-server private fake-shell) as private; one only naming await-outside is not"
+         (let ((only-tail "but (circuit worker shell) imports (http-server) only through only, right around it, naming at least one of await-outside, deadline-passed? and client-closed? and nothing else: so its header names all it takes from the server")
+               (other-tail "but (circuit worker shell) may import no (http-server ...) library but (http-server)"))
+           (refused (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server)" only-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server)" only-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server)" only-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server)" only-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server)" only-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server testing)" other-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server testing)" other-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server waits)" other-tail)
+                    (imports "worker-shell-server" "circuit/worker/shell.sls" "(circuit worker shell)" "(http-server private fake-shell)" private-tail))))
+   (list "worker-shell-imported"
+         "rule (q): a core library, the adapter, the waits library and (circuit websocket) each import (circuit worker shell), which only (circuit worker) may import; the shell's own imports are legal"
+         (let ((tail "but only (circuit worker) may import (circuit worker shell): it imports the server, and the core stays free of it"))
+           (refused (imports "worker-shell-imported" "circuit/http-server.sls" "(circuit http-server)" "(circuit worker shell)" tail)
+                    (imports "worker-shell-imported" "circuit/middleware/waits.sls" "(circuit middleware waits)" "(circuit worker shell)" tail)
+                    (imports "worker-shell-imported" "circuit/router.sls" "(circuit router)" "(circuit worker shell)" tail)
+                    (imports "worker-shell-imported" "circuit/websocket.sls" "(circuit websocket)" "(circuit worker shell)" tail))))
+   (list "worker-imported"
+         "rule (q): the waits library, a core library, (circuit websocket) and the shell each import (circuit worker), which no library may import; the facade's own import of the shell is legal"
+         (let ((tail "but no library may import (circuit worker): it reaches the server through (circuit worker shell), and the core stays free of the server"))
+           (refused (imports "worker-imported" "circuit/middleware/waits.sls" "(circuit middleware waits)" "(circuit worker)" tail)
+                    (imports "worker-imported" "circuit/router.sls" "(circuit router)" "(circuit worker)" tail)
+                    (imports "worker-imported" "circuit/websocket.sls" "(circuit websocket)" "(circuit worker)" tail)
+                    (imports "worker-imported" "circuit/worker/shell.sls" "(circuit worker shell)" "(circuit worker)" tail))))
+   (list "worker-facade-limits"
+         "rule (q): the facade imports neither (chezscheme), bare or through only, nor (http-server), bare, through only or (http-server testing), nor (websocket) or one of its inner libraries, nor anything off the core's list: (srfi :1), (circuit-testing) and (rnrs eval) are named; the shell, its machine and a core library are not"
+         (let ((worker-tail "but (circuit worker) may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and (circuit worker shell)"))
+           (refused (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(chezscheme)" edge-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(chezscheme)" edge-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(http-server)" edge-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(http-server)" edge-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(http-server testing)" edge-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(websocket)" facade-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(websocket handshake)" inner-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(srfi :1)" worker-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(circuit-testing)" worker-tail)
+                    (imports "worker-facade-limits" "circuit/worker.sls" "(circuit worker)" "(rnrs eval)" worker-tail))))
+   (list "worker-facade-no-shell"
+         "rule (g): the facade imports (circuit worker shell), and no library under the tree defines it"
+         (refused (undefined "worker-facade-no-shell" "circuit/worker.sls" "(circuit worker)" "(circuit worker shell)")))
    (list "case-mismatch"
          "rule (a): a library's path matches its name letter for letter: (circuit request) in circuit/Request.sls is at the wrong path"
          (refused (misplaced "case-mismatch" "circuit/Request.sls" "(circuit request)"
@@ -1219,7 +1295,7 @@
      (let* ((others (filter (lambda (n) (not (memq n chez-allowed))) (library-exports '(chezscheme))))
             (file (string-append dir "/circuit/middleware/waits.sls"))
             (complaint (string-append "check-imports: " file
-                                      ": (circuit middleware waits) imports (chezscheme), " chez-tail)))
+                                      ": (circuit middleware waits) imports (chezscheme), " (adapter-chez-tail "(circuit middleware waits)"))))
        (capture-command (list "mkdir" "-p" (string-append dir "/circuit/middleware")))
        (call-with-port (open-file-output-port file (file-options) (buffer-mode block)
                                               (make-transcoder (utf-8-codec)))
@@ -1897,6 +1973,78 @@
                                        "make: *** [check-imports] Error 1\n"))))
        (if (equal? planted want) 'refused planted)))))
 
+;; list-probe : String String (Listof String) (Listof Symbol) (Listof Symbol) String -> Any
+;; An impure library NAME, which stands at FILE-PATH (its path's directories
+;; below the tree, in order, and its file), taking ALLOWED through one only
+;; and each of EXTRAS through an only of its own from (chezscheme), in a tree
+;; of its own. 'refused-each when the program refuses each of EXTRAS, by
+;; COMPLAINT, once, and nothing else; otherwise what it answered.
+(define (list-probe name dirs allowed extras complaint-tail)
+  (call-with-temp-directory
+   (lambda (dir)
+     (let* ((file (string-append dir "/circuit/" (joined-path dirs) ".sls"))
+            (complaint (string-append "check-imports: " file ": " name " imports (chezscheme), "
+                                      complaint-tail)))
+       (capture-command (list "mkdir" "-p" (dirname file)))
+       (call-with-port (open-file-output-port file (file-options) (buffer-mode block)
+                                              (make-transcoder (utf-8-codec)))
+         (lambda (p)
+           (put-string p "#!r6rs\n(library ")
+           (put-string p name)
+           (put-string p "\n  (export)\n  (import (rnrs)\n          (only (chezscheme)")
+           (for-each (lambda (n) (put-char p #\space) (write n p)) allowed)
+           (put-string p ")\n")
+           (for-each (lambda (n) (put-string p "          (only (chezscheme) ") (write n p) (put-string p ")\n"))
+                     extras)
+           (put-string p "))\n")))
+       (let* ((got (run (list dir)))
+              (lines (split-lines (caddr got)))
+              (odd (filter (lambda (line) (not (string=? line complaint))) lines)))
+         (if (and (= (car got) 1) (string=? (cadr got) "") (= (length lines) (length extras)) (null? odd))
+             'refused-each
+             (list (car got) (cadr got) (length extras) (length lines) odd)))))))
+
+;; joined-path : (Listof String) -> String
+(define (joined-path parts)
+  (fold-left (lambda (text part) (string-append text "/" part)) (car parts) (cdr parts)))
+
+(define shell-allowed '(fork-thread thread-join make-mutex mutex-acquire mutex-release
+                        make-condition condition-wait condition-signal condition-broadcast
+                        disable-interrupts enable-interrupts make-thread-parameter get-thread-id))
+
+
+
+(test-equal "rule (d): every name (chezscheme) exports but the shell's thirteen is refused for the shell through an only of its own; its thirteen, beside them, are not"
+  'refused-each
+  (let ((others (filter (lambda (n) (not (memq n shell-allowed))) (library-exports '(chezscheme)))))
+    (if (> (length others) 1000)
+        (list-probe "(circuit worker shell)" '("worker" "shell") shell-allowed others
+                    (string-append "but (circuit worker shell) imports (chezscheme) only through only, right around it, naming "
+                                   shell-names-text
+                                   " alone: anything wider gives its body import and eval, which reach any library"))
+        'too-few-exports)))
+
+(test-equal "rule (d): each of the adapter's seven names is refused for the shell, through an only of its own"
+  'refused-each
+  (list-probe "(circuit worker shell)" '("worker" "shell") shell-allowed chez-allowed
+              (string-append "but (circuit worker shell) imports (chezscheme) only through only, right around it, naming "
+                             shell-names-text
+                             " alone: anything wider gives its body import and eval, which reach any library")))
+
+(test-equal "rule (d): each of the shell's thirteen names is refused for the adapter, through an only of its own"
+  'refused-each
+  (list-probe "(circuit http-server)" '("http-server") chez-allowed shell-allowed
+              (string-append "but (circuit http-server) imports (chezscheme) only through only, right around it, naming "
+                             adapter-names-text
+                             " alone: anything wider gives its body import and eval, which reach any library")))
+
+(test-equal "rule (d): each of the shell's thirteen names is refused for the waits library, through an only of its own"
+  'refused-each
+  (list-probe "(circuit middleware waits)" '("middleware" "waits") chez-allowed shell-allowed
+              (string-append "but (circuit middleware waits) imports (chezscheme) only through only, right around it, naming "
+                             adapter-names-text
+                             " alone: anything wider gives its body import and eval, which reach any library")))
+
 ;; --- the lists the program holds are exact ---------------------------------------------
 ;; The program's lists are read from it as data, never from its output.
 
@@ -1937,9 +2085,31 @@
            (library-list)))
   (sorted-libraries (declared 'rnrs-libraries)))
 
-(test-equal "the impure libraries are exactly (circuit http-server) and (circuit middleware waits)"
-  (sorted-libraries '((circuit http-server) (circuit middleware waits)))
+(test-equal "the impure libraries are exactly (circuit http-server), (circuit middleware waits) and (circuit worker shell)"
+  (sorted-libraries '((circuit http-server) (circuit middleware waits) (circuit worker shell)))
   (sorted-libraries (declared 'impure)))
+
+(test-equal "the library that may import some of (http-server) only is exactly (circuit worker shell)"
+  '(circuit worker shell)
+  (declared 'shell-library))
+
+(test-equal "the one library that may import the shell is exactly (circuit worker)"
+  '(circuit worker)
+  (declared 'worker-library))
+
+(test-equal "the (http-server) names the shell may take are exactly await-outside, deadline-passed? and client-closed?"
+  '(await-outside deadline-passed? client-closed?)
+  (declared 'server-names))
+
+(test-equal "the adapter's and the waits library's (chezscheme) names are exactly seven"
+  '(getenv port-has-port-length? port-length real-time display-condition print-record parameterize)
+  (declared 'adapter-chez-names))
+
+(test-equal "the shell's (chezscheme) names are exactly its thirteen"
+  '(fork-thread thread-join make-mutex mutex-acquire mutex-release make-condition condition-wait
+    condition-signal condition-broadcast disable-interrupts enable-interrupts make-thread-parameter
+    get-thread-id)
+  (declared 'shell-chez-names))
 
 (test-equal "the one library that may import (websocket) is exactly (circuit websocket)"
   '(circuit websocket)

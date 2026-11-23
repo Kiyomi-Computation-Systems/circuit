@@ -34,7 +34,8 @@
 ;;; through the adapter; through the adapter under five middlewares that
 ;;; each `req-set` a key; through the adapter with the app parked once,
 ;;; `(sleep-ms 0)`; the adapter's app, and the parked one, inside the catch
-;;; helper, nothing raised; the adapter's app registering a no-op
+;;; helper, nothing raised, and inside wrap-busy, parked once and not; the
+;;; adapter's app registering a no-op
 ;;; req-on-done! procedure; inside wrap-log, its lines written to
 ;;; /dev/null; inside wrap-timeout, its deadline never passing, the app
 ;;; parked once inside it and not; through
@@ -85,6 +86,7 @@
         (only (circuit middleware waits) wrap-catch wrap-timeout wrap-log)
         (only (circuit router) make-router route group GET POST PUT DELETE)
         (only (circuit http-server) circuit->handler)
+        (only (circuit worker) wrap-busy)
         (only (circuit worker machine) make-machine machine-slots step))
 
 ;;; ------------------------------------------------------------------------
@@ -156,7 +158,11 @@
                              " one-parameter route"))
    (make-gate "G10 miss" "router-miss" "path-miss" 1 64 #t
               (string-append "the same, both asked /nope/nothing, which no route takes:"
-                             " the router's own work to find nothing"))))
+                             " the router's own work to find nothing"))
+   (make-gate "G12" "busy-none" "get-adapter" 1 512 #t
+              "wrap-busy over the unwrapped app, nothing raised")
+   (make-gate "G12 park" "busy-none-park" "get-adapter-park" 1 512 #t
+              "wrap-busy over the unwrapped app, nothing raised, the app parked once inside it")))
 
 ;;; ------------------------------------------------------------------------
 ;;; G11: one job through the machine's `step`.
@@ -383,6 +389,9 @@
         (make-variant "catch-none" "get-adapter" 'GET (circuit->handler (wrap-catch hello) no-env))
         (make-variant "catch-none-park" "get-adapter-park" 'GET
                       (circuit->handler (wrap-catch parked-hello) no-env))
+        (make-variant "busy-none" "get-adapter" 'GET (circuit->handler ((wrap-busy 5) hello) no-env))
+        (make-variant "busy-none-park" "get-adapter-park" 'GET
+                      (circuit->handler ((wrap-busy 5) parked-hello) no-env))
         (make-variant "get-ondone" "get-adapter" 'GET (circuit->handler ondone-hello no-env))
         (make-variant "log" "get-adapter" 'GET (circuit->handler (wrap-log hello) no-env))
         (make-variant "timeout" "get-adapter" 'GET (circuit->handler ((wrap-timeout 30000) hello) no-env))

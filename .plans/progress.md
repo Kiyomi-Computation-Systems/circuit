@@ -223,9 +223,9 @@ close-out under **Close-outs**, newest first.
     taken in.
   - The owner answered on 2026-11-23: Q1 "Never run it", Q3 "Refuse them", Q8 "One
     thread of its own", Q14 "make-test-worker".
-- **W1, the worker's pure machine and its verification, is built**, #53's item 3, in
-  [PR #56](https://github.com/Kiyomi-Computation-Systems/circuit/pull/56), not yet
-  merged; its close-out is below.
+- **W1, the worker's pure machine and its verification, is merged**, #53's item 3,
+  squashed from [PR #56](https://github.com/Kiyomi-Computation-Systems/circuit/pull/56)
+  on 2026-11-23 (e06a692); its close-out is below.
   - `(circuit worker machine)`, internal and plain R6RS, decides every row of the
     design's §4.2.
   - Layers 1 to 4a hold it: the table's static checks, every row and cell driven, an
@@ -234,9 +234,18 @@ close-out under **Close-outs**, newest first.
     2026-11-23.
   - An adversarial review on Opus found one blocking gap, a check that couldn't fail,
     now fixed.
-- **Next:** the worker's remaining slices:
-  1. W2, the shell, the double, `wrap-busy` and the contract rows;
-  2. W3, the docs page, the example and the records.
+- **W2, the worker's shell and its verification, is built**, #53's item 3, in a PR not
+  yet merged; its close-out is below.
+  - `(circuit worker shell)`, internal, runs the machine's decisions on real threads
+    under one lock. It has the double, the observer and the broken worker.
+  - `(circuit worker)` is the public library: the API, re-exported, and `wrap-busy`.
+  - The server's contract rows, layer 4b's schedules against the model, and layer 5's
+    real threads hold them.
+  - The audit holds the shell to its own allowlist, and only `(circuit worker)` may
+    import it.
+  - G12 holds `wrap-busy` at 512 B, the bound the owner accepted on 2026-11-23.
+- **Next:** W3, the worker's docs page, its example and the reference, which makes
+  `(circuit worker)` the thirteenth public library.
 
   Publishing circuit on Akku is a slice of its own too (ADR-0011).
 
@@ -322,6 +331,189 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-23: W2, the worker's shell and its verification
+
+On the owner's "Begin W2. Layer 4b can reuse W1's world model. Use the same
+parallelization / subagent strategy as before. tell Techo's session once W2 lands."
+#53's item 3, the second of the worker's three slices, on `w2/shell`.
+
+- **How it was built.** I fixed the shell's exports, its observer's points and notes,
+  and who owns each file in one brief, `build/w2/interface.md` (git-ignored). Six
+  builders worked in parallel on disjoint files:
+  - the shell and its rows, on Opus;
+  - the import audit, on Sonnet;
+  - the server's contract rows, on Sonnet;
+  - the facade, `wrap-busy` and G12, on Sonnet;
+  - layer 4b, on Opus, started before the shell existed;
+  - layer 5, on Sonnet.
+
+  Then a generated mutation pass, on Sonnet, and one read-only adversarial review, on
+  Opus. Each finding went back to the builder who owned the file. I verified every
+  hand-back: I reran its suites and a sample of its mutants, and reproduced each review
+  finding before it was fixed.
+- **`(circuit worker shell)`**, `src/circuit/worker/shell.sls`, 734 lines, internal. It
+  carries out the machine's decisions on real threads under one mutex:
+  - sections, held steps, and effects carried out after the lock is released;
+  - the thread loop inside one `dynamic-wind`, whose after-thunk acts on where the
+    thread was;
+  - the two-layer catch;
+  - the pass-through abandon handler;
+  - the maker and the stoppers;
+  - the double's mark;
+  - the observer, with an owner check at each blocking point;
+  - the broken worker.
+
+  Beyond the design's two internal exports, it exports `worker-lock-free?` for the
+  suites.
+- **`(circuit worker)`**, `src/circuit/worker.sls`, re-exports the API and defines
+  `wrap-busy`. W3 makes it the thirteenth public library. Until then
+  `tests/test-reference.sps` lists its exports, and the shell's, as internal.
+- **The suites**, all in `make test`, which now runs 34:
+  - **`tests/test-worker-shell.sps`, 79 checks in about 1.3 s:**
+    - every argument check;
+    - the double's rows, a stop during a call while the job is still given among them;
+    - a raising step injected in a section, a held step and a note;
+    - protocol raises and exits at the observer's points;
+    - the collect-request row;
+    - every row bounded.
+  - **`tests/test-worker-threads.sps`, layer 5, 32 checks in about 4 s:**
+    - the design's rows, on real threads with no observer;
+    - a stress run of 2,000 calls, seed 20261123, over a 4-thread reader and a
+      1-thread writer through `wrap-busy`, `wrap-timeout` and a catch;
+    - every row runs on its own thread with a bound.
+  - **`tests/test-worker-schedule.sps`, layer 4b, over `tests/worker-schedule.sls`:**
+    - the real shell under schedules drawn from W1's model, each step compared whole
+      with `world-apply/steps`;
+    - 1,000 sequences, 1,841 lives, 57,426 events drawn, from seed 20261124, in about
+      2 s;
+    - no change to `tests/worker-model.sls`.
+  - **`tests/test-worker-busy.sps`, 18 checks:** `wrap-busy` on real refusals, the
+    raises it passes on, and its arguments.
+  - **`tests/test-worker-contract.sps`, 21 checks:** the server's ten clauses the worker
+    rests on, through the test host. Clause 6's owed close can't be reached there.
+- **The import audit:**
+  - rule (b) names the shell as a third impure library;
+  - rule (d) gives each impure library its own list of `(chezscheme)` names, the
+    shell's thirteen, and holds the shell's `(http-server)` import to three names;
+  - the new rule (q) lets `(circuit worker)` alone import the shell, and lets no
+    library import `(circuit worker)`;
+  - `tests/test-check-imports.sps` gains nine fixture trees and rows that hold each list
+    against its whole complement: 163 checks.
+- **G12**, in `make gate`: `wrap-busy` over the app, nothing raised.
+  - It read 390–403 B, and 331–353 B with a park, beside G5's.
+  - The owner accepted 512 B on 2026-11-23 ("Accept 512 B").
+  - A `call/1cc` escape reads 899–901 B, and 3,677 B with a park. A `guard` escape, at
+    442 B, passes the bound, as it does G5's.
+- **What the work found:**
+  - **The stopper skipped its second stop** when its first answered stopped, against
+    §4.5 and the model. Layer 4b found it, the shell agent fixed it, and I took the
+    harness's tolerance for it out.
+  - **Interrupts came back on before the effects' handler was in place**, so a raising
+    interrupt there lost a call's signal for good. Fixed, and a row holds it.
+  - **The maker raised before joining** when its own held step raised. The review found
+    it; fixed, and a row holds it.
+  - **An `exit` at a thread's blocking point,** or inside the after-thunk's own steps,
+    lost the effects still pending. Fixed: a thread keeps its pending effects, and every
+    after-thunk step has a `dynamic-wind` of its own. Rows hold both.
+  - **`check-suites` refuses any `(exit N)` but `(exit 1)`** before a suite's verdict.
+    The jobs that leave their threads now call `(exit 1)`, which still ends only that
+    thread.
+  - **Two last fixes of mine in the shell suite:**
+    - the idle-thread row of the broken worker now counts its tear-downs. Before that,
+      the mutant whose woken thread ended without tearing down was killed only by
+      chance, in 2 runs of 3;
+    - it no longer imports the server's private `(http-server private scheduler)`. The
+      off-loop wait's raise is held by its public condition fields, as the contract
+      rows hold it.
+- **The review**, on Opus, found nothing blocking. R3, which only review holds, it read
+  sound. Each of its six should-fix findings was reproduced and fixed:
+  - no row for a warning raised plainly;
+  - none for a stop from a broken worker's own thread;
+  - none for a stop from a thread a job forked;
+  - the maker's join;
+  - the condition types' signature comments;
+  - the records' claim about the join after a failed start, which layer 4b, not layer
+    5, holds.
+
+  Of its nits, I fixed the overclaiming suite headers, a misnamed row, the facade's
+  header example, three unguarded top-level computations, the rule names in the records,
+  and 4b's broken-versus-left check. One I left: `break!` enables interrupts before its
+  posts, as the rule that keeps interrupts off only during a step requires.
+- **Mutants**, generated by one script, `build/w2/mutants/make.py`, from the final
+  sources, each one library put first on the path, against the four worker suites:
+  - **255 mutants, 232 killed by failing rows, none by a load error.** They are the
+    design's 14 shell and machine mutants and one per rule or property the suites
+    hold. A first pass of 243, on the code before the review's fixes, left 47
+    survivors and 23 hangs. Its gaps became the rows above, and every row of the
+    shell and threads suites got a bound.
+  - **The design's mutants** each fail their named layer: the lost wakeup and the
+    effect under the lock fail 4b, and the double's, the catch's and the broken
+    worker's fail their rows.
+  - **Hangs:** only the busy suite, which has no per-row bound, hangs on 7 mutants.
+    Each of them fails rows in the shell, threads or schedule suites.
+  - **23 survive:**
+    - **14 equivalent, or on a branch that can't happen:**
+      - can't-happen branches and no-ops: `call-ticket-job-wrong`,
+        `call-unknown-outcome-ignored`, `effect-unknown-ignored`,
+        `register-unknown-reply-ignored` and `post-double-hold-before-resume-noop`;
+      - equivalent: `double-mark-before-resume`, `stop-second-as-own`,
+        `thread-wait-if-not-while` (as the design says), `values-outside-cwv`,
+        `keep-after-pending-not-cleared`, `broken-pending-effects-skipped`,
+        `owner-not-cleared-before-wait` and `raise-continuable-held-step-only`;
+      - the owner check removed alone, which never fires on correct code. With
+        `effect-under-lock` it is killed.
+    - **3 test-only internals:** `live-count-no-check`, `live-count-no-lock` and
+      `worker-record-not-sealed`.
+    - **4 not reachable through the server:**
+      - `abandon-every-raise` and `abandon-keeps-accepted`: a parked wait raises only
+        a deadline or a close, once;
+      - `owner-not-restored-on-wait-raise`: only a re-entry from an interrupt handler
+        makes `condition-wait` raise;
+      - `carry-out-advances-before-effect`: it differs only if an effect raises, and
+        `resume` never raises (contract clause 10).
+    - **2 held by review and the model alone:**
+      - `post-resume-called-under-lock`: no row can see the lock around the server's
+        `resume`;
+      - `maker-wait-if-not-while`: a spurious wakeup can't be forced on real threads,
+        and layer 3 kills the model's counterpart.
+  - **Unwatched rows:** every row of the four suites was seen failing, but two.
+    Layer 5's check that thread ids rise holds Chez, not the shell. Busy's argument
+    row was seen failing but was missed by name, since its name holds quotes.
+- **Records:**
+  - ADR-0006 amended: the shell is a third library that imports the server, with its
+    own allowlist, and item 7 lets `(circuit worker)` import it;
+  - ADR-0007 amended for G12;
+  - ADR-0013 amended: G12's bound, `worker-lock-free?`, and the interrupts' order;
+  - the design's "As built in W2" notes in §2, §4.5, §4.6, §8.2, §8.4, §8.5, §8.6 and
+    §8.8;
+  - the global constraints' import rules and Cost;
+  - AGENTS.md's architecture bullet, and the Makefile's and CI's gate and audit text.
+- **The checks**, in the container, on the final tree:
+  - `make test`, 34 of 34 suites, `check-imports` and `check-suites` among them;
+  - `make gate`, every held gate within its bound;
+  - `make check-help`.
+- **Agents**, each figure from its notification, a resumed agent's round as the
+  difference between its totals:
+
+  | Agent | Model | Tokens | Time |
+  |---|---|---|---|
+  | the shell | Opus | 390,007 | 47m22s |
+  | the shell, the review's and the mutants' fixes | Opus | 208,424 | 41m15s |
+  | the shell, the pending effects' rows | Opus | 21,033 | 7m26s |
+  | the shell, one more row | Opus | 7,253 | 2m25s |
+  | the import audit | Sonnet | 133,050 | 11m08s to its report; a background run of its own ended hours later |
+  | the contract rows | Sonnet | 107,438 | 4m47s |
+  | the facade, `wrap-busy` and G12 | Sonnet | 114,859 | 15m37s |
+  | the facade, the review's nits | Sonnet | 5,199 | 34s |
+  | layer 4b | Opus | 416,443 | 41m21s |
+  | layer 4b, the review's fixes | Opus | 29,272 | 4m38s |
+  | layer 4b, a hang made a failure | Opus | 13,259 | 3m23s |
+  | layer 5 | Sonnet | 142,784 | 8m38s |
+  | layer 5, the review's and the mutants' fixes | Sonnet | 46,247 | 14m53s |
+  | the mutation pass | Sonnet | 165,878 | 42m06s |
+  | the mutation pass, on the final code | Sonnet | 44,862 | 21m51s |
+  | the review | Opus | 412,404 | 27m16s |
 
 ### 2026-11-23: W1, the worker's pure machine and its verification, in PR #56
 
