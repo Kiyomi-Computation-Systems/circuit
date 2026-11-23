@@ -294,7 +294,8 @@ close-out under **Close-outs**, newest first.
 
 On the owner's #51, then "lets tackle issue 51" and "Commit and open pr". Commits on
 `open/config-error-exports`: the exports, their tests and docs (cdfa623), Now and this
-close-out, and its CI run named here.
+close-out (0a4511b), and its CI run named here. It passed on the PR (run 45090894540,
+4m50s), on amd64, arm64 and the site job.
 
 - **the exports:** `(circuit http-server)` exports `&circuit-config-error` and
   `circuit-config-error?`, which it defined already, and re-exports the server's
