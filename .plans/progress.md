@@ -203,6 +203,11 @@ close-out under **Close-outs**, newest first.
   and chez-srfi. `make fetch` replaces `make submodules`, and no dependency is a
   submodule (ADR-0011, which supersedes ADR-0003's items 1 to 6 and 8, and ADR-0010's
   items 3 and 4).
+- **`(circuit http-server)` exports the config errors**, squashed from
+  [PR #52](https://github.com/Kiyomi-Computation-Systems/circuit/pull/52) on 2026-11-22,
+  which closes the owner's #51; its close-out is below. `&circuit-config-error` and
+  `circuit-config-error?` are circuit's own, and `&http-server-config-error` and
+  `http-server-config-error?` the server's, re-exported.
 - **Next:** the owner's call. The Open list below holds what is known. Publishing
   circuit on Akku is a slice of its own (ADR-0011).
 
@@ -284,6 +289,54 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-22: the config errors exported from `(circuit http-server)`, in PR #52
+
+On the owner's #51, then "lets tackle issue 51" and "Commit and open pr". Commits on
+`open/config-error-exports`: the exports, their tests and docs (cdfa623), Now and this
+close-out, and its CI run named here.
+
+- **the exports:** `(circuit http-server)` exports `&circuit-config-error` and
+  `circuit-config-error?`, which it defined already, and re-exports the server's
+  `&http-server-config-error` and `http-server-config-error?`, the same bindings.
+  `(circuit)` takes none: it exports no `run-server`. ADR-0005's rule counts the
+  server's conditions among what the adapter may re-export, so no record changes;
+- **the tests, each watched red first:** `test-names.sps`'s list of the server's
+  re-exports gains the pair, its exact-exports row gains circuit's two, and its `eq?`
+  rows gain the predicate and the condition type's descriptor. Two rows in
+  `test-http-server.sps` evaluate in an environment of `(rnrs)`, `(circuit)` and
+  `(circuit http-server)` alone, as the issue asks. `run-server`'s refusal of
+  `CHEZ_HTTP_PORT=abc` is the server's config error but not circuit's, and of
+  `CIRCUIT_PORT_PIECE_BYTES=0` both. A condition type made under each exported type is
+  that kind, and a message condition is neither. Before the exports, the exact-exports
+  row failed, and the two rows answered "attempt to reference unbound identifier" and
+  "unrecognized parent record";
+- **mutants**, each killed by a failing row:
+  - four in the docs and comments, on the reference suite: the predicate's link moved
+    to the server's `#reading-a-request`; the condition type's block given another
+    type; the predicate's comment given another type; and Configuration naming
+    `&circuit-config-error` in no code;
+  - on the adapter suite: `circuit-config-error?` as the server's predicate (2 rows),
+    and `&circuit-config-error` under `&error` (5);
+  - an `http-server-config-error?` of circuit's own makes `test-names.sps` and
+    `test-http-server.sps` refuse to load, the clash the names suite is built to catch.
+    A copy of `test-names.sps` that imports `(http-server)` without the predicate loads
+    and fails its `eq?` row alone;
+- **the docs:** the reference's four entries. Circuit's condition type's signature is
+  `ConditionType`, which the page's intro explains. Both re-exports link the server's
+  `#the-server`: the config error's own heading anchors a section that names its type
+  in no code span, and a mutant linking it fails the reference suite. Configuration's
+  page gains "Catch a bad setting", a program that prints the message and the
+  irritants and exits 2. Run in the container with `CHEZ_HTTP_PORT=80a` and with
+  `CIRCUIT_PORT_PIECE_BYTES=0`, it printed what the page shows, and exited 2;
+- **checks:** in the container, `make test` passed 26 of 26, and `make check-site`
+  passed. After a comment-only reflow, `make check-imports`, the reference suite and
+  the adapter suite passed again;
+- **left:** the server's reference says its config error's "message names the
+  variable". Its irritants do, `("CHEZ_HTTP_PORT" "80a")`, and its message says what it
+  expected. Configuration's page says the irritants are the variable and its value,
+  which the adapter suite's rows hold against the pinned server. Not filed;
+- **agents:** none.
 
 ### 2026-11-20: every dependency from Akku, in PR #50
 
