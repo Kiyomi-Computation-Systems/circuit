@@ -5,11 +5,19 @@
 ### Architecture & portability
 
 * Use the functional core / imperative shell pattern: a pure core (requests,
-  responses, headers, middleware) and two libraries that import
-  chez-http-server, the adapter `(circuit http-server)` and
-  `(circuit middleware waits)`. No other library imports `(http-server)`,
-  and those two take from `(chezscheme)` only through `only`, naming what
-  the audit allows (ADR-0006). A third, `(circuit websocket)`, imports
+  responses, headers, middleware) and three libraries that import
+  chez-http-server, the adapter `(circuit http-server)`,
+  `(circuit middleware waits)` and the worker's shell,
+  `(circuit worker shell)`. No other library imports `(http-server)`,
+  and those three take from `(chezscheme)` only through `only`, each
+  naming what the audit allows it (ADR-0006). The shell takes from
+  `(http-server)` only some of `await-outside`, `deadline-passed?` and
+  `client-closed?`, and from `(chezscheme)` its own thirteen thread, lock,
+  condition, interrupt and thread-parameter names, which no other library
+  takes. Only `(circuit worker)` imports the shell, and none imports
+  `(circuit worker)`, which reaches the server through it; `(circuit
+  worker)` imports neither `(chezscheme)` nor a server or `(websocket ...)`
+  library (ADR-0013). Another, `(circuit websocket)`, imports
   chez-websocket's facade `(websocket)`, which imports the server. No other
   library imports `(websocket)`, none imports another `(websocket ...)`
   library, and none imports `(circuit websocket)` (ADR-0006). One core
@@ -24,8 +32,8 @@
   `make check-imports` holds it, and `make test` runs it once `src/` exists.
 * Follow the 12 Factor Apps philosophy
 * Project is built for Chez Scheme but should be mostly portable to R6RS:
-  the core is plain R6RS, `hashing` and jsonparse too, and only the two
-  libraries above may use Chez's own procedures.
+  the core is plain R6RS, `hashing` and jsonparse too, and only the three
+  libraries above that import the server may use Chez's own procedures.
 * Project should be portable across macos (darwin) and linux; windows is not
   supported (`.plans/decisions/0001-windows-is-not-supported.md`)
 * Project should be portable across amd64 and arm64

@@ -13,7 +13,10 @@
   too, where its first run read every gate within 12 B of amd64's; 2026-11-23, in the
   worker's slice W1: G11, the worker machine's own allocation for one job, is held at
   512 B ([ADR-0013](0013-a-worker-runs-jobs-on-threads-of-its-own-decided-by-a-pure-step-function-under-one-lock.md)
-  item 13), the bound the owner accepted the same day ("Accept 512 B")
+  item 13), the bound the owner accepted the same day ("Accept 512 B"); 2026-11-23, in
+  the worker's slice W2: G12, `wrap-busy` over the app with nothing raised, is held at
+  512 B with and without a park, as G5 holds the catch helper, the bound the owner
+  accepted the same day ("Accept 512 B")
 - **Scope:** the bounds `make gate` holds and prints, and what they are measured on
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §4, §13, §15 item 6
 
@@ -61,6 +64,8 @@ record size step, where a six-field request record failed it by 1 B.
    | G10 param | 256 | held | 167 | each word compared by a substring: 401 |
    | G10 miss | 64 | held | 4 | each word compared by a substring: 323 |
    | G11, the worker machine's own work for one job | 512 | held | 448 (in 9 runs, each the same) | the slot vector rebuilt through a list: 544 |
+   | G12, `wrap-busy` | 512 | held | 398 (in 7 runs) | a `call/1cc` escape: 899–901 |
+   | G12 park | 512 | held | 346 | a `call/1cc` escape: 3,677 |
 
    G11 is in bytes a job, not a request: a call, a next and an end through the machine's
    `step` on one thread, nothing queued, over 5,000 against 25,000 jobs, the ticket and
@@ -137,5 +142,13 @@ G3 and G4 mutants.
     events, which the worker's shell will pay.
   - **The regression is close.** A slot vector rebuilt through a list reads 544 B, 32 B
     over the bound, since one thread's vector is small; the gate fails it, exit 1.
+- **The worker's slice W2 measured G12**, in six runs by its gate builder and one by the
+  session on 2026-11-23:
+  - **It reads 390–398 B, and 336–346 B with a park**, beside G5's 391–400 B and
+    332–368 B in the same runs. `wrap-busy` has the catch helper's shape, and its
+    `Retry-After` header is built once per `(wrap-busy n)`, not per request.
+  - **A `guard` escape reads 442 B, and 390 B with a park, under the bound,** as it is
+    under G5's. Holding it would take a bound under about 440 B, some 40 B over the worst
+    reading.
 - **G1 and G2 are re-baselined at each move of the server's pin**, as before.
 - **Per-connection costs cancel under keep-alive**, so the gate doesn't see them.

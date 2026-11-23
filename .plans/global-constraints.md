@@ -109,11 +109,12 @@ provisional. They bind until that record is accepted or amended.
   `make-res-key`, read with `res-ref` and set with `res-set`. Each side refuses the other's
   keys, and every response helper keeps them (ADR-0005).
 - **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`,
-  and the worker's shell from slice W2 (under "The worker" below),
+  and the worker's shell (under "The worker" below),
   may import the server's libraries, never `(http-server private ...)`, and they take from
   `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's
-  allowlist, `getenv`, `port-has-port-length?`, `port-length`, `real-time`,
-  `display-condition`, `print-record` and `parameterize` today. Every file under
+  allowlist for that library: for the first two `getenv`, `port-has-port-length?`,
+  `port-length`, `real-time`, `display-condition`, `print-record` and `parameterize`
+  today, and for the shell its own thirteen. Every file under
   `src/` begins with the line `#!r6rs` and holds `#!` nowhere else. `make check-imports`
   holds it, and `make test` runs it once `src/` exists (ADR-0006).
 - **Only `(circuit session)` may import a `hashing` library: `(hashing sha-2)` alone,
@@ -136,17 +137,20 @@ provisional. They bind until that record is accepted or amended.
 ## The worker
 
 These rules are from ADR-0013, and the worker's design holds them in full. The worker
-lands in slices W1 to W3. The import rules bind from W2, which amends ADR-0006 and the
-audit.
+lands in slices W1 to W3. W2 amended ADR-0006 and the audit for the import rules.
 
 - **Three libraries.**
   - `(circuit worker machine)` is pure, plain R6RS and internal.
-  - `(circuit worker shell)` is internal. It imports `(only (http-server) await-outside
-    deadline-passed? client-closed?)`, and thread names from `(chezscheme)` on an
-    allowlist of its own.
-  - `(circuit worker)` is public, and imports the shell.
+  - `(circuit worker shell)` is internal. It imports `(http-server)` only through an
+    `only` naming some of `await-outside`, `deadline-passed?` and `client-closed?`, and
+    takes from `(chezscheme)`, through `only`, thirteen thread, lock, condition,
+    interrupt and thread-parameter names on an allowlist of its own, which no other
+    library may take.
+  - `(circuit worker)` is public, and imports the shell. It imports neither
+    `(chezscheme)` nor a server or `(websocket ...)` library.
 
-  No other library imports either impure one (ADR-0006 as ADR-0013 amends it).
+  No other library imports either one. `make check-imports`' rules (b), (d) and (q) hold
+  it (ADR-0006 as ADR-0013 amends it).
 - **Every decision about jobs, threads and the queue is in the machine's `step`, under
   one mutex.** Only the broken worker and the double's mark are the shell's own, and
   real-thread rows check those. The shell carries out
@@ -177,4 +181,5 @@ audit.
   768 B, with a park and without (G9); the router's own work, at most 128 B a word route,
   256 B a one-parameter route and 64 B a path no route takes (G10); the worker machine's
   own work for one job, a call, a next and an end through `step` on one thread, at most
-  512 B (G11). CI fails over any of them (ADR-0007).
+  512 B (G11); `wrap-busy` over the app, with nothing raised, at most 512 B, with a park
+  and without (G12). CI fails over any of them (ADR-0007).

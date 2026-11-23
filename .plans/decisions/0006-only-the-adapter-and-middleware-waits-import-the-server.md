@@ -25,13 +25,12 @@
   `(circuit json)`, may import jsonparse's `(jsonparse easy)` through `only`, and the audit
   reads that library's closure from byte-machine's `src/` and jsonparse's (item 6;
   [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md), design §15.36).
-  Pending: [ADR-0013](0013-a-worker-runs-jobs-on-threads-of-its-own-decided-by-a-pure-step-function-under-one-lock.md),
-  accepted on 2026-11-23, amends items 1, 2 and 4 from the worker's slice W2:
-  - `(circuit worker shell)` may import `(only (http-server) await-outside
-    deadline-passed? client-closed?)`, and thread names from `(chezscheme)` on an
-    allowlist of its own;
-  - `(circuit worker)` may import the shell, the one exception to item 4's "none
-    imports an impure one".
+  2026-11-23, in the worker's slice W2, as
+  [ADR-0013](0013-a-worker-runs-jobs-on-threads-of-its-own-decided-by-a-pure-step-function-under-one-lock.md)
+  decided: items 1, 2 and 4 name the worker's shell, `(circuit worker shell)`, a third
+  library that imports the server, with an allowlist of `(chezscheme)` names of its own;
+  and item 7 lets `(circuit worker)` import the shell, the one exception to "none
+  imports an impure one". The audit's rules (b) and (d) changed, and rule (q) is new.
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
@@ -58,7 +57,7 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
 
 ## Decision
 
-1. **The core is plain R6RS**: every circuit library but the three below imports only
+1. **The core is plain R6RS**: every circuit library but the five below imports only
    `(rnrs ...)` libraries other than `(rnrs eval)`, and core circuit libraries, and
    `(circuit session)` `(hashing sha-2)` too (item 5), and `(circuit json)`
    `(jsonparse easy)` (item 6).
@@ -71,7 +70,16 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
    `print-record` and `parameterize` today. A
    bare `(chezscheme)` would give a
    library's body `import`, `eval` and `load`, which reach any library, the private ones
-   included, whatever its header says.
+   included, whatever its header says. **`(circuit worker shell)`**, the worker's shell,
+   is the third: it imports `(http-server)` alone, through an `only` naming some of
+   `await-outside`, `deadline-passed?` and `client-closed?`, and takes from
+   `(chezscheme)`, through `only`, its own list of thread, lock, condition, interrupt
+   and thread-parameter names: `fork-thread`, `thread-join`, `make-mutex`,
+   `mutex-acquire`, `mutex-release`, `make-condition`, `condition-wait`,
+   `condition-signal`, `condition-broadcast`, `disable-interrupts`,
+   `enable-interrupts`, `make-thread-parameter` and `get-thread-id`. Each list is its
+   own libraries' alone: the adapter and `(circuit middleware waits)` may take none of
+   the shell's names, and the shell none of theirs.
 3. **`make check-imports` holds these rules**, reading every file under `src/` as data.
    It reads the header's imports alone, which is enough because no rule lets a
    library's body import anything. It also requires every file to begin with the line
@@ -83,7 +91,8 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
    not `(websocket handshake)`, nor any under `(websocket private ...)`. `(circuit
    websocket)` imports neither `(chezscheme)` nor an `(http-server ...)` library, as a
    core library doesn't, and since `(websocket)` imports the server, no library imports
-   `(circuit websocket)`, as none imports an impure one. The audit's rule (i) holds it.
+   `(circuit websocket)`, as none imports an impure one, but for item 7's exception. The
+   audit's rule (i) holds it.
 5. **`(circuit session)`, a core library, may also import `(hashing sha-2)`**, from
    hashing, a runtime dependency from Akku, through an `only` right around it
    naming at least one identifier, so its header names all it takes from code circuit
@@ -115,6 +124,12 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
    directory in it; and none but `src` and byte-machine's `src/` holds a `byte-machine`
    or `byte-machine.<anything>`: the path holds one jsonparse and one byte-machine (rule
    (p)).
+7. **`(circuit worker)`, the worker's public library, may import `(circuit worker
+   shell)`**, and no other library may: the one exception to "none imports an impure
+   one". Beyond the shell it imports what a core library may. It imports neither
+   `(chezscheme)` nor an `(http-server ...)` or `(websocket ...)` library, and, since
+   it reaches the server through the shell, no library imports it, as none imports
+   `(circuit websocket)`. The audit's rule (q) holds it.
 
 ## Consequences
 
@@ -129,7 +144,8 @@ imports the server (the slice 6 design §6; chez-websocket's ADR-0009).
   `(circuit)` and `(circuit http-server)`. The names suite imports them all together.
 - **`(circuit websocket)` is tested through the server's test host**, since its take-over
   runs on the server's transport.
-- **A fourth library that reaches the server is a reviewed change**, as the third was.
+- **A sixth library that reaches the server is a reviewed change**, as the worker's
+  shell and its public library were (ADR-0013).
 - **`(hashing sha-2)`'s body reaches only what its imports give**, as a core library's
   does: `(rnrs ...)` without `eval`. A pin of hashing that adds a library to the closure,
   or imports anything else, fails the audit until it is reviewed, and the audit's

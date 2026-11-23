@@ -8,20 +8,29 @@
 ;;;       at its name's path (src/circuit/request.sls is (circuit request))
 ;;;       and is named (circuit ...). Any other file is named, and so is a
 ;;;       symbolic link to a directory, which is not followed;
-;;;   (b) two libraries are impure, (circuit http-server) and
-;;;       (circuit middleware waits), and one is the WebSocket library,
-;;;       (circuit websocket). Every other library is core;
+;;;   (b) three libraries are impure, (circuit http-server),
+;;;       (circuit middleware waits) and the worker's shell,
+;;;       (circuit worker shell); one is the WebSocket library,
+;;;       (circuit websocket); and one is the worker's facade,
+;;;       (circuit worker). Every other library is core;
 ;;;   (c) a core library imports only the (rnrs ...) libraries except
-;;;       (rnrs eval), and core (circuit ...) libraries. So it imports neither
-;;;       impure library, nor (circuit websocket), nor (chezscheme), nor an
-;;;       (http-server ...) or (websocket ...) library, nor anything else;
+;;;       (rnrs eval), and core (circuit ...) libraries. So it imports no
+;;;       impure library, nor (circuit websocket), nor (circuit worker), nor
+;;;       (chezscheme), nor an (http-server ...) or (websocket ...) library,
+;;;       nor anything else;
 ;;;   (d) an impure library may also import (chezscheme), but only through an
-;;;       only right around it that names nothing but chez-names: bare, its
-;;;       body would have import, eval and load, and reach any library, which
-;;;       this check reads only the header to hold. And it may import the
-;;;       (http-server) and (http-server NAME ...) libraries except the
-;;;       (http-server private ...) ones. The other impure library is no core
-;;;       library, so no library imports an impure one;
+;;;       only right around it that names nothing but its own list: the
+;;;       adapter and the waits library each have adapter-chez-names, and the
+;;;       shell has shell-chez-names. Bare, its body would have import, eval
+;;;       and load, and reach any library, which this check reads only the
+;;;       header to hold; and a name on another impure library's list is
+;;;       refused for this one. The adapter and the waits library may import
+;;;       the (http-server) and (http-server NAME ...) libraries except the
+;;;       (http-server private ...) ones. The shell may import (http-server)
+;;;       alone, through an only right around it naming at least one and only
+;;;       some of server-names, and no other (http-server ...) library. An
+;;;       impure library is no core library, so no library imports one, but
+;;;       that (circuit worker) may import the shell, by rule (q);
 ;;;   (e) an import spec is unwrapped to the library it names: through only,
 ;;;       except, prefix, rename and library, nested to any depth, and for,
 ;;;       with its import levels. A version reference, the last element of a
@@ -136,6 +145,15 @@
 ;;;       holding its library is named. JSONPARSE and BYTE-MACHINE are still
 ;;;       LIBDIRs to rules (j) and (m).
 ;;;
+;;;   (q) (circuit worker), the worker's facade, may import what a core
+;;;       library may, and (circuit worker shell) too, which no other
+;;;       library may. No library imports (circuit worker): it reaches the
+;;;       server through the shell, as (circuit websocket) does through
+;;;       (websocket). It imports neither (chezscheme) nor an (http-server
+;;;       ...) or (websocket ...) library, as a core library doesn't: beyond
+;;;       the shell it imports only the (rnrs ...) libraries except
+;;;       (rnrs eval), and core (circuit ...) libraries.
+;;;
 ;;; The lists are allowlists: a library that is not on one is refused, so a
 ;;; route nobody thought of is closed until a reviewer opens it. Exports are
 ;;; not read: a library cannot import by exporting.
@@ -164,7 +182,25 @@
 ;; impure : (Listof (Listof Symbol))
 ;; The libraries that may import the server, and use Chez's own procedures.
 ;; Adding one is a reviewed change to the architecture (AGENTS.md).
-(define impure '((circuit http-server) (circuit middleware waits)))
+(define impure '((circuit http-server) (circuit middleware waits) (circuit worker shell)))
+
+;; shell-library : (Listof Symbol)
+;; The impure library that may import only some names of (http-server), and
+;; has a (chezscheme) list of its own. Only worker-library may import it.
+;; Changing it is a reviewed change to the architecture (AGENTS.md).
+(define shell-library '(circuit worker shell))
+
+;; worker-library : (Listof Symbol)
+;; The one library that may import shell-library: the worker's facade, which
+;; reaches the server through it. No library may import it. Changing it is a
+;; reviewed change to the architecture (AGENTS.md).
+(define worker-library '(circuit worker))
+
+;; server-names : (Listof Symbol)
+;; What shell-library may take from (http-server), through only: the waits a
+;; worker's callers make outside the server's own loop, and the two checks of
+;; a request's deadline and its client.
+(define server-names '(await-outside deadline-passed? client-closed?))
 
 ;; websocket-library : (Listof Symbol)
 ;; The one library that may import (websocket), chez-websocket's facade,
@@ -223,10 +259,11 @@
     (rnrs records inspection) (rnrs records procedural)
     (rnrs records syntactic) (rnrs sorting) (rnrs syntax-case) (rnrs unicode)))
 
-;; chez-names : (Listof Symbol)
-;; What an impure library may take from (chezscheme). None of them can import,
-;; evaluate or load: a name that could would let a library's body reach what
-;; its header may not import. Adding one is a reviewed change (AGENTS.md).
+;; adapter-chez-names : (Listof Symbol)
+;; What (circuit http-server) and (circuit middleware waits) may take from
+;; (chezscheme). None of them can import, evaluate or load: a name that could
+;; would let a library's body reach what its header may not import. Adding
+;; one is a reviewed change (AGENTS.md).
 ;; getenv is the adapter's default environment, as it is `serve`'s;
 ;; port-has-port-length? and port-length size a port body from Chez's own
 ;; length of it, which plain R6RS can't ask. real-time
@@ -236,8 +273,29 @@
 ;; shows it, which R6RS can't; print-record, under
 ;; parameterize, shows a record inside it by its type alone, as the
 ;; server's log does: R6RS has neither.
-(define chez-names '(getenv port-has-port-length? port-length real-time display-condition
-                     print-record parameterize))
+(define adapter-chez-names '(getenv port-has-port-length? port-length real-time display-condition
+                             print-record parameterize))
+
+;; shell-chez-names : (Listof Symbol)
+;; What (circuit worker shell) may take from (chezscheme), and nothing of
+;; adapter-chez-names: R6RS has no threads. fork-thread starts a worker's
+;; thread and thread-join waits for one to end. make-mutex, mutex-acquire and
+;; mutex-release make and take the worker's one lock. make-condition,
+;; condition-wait, condition-signal and condition-broadcast are the
+;; conditions its threads and callers wait on under that lock.
+;; disable-interrupts and enable-interrupts hold interrupts off across a
+;; step, so a collect request cannot run in the middle of one.
+;; make-thread-parameter makes the one parameter that marks a worker's own
+;; threads, and get-thread-id is what each thread sets it to. None of them
+;; can import, evaluate or load. Adding one is a reviewed change (AGENTS.md).
+(define shell-chez-names '(fork-thread thread-join make-mutex mutex-acquire mutex-release
+                           make-condition condition-wait condition-signal condition-broadcast
+                           disable-interrupts enable-interrupts make-thread-parameter get-thread-id))
+
+;; chez-names-of : (Listof Symbol) -> (Listof Symbol)
+;; What the impure library NAME may take from (chezscheme).
+(define (chez-names-of name)
+  (if (equal? name shell-library) shell-chez-names adapter-chez-names))
 
 ;; wrappers : (Listof Symbol)
 ;; The import-set forms that wrap one import set, in their second element.
@@ -407,11 +465,17 @@
              (narrowed? inner names-ok?)
              (and (eq? (car spec) 'only) (names-ok? (cddr spec)))))))
 
-;; narrow-chez? : Any -> Boolean
-;; Whether SPEC, which imports (chezscheme), takes from it only chez-names,
+;; narrow-chez? : (Listof Symbol) Any -> Boolean
+;; Whether SPEC, which imports (chezscheme), takes from it only NAMES,
 ;; through an only that names nothing else.
-(define (narrow-chez? spec)
-  (narrowed? spec (lambda (ids) (for-all (lambda (id) (memq id chez-names)) ids))))
+(define (narrow-chez? names spec)
+  (narrowed? spec (lambda (ids) (for-all (lambda (id) (memq id names)) ids))))
+
+;; narrow-server? : Any -> Boolean
+;; Whether SPEC, which imports (http-server), takes from it only server-names,
+;; through an only that names at least one of them.
+(define (narrow-server? spec)
+  (narrowed? spec (lambda (ids) (and (pair? ids) (for-all (lambda (id) (memq id server-names)) ids)))))
 
 ;; narrow-dependency? : Any -> Boolean
 ;; Whether SPEC, which imports hashing-library or jsonparse-library, names
@@ -491,7 +555,9 @@
         (library (written name))
         (websocket? (equal? name websocket-library))
         (session? (equal? name session-library))
-        (json? (equal? name json-library)))
+        (json? (equal? name json-library))
+        (shell? (equal? name shell-library))
+        (worker? (equal? name worker-library)))
     (define (refuse imported reason)
       (list (string-append path ": " library " imports " (written imported)
                            ", but " reason)))
@@ -499,6 +565,18 @@
       ((not imported)
        (list (string-append path ": " library " has an import it cannot read: "
                             (abbreviated spec))))
+      ((equal? imported shell-library)
+       (cond ((not worker?)
+              (refuse imported
+                      (string-append "only " (written worker-library) " may import "
+                                     (written shell-library) ": it imports the server, and the core stays free of it")))
+             ((member imported defined) '())
+             (else (refuse imported (string-append "no library under " root " defines it")))))
+      ((equal? imported worker-library)
+       (refuse imported
+               (string-append "no library may import " (written worker-library)
+                              ": it reaches the server through " (written shell-library)
+                              ", and the core stays free of the server")))
       ((member imported impure)
        (refuse imported
                (string-append "no library may import an impure library: "
@@ -529,22 +607,37 @@
       ((eq? (car imported) (car jsonparse-library))
        (dependency-complaints name json-library jsonparse-library imported spec refuse))
       ((and impure? (equal? imported '(chezscheme)))
-       (if (narrow-chez? spec)
+       (if (narrow-chez? (chez-names-of name) spec)
            '()
            (refuse imported
-                   (string-append "an impure library imports (chezscheme) only through only, right around it, naming "
-                                  (joined ", " (map symbol->string chez-names))
+                   (string-append (written name) " imports (chezscheme) only through only, right around it, naming "
+                                  (joined ", " (map symbol->string (chez-names-of name)))
                                   " alone: anything wider gives its body import and eval, which reach any library"))))
       ((and (eq? (car imported) 'http-server) (pair? (cdr imported))
             (eq? (cadr imported) 'private))
        (refuse imported "no library may import an (http-server private ...) library"))
+      ((and shell? (eq? (car imported) 'http-server))
+       (cond ((not (equal? imported '(http-server)))
+              (refuse imported
+                      (string-append (written shell-library) " may import no (http-server ...) library but (http-server)")))
+             ((narrow-server? spec) '())
+             (else
+              (refuse imported
+                      (string-append (written shell-library) " imports (http-server) only through only, right around it, naming at least one of "
+                                     (listed (map symbol->string server-names))
+                                     " and nothing else: so its header names all it takes from the server")))))
       ((and impure? (eq? (car imported) 'http-server)) '())
       ((and (not impure?) (memq (car imported) '(chezscheme http-server)))
        (refuse imported
-               "only an impure library, (circuit http-server) or (circuit middleware waits), may import (chezscheme) or an (http-server ...) library"))
+               "only an impure library, (circuit http-server), (circuit middleware waits) or (circuit worker shell), may import (chezscheme) or an (http-server ...) library"))
       (impure?
        (refuse imported
                "an impure library may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, (chezscheme) through only, and the (http-server ...) libraries except (http-server private ...)"))
+      (worker?
+       (refuse imported
+               (string-append (written worker-library)
+                              " may import only the (rnrs ...) libraries except (rnrs eval), core (circuit ...) libraries, and "
+                              (written shell-library))))
       (websocket?
        (refuse imported
                (string-append (written websocket-library)

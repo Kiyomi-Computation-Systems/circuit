@@ -1,0 +1,11 @@
+#!r6rs
+(library (circuit worker shell)
+  (export)
+  (import (rnrs)
+          (circuit worker machine)
+          (only (chezscheme) fork-thread)
+          (only (chezscheme) getenv)
+          (only (chezscheme) fork-thread getenv)
+          (only (chezscheme) real-time parameterize)
+          (chezscheme)
+          (only (chezscheme) eval)))

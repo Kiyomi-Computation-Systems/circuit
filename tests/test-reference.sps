@@ -124,7 +124,12 @@
      res-tapped-body-inner res-tapped-body-proc res-tapped-body?
      res-wrapped-body-inner res-wrapped-body-proc res-wrapped-body?)
     ((circuit worker machine) initial-machine make-machine machine? machine-phase
-     machine-slots machine-queue machine-cap machine-raises step step/row)))
+     machine-slots machine-queue machine-cap machine-raises step step/row)
+    ((circuit worker shell) make-worker worker-call worker-stop! worker? make-test-worker
+     &worker-full worker-full? &worker-stopped worker-stopped? make-shell-worker
+     worker-live-count worker-lock-free?)
+    ((circuit worker) make-worker worker-call worker-stop! worker? make-test-worker
+     &worker-full worker-full? &worker-stopped worker-stopped? wrap-busy)))
 
 ;; upstream-specs : (Listof (List (Listof Symbol) String String))
 ;; Each library circuit re-exports from: its facade, its repository, which

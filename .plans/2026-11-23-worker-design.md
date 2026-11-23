@@ -113,6 +113,14 @@ before they can be built and checked.
   - the shell's constructor, which takes an observer and a `step` to use in place of the
     machine's (R11's rows inject one that raises);
   - the shell's live count.
+
+  **As built in W2**, the audit's rules (b) and (d) changed, rule (q) is the new one
+  like (i), and rule (c) names the facade among what a core library may not import.
+  The shell exports one more for the suites, `worker-lock-free?`. It
+  answers whether another thread could take the lock now, by forking one that tries
+  without blocking. S16's rows and the collect-request row read it, since Chez's mutexes
+  are recursive and the thread that raised can't test its own hold. Until W3 writes the
+  reference, `(circuit worker)`'s exports are listed among the internal ones too.
 - **No global state.** Every mutex, condition and record belongs to one worker. One
   thread parameter holds, on each worker thread, that thread's own id, for S13. A
   thread a job forks inherits the parameter but not the id, so the check is by id.
@@ -444,6 +452,15 @@ maker, the stoppers and the double's `register`.
   deferred inside the section then runs after `m` is free. With the other order, a
   deferred collect request ran with `m` still held (probed). `mutex-release` never
   blocks, so it is safe with interrupts disabled.
+
+  **As built in W2**, when the step left effects to carry out, or there is an observer,
+  step 5 runs under the handler that carries them out. A raise from an interrupt
+  deferred in the section then counts as a raise between the step and its effects,
+  and breaks the worker with those effects still to carry out (R11). Before that
+  change, such a raise escaped with a call's signal never sent: the slot stayed given,
+  and with one thread every later call was refused full. A row in
+  `tests/test-worker-shell.sps` holds it. With no effects and no observer there is
+  nothing to lose, and step 5 runs bare.
 - **A *held step*** is the same read, step and write, under an `m` already held, with
   interrupts disabled across those three. It then enables them with `m` still held,
   since the `condition-wait` that follows needs `m`. So an interrupt deferred in a held
@@ -668,6 +685,9 @@ The explorer models these. Review, the observer's schedules and the real-thread 
       of its last step until each is done. A raise between a step and its effects, such
       as from an observer, would otherwise leave a ticket that has left the state with
       no post. Their posts become the `&error`, and their signals are sent;
+      as built in W2, a thread keeps them in its own frame too, so an `exit` at one of
+      its blocking points, which passes every handler, still has them carried out by
+      the after-thunk's broken path. A row in `tests/test-worker-shell.sps` holds it;
     - it signals every thread, and broadcasts `done`;
     - every section and held step checks the mark first, and doesn't step. Two are
       exempt: the double's marking of a ticket, and its check of that mark, which go
@@ -885,7 +905,9 @@ The rows of §4.2 are data in the suite, as in the server's
     4. the helper then lets the double's thread go.
 
     Only this row kills the mutant in which only the double's thread marks (§8.8). A
-    stop while the job runs is posted by the thread, and the mutant passes it (probed);
+    stop while the job runs is posted by the thread, and the mutant passes it (probed).
+    As built in W2, the broken-double row kills it too, since a broken worker's posts
+    come from the party that broke it;
   - a stop during a call, while the job runs, as a row of its own;
   - a job that leaves;
   - a broken worker.
@@ -1011,6 +1033,29 @@ consequences list what only the random walks reach.
     shell that broke R3 would show only by chance, so R3 is checked by review, and in
     the model by layer 3.
 
+**As built in W2**, layer 4b is `tests/test-worker-schedule.sps`, with its harness in
+`tests/worker-schedule.sls`:
+
+- **The run:** 1,000 sequences of at least 40 drawn events, from seed 20261124. Each
+  sequence is one or more worker lives, 1,841 in all: pools of 1 to 3 threads, a cap of
+  0 to 2 and 10 callers, and one life in five a double with 8.
+- **What happens on which thread.** The loop is a thread the test forks, since the
+  double's `register` blocks a send. Woken parties' held steps are followed by their
+  notes, which the lock orders.
+- **What is compared.** Each step's event, reply, effects and the machine after it are
+  compared whole with the model's `world-apply/steps`, the real tickets and results put
+  in the model's terms. `world-check` runs at every event and `world-terminal-check` at
+  every life's end.
+- **Flags.**
+  - `fork-fail` is never on: a fork can't be made to fail on real threads, so F2 and F3
+    never fire there.
+  - `spurious` is on, but never drawn, so a real spurious wakeup is followed rather than
+    failed.
+  - No call is drawn after `server-stop`, since the test host opens a fresh inbox where
+    the server's stays closed (§8.6, clause 5).
+- **What only the model reaches:** a deadline that drops a post already in the inbox,
+  any deadline in the double, and calls after the server's stop.
+
 ### 8.5 Real threads (layer 5)
 
 These are #53's section 6 rows, on Linux in CI, with no observer, each under a deadline
@@ -1037,6 +1082,21 @@ so that a hang fails rather than stalls:
   - an outer handler sees `m` free and interrupts enabled (S16);
   - every ticket is told the `&error`;
   - the stop joins every thread.
+
+**As built in W2**, the rows on the double, the injected step and the collect request
+are in `tests/test-worker-shell.sps`, and the rest in `tests/test-worker-threads.sps`.
+
+- **The collect-request row can't read the lock from inside the handler.** A
+  `collect-request-handler` runs under Chez's own thread mutex, so forking and joining a
+  thread there raises "recursively locked" (probed). The handler raises instead, and the
+  catch reads the lock once it has escaped. That is deterministic: in 200 trials each
+  way, release-then-enable found the lock free every time, and enable-then-release
+  found it held every time (probed).
+- **"Every thread joined" after a failed start** is held by layer 4b, not layer 5. No
+  worker is returned to ask, and a layer 5 row holds only the lowest thread's raise and
+  the order. A mutant that skips the join passes that row. 4b kills it, since the real
+  maker raises while a thread it holds still owes U3's signals. The broken start's
+  join has a row of its own in `tests/test-worker-shell.sps`.
 
 Then a stress run:
 
@@ -1068,6 +1128,11 @@ already, in `tests/test-http-server.sps` and `tests/test-middleware-waits.sps`.
 8. Each value one thread posts arrives in the order it was posted.
 9. Every wait begun off the loop's thread raises there. The double rests on it.
 10. `resume` never raises. The shell's effects rest on it.
+
+As built in W2, `tests/test-worker-contract.sps` holds clauses 1 to 10. Clause 6's
+second half, a wait owed a client's close, is held only by reading `wait!`. Its
+builder found that through the test host a close is never owed when a wait begins:
+the host runs a woken handler to its next park before it hands it a close.
 
 Clause 5 differs between the host and the server, and the model takes the server's.
 After `test-host-stop-posts!`, the host's next outside wait opens a fresh inbox
@@ -1131,7 +1196,7 @@ each named property firing with that cross-check off.
 | X1 posts stopped to the job that left | layer 2: X1's row |
 | R9 a `guard` in place of the catch | layer 5: S15's rows |
 | R9 the values taken outside the catch | layer 5: the no-value and two-value rows |
-| R10 never records returned | layer 5: a row that asserts, after a stop, the worker isn't broken and nothing was printed; layer 4b's trace sees the extra step |
+| R10 never records returned | layer 5: a row that asserts, after a stop, the worker isn't broken and nothing was printed; layer 4b, whose trace sees the steps that follow go missing, since the after-thunk takes the broken path, which steps nothing |
 | R10 runs the after-thunk's tear-down without its own `dynamic-wind` | layer 5: the exit-then-exit row |
 | R11 a section that doesn't release `m` on a raise | layer 5: S16's row |
 | R11 releases `m` but leaves interrupts disabled | layer 5: S16's row |

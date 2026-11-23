@@ -11,7 +11,11 @@
   The design's other answers stand as recommended.
 - **Date:** 2026-11-23
 - **Amended:** 2026-11-23, in slice W1: the bounded proof's consequence says what is
-  exhausted, as built.
+  exhausted, as built; 2026-11-23, in slice W2:
+  - G12 is held at 512 B, the bound the owner accepted ("Accept 512 B");
+  - the shell exports one more internal name for its suites, `worker-lock-free?`;
+  - a section enables interrupts under the handler that carries out its effects, so a
+    raise there breaks the worker with them pending (item 11).
 - **Amends:** [ADR-0006](0006-only-the-adapter-and-middleware-waits-import-the-server.md)'s
   items 1, 2 and 4, for the worker's two impure libraries (item 2 below).
 - **Scope:** `(circuit worker)`, its machine, its shell and its double
@@ -73,6 +77,9 @@ finding was taken in (the design's §12 and §14).
    - rule (d)'s `(chezscheme)` names become a list per library;
    - rules (b) and (c) name the new libraries;
    - a new rule like (i) allows the facade's import.
+
+   As built in W2, rules (b) and (d) changed and rule (q) is new; rule (c) names the
+   facade among what a core library may not import.
 3. **Every decision about jobs, threads and the queue is in `step : Machine Event ->
    (values Machine Reply Effects)`, under one mutex.** The shell carries out the
    effects, outside the lock: posts, signals, and the wake of the maker and the

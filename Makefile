@@ -527,7 +527,7 @@ check-suites: deps ## Fail unless every tests/test-*.sps ends with the shared ex
 # stderr. make test runs it once src/ exists; an src/ with no library fails
 # it. Its own suite, tests/test-check-imports.sps, runs in make test whether
 # src/ exists or not.
-check-imports: deps ## Fail unless only the two impure libraries import the server or (chezscheme), only (circuit websocket) imports (websocket), only (circuit session) imports hashing, only (circuit json) imports jsonparse, the core imports nothing else, only src holds circuit's libraries, only vendor/akku hashing, and the path one jsonparse and one byte-machine
+check-imports: deps ## Fail unless only the three impure libraries import the server or (chezscheme), each only the names its own list allows, only (circuit worker) imports (circuit worker shell), no library imports (circuit worker), only (circuit websocket) imports (websocket), only (circuit session) imports hashing, only (circuit json) imports jsonparse, the core imports nothing else, only src holds circuit's libraries, only vendor/akku hashing, and the path one jsonparse and one byte-machine
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src --akku $(AKKU_DIR) --jsonparse $(JSONPARSE_DIR)/src --byte-machine $(BYTE_MACHINE_DIR)/src $(LIBRARY_DIRS)
 
@@ -549,11 +549,11 @@ check-worker-model: deps ## Explore the worker's machine in worlds too big for m
 # `awaiting` path, in one process, with the counts fixed (tests/gate.sps);
 # and G11, the bytes of one job through the worker's machine. It prints G1,
 # G2, G8 and G8 on-done, and fails when a held gate, G3 to G5, G7, G8 own,
-# G9, G10 or G11, is over its bound, naming it. CI runs it as a step of its
+# G9 to G12, is over its bound, naming it. CI runs it as a step of its
 # own: noise doesn't move a byte count. At a terminal, timeout runs with
 # --foreground, as in `make test`, and an oha it started may outlive a HUNG
 # gate.
-gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5, G7, G8 own, G9, G10, G11) is over its bound
+gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5, G7, G8 own, G9 to G12) is over its bound
 	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
 	@[ -x $(OHA) ] || { echo "gate: $(OHA) not found. Run 'make oha' on the host: it fetches oha, and the container has no network." >&2; exit 1; }
 	@fg=; if [ -t 0 ]; then fg=--foreground; fi; \
