@@ -16,9 +16,11 @@ provisional. They bind until that record is accepted or amended.
 
 ## Dependency
 
-- **Every runtime dependency comes from the Akku index** (ADR-0011). `Akku.manifest`'s
-  `depends` names each one, and `Akku.lock` pins each one's archive and sha256:
-  - chez-http-server, now 0.11.0, and what it brings: chez-libuv, now 0.11.0;
+- **Every runtime dependency comes from the Akku index** (ADR-0011), but the server,
+  for now (ADR-0012, below). `Akku.manifest`'s `depends` names each one, and `Akku.lock`
+  pins each one's archive and sha256:
+  - chez-http-server, now 0.12.0, from its submodule, and what it brings: chez-libuv,
+    now 0.11.0;
     chez-httparse, now 0.6.0; chez-uri, now 0.9.0; and byte-machine, now 0.9.0, the
     path's one byte-machine, which jsonparse runs on too;
   - chez-websocket, now 0.6.0, for `(circuit websocket)`;
@@ -42,10 +44,20 @@ provisional. They bind until that record is accepted or amended.
   Both are git-ignored and kept by `make clean`. `make deps` never fetches, and fails
   without a tree, or on another than the lock's. `make check-pins` holds each tree to its
   archive, an edit included. Both fail unless `Akku.lock` pins exactly hashing,
-  chez-cmark-gfm and the Makefile's `AKKU_TREES`, each once, so a lock move that adds or
+  chez-cmark-gfm, the Makefile's `AKKU_TREES` and its `AKKU_EXCEPTED`, each once, so a lock move that adds or
   drops a package changes the Makefile on the same commit. Make itself stops on a tree
   directory, or a library path entry under `vendor/akku-trees`, that `AKKU_TREES`
   doesn't name. `tests/check-pins.sh` holds all of it (ADR-0011).
+- **chez-http-server is a git submodule, `vendor/chez-http-server`, at `SERVER_PIN`,**
+  v0.12.0's commit written in full, until the Akku index has that release and a
+  chez-websocket whose range admits it (provisional, ADR-0012). `Akku.manifest` and
+  `Akku.lock` stay what Akku makes of them: the lock still pins the server at 0.11.0,
+  which nothing fetches, and the Makefile's `AKKU_EXCEPTED` names it, so the lock checks
+  count it. `SERVER_VERSION` names the release, 0.12.0. `make fetch` clones the
+  submodule, and `make deps`, without git, fails unless its `Akku.manifest` names
+  `SERVER_VERSION`. `make check-pins`, which needs git for it, fails unless its HEAD,
+  its gitlink and its tag `v` and `SERVER_VERSION` are `SERVER_PIN`, and it holds no
+  change. `tests/check-pins.sh` holds both on a fake submodule (ADR-0012).
 - **chez-libuv's shim is built by `make deps` in a copy, `build/chez-libuv`,** whose
   `src/` is on the path, so the fetched tree stays its archive. `make deps` copies it
   again whenever it differs from the tree by more than its build's two products,
@@ -55,7 +67,8 @@ provisional. They bind until that record is accepted or amended.
   it, and so do hashing's own suites and circuit's rows holding RFC 4231's cases through
   it, before it lands. On the same commit, the docs' links into a sibling move to the tag
   of the version the lock pins, and this section's `<package>, now <version>` lines to
-  the lock's versions: `tests/test-reference.sps` holds both (ADR-0008, ADR-0011).
+  the lock's versions, the server's to its submodule's while it is one:
+  `tests/test-reference.sps` holds both (ADR-0008, ADR-0011, ADR-0012).
 - **chez-cmark-gfm, the docs site's renderer, is pinned by `Akku.lock`**, a development
   dependency alone: nothing under `src/` and no `tests/test-*.sps` imports it.
   `make site-deps` fetches it on the host (ADR-0003).
@@ -65,9 +78,10 @@ provisional. They bind until that record is accepted or amended.
 ## Tooling
 
 - **On a Guix host, every build and test runs through `scripts/guix-env`.** The container
-  has no network and no git: `make fetch`, `make akku-deps`, `make lock` and
-  `make check-akku-lock` run on the host, all but `make lock` in CI too, and `make deps`
-  never fetches (ADR-0002, ADR-0011).
+  has no network and no git: `make fetch`, `make akku-deps`, `make lock`,
+  `make check-akku-lock`, and, while the server is a submodule, `make check-pins` and
+  `make check-site-deps` run on the host, all but `make lock` in CI too, and `make deps`
+  never fetches (ADR-0002, ADR-0011, ADR-0012).
 - **`make check-guix` must pass after any change to `channels.scm`, `manifest.scm` or the
   `guix-env` scripts** (ADR-0002's consequences, AGENTS.md).
 - **`make check-site` gates `docs/`**: CI runs it on every pull request, on both

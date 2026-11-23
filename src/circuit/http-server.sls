@@ -56,7 +56,7 @@
 (library (circuit http-server)
   (export circuit->handler run-server &circuit-config-error circuit-config-error?
           &http-server-config-error http-server-config-error?
-          awaiting await sleep-ms with-deadline resolve
+          awaiting await await-outside sleep-ms with-deadline resolve
           &deadline-passed deadline-passed? &client-closed client-closed?
           &resolve-error resolve-error? resolve-error-reason
           &body-failed body-failed? body-failed-reason body-failed-status
@@ -76,7 +76,7 @@
                 request-remote-address request-remote-port request-local-address
                 request-local-port
                 &http-server-config-error http-server-config-error?
-                await sleep-ms with-deadline resolve
+                await await-outside sleep-ms with-deadline resolve
                 &deadline-passed deadline-passed? &client-closed client-closed?
                 &resolve-error resolve-error? resolve-error-reason
                 &body-failed body-failed? body-failed-reason body-failed-status
@@ -88,6 +88,7 @@
   ;; Env = (String -> (U String #f))
 
   ;; await : ((Any -> Void) -> Any) -> Any
+  ;; await-outside : ((Any -> Boolean) -> Any) -> Any
   ;; sleep-ms : Nat -> Void
   ;; with-deadline : Nat (-> (Values Any ...)) -> (Values Any ...)
   ;; resolve : String -> (Listof String)

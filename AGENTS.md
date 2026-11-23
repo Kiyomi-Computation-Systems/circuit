@@ -34,8 +34,9 @@
 
 ### Dependencies
 
-* Every dependency comes from the Akku index (ADR-0011). `Akku.manifest`
-  names each one, and `Akku.lock` pins its archive and sha256:
+* Every dependency comes from the Akku index (ADR-0011), but the server,
+  for now (below). `Akku.manifest` names each one, and `Akku.lock` pins its
+  archive and sha256:
   * chez-http-server https://github.com/Kiyomi-Computation-Systems/chez-http-server,
     and what it brings: chez-libuv, chez-httparse, chez-uri and
     byte-machine, the path's one byte-machine, which jsonparse runs on too;
@@ -54,6 +55,18 @@
   a range admits turns CI red until `make lock` moves the lock. Try a lock
   move first: the suites, the gate, the site and hashing's own suites pass
   on it before it lands.
+* **The server is a git submodule, `vendor/chez-http-server`, at
+  `SERVER_PIN`** in the Makefile, v0.12.0's commit in full, until the Akku
+  index has that release and a chez-websocket whose range admits it
+  (ADR-0012). The manifest and the lock stay what Akku makes: the lock still
+  pins the server at 0.11.0, which nothing fetches, as `AKKU_EXCEPTED`
+  names it. `make fetch` clones the submodule, `make deps` fails unless its
+  `Akku.manifest` names `SERVER_VERSION`, and `make check-pins` fails unless
+  its HEAD, its gitlink and its tag `v$(SERVER_VERSION)` are `SERVER_PIN`
+  and it holds no change. The docs' links name its
+  tag, v0.12.0. When the exception ends, the submodule, `SERVER_PIN`,
+  `AKKU_EXCEPTED` and the suites' `excepted` go, on one commit with the
+  lock's move.
 * `make fetch`, on the host, fetches each tree as the lock pins it, its
   sha256 checked: hashing into `vendor/akku`, and the others into
   `vendor/akku-trees/<name>`. Both are git-ignored and kept by `make clean`.
@@ -62,18 +75,19 @@
   tree's place, and chez-srfi's SRFIs are linked into `build/scheme-libs`,
   which is there instead.
 * `make deps` never fetches. It fails unless `Akku.lock` pins exactly
-  hashing, chez-cmark-gfm and the Makefile's `AKKU_TREES`, each once, and
-  without a tree, or on another than the lock's. It builds chez-libuv's
+  hashing, chez-cmark-gfm, the Makefile's `AKKU_TREES` and `AKKU_EXCEPTED`,
+  each once, and without a tree, or on another than the lock's. It builds chez-libuv's
   shim in the copy, so the fetched tree stays its archive, and copies the
   tree again when the copy differs from it beyond its build's two
   products. `make check-pins`, on the host and in CI, holds the lock to
-  those names, each tree to its archive, an edit included, and the copy to
-  its tree and its build's products.
+  those names, each tree to its archive, an edit included, the copy to its
+  tree and its build's products, and the submodule to `SERVER_PIN`.
 * Move the lock and the records on one commit: the docs' links into a
-  sibling name the tag of the version the lock pins, and the global
-  constraints' Dependency section names each locked package as
-  `<package>, now <version>`. `tests/test-reference.sps` holds both to
-  `Akku.lock`.
+  sibling name the tag of the version the lock pins, the server's its
+  submodule's while it is one, and the global constraints' Dependency
+  section names each locked package as `<package>, now <version>`.
+  `tests/test-reference.sps` holds both to `Akku.lock`, and the server's to
+  its submodule's `Akku.manifest`.
 * circuit isn't installed through Akku yet: `.akkuignore` keeps its own
   libraries out of `akku install`.
 * chez-cmark-gfm renders `docs/` into the docs site. `Akku.lock` pins it, a
@@ -124,7 +138,8 @@
   and downloads. Among them are `make fetch`, which a fresh clone needs
   once before `make deps`, `make akku-deps`, `make lock`,
   `make check-akku-lock`, and `make site-deps`, once before `make site`.
-  The container has no git.
+  The container has no git, so while the server is a submodule
+  `make check-pins` and `make check-site-deps` run on the host too.
 
 ### Testing & mutation discipline
 

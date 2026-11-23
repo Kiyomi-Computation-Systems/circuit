@@ -1,8 +1,8 @@
 #!r6rs ; -*- scheme -*-
 (import (akku format manifest))
 
-;; Every runtime dependency comes from Akku: chez-http-server, under the
-;; adapter; chez-websocket, for (circuit websocket); hashing, whose (hashing
+;; Every runtime dependency comes from Akku, the server's 0.12.0 aside for
+;; now (below): chez-http-server, under the adapter; chez-websocket, for (circuit websocket); hashing, whose (hashing
 ;; sha-2) signs a session's cookie in (circuit session); and jsonparse, whose
 ;; (jsonparse easy) reads a JSON body in (circuit json). The server brings
 ;; chez-libuv, chez-httparse, chez-uri and byte-machine, the path's one
@@ -12,6 +12,14 @@
 ;; vendor/akku/, on the library path, and the others into vendor/akku-trees/,
 ;; each one's src/ on the path. chez-libuv's shim is built by `make deps`, in
 ;; a copy under build/, not by its install hook.
+;;
+;; For now, circuit runs the server's 0.12.0, for await-outside, from a git
+;; submodule, vendor/chez-http-server, at the Makefile's SERVER_PIN
+;; (ADR-0012). The index has no 0.12.0 yet, and chez-websocket 0.6.0 names
+;; the server ^0.11.0, so the range below stays the one Akku can lock, and
+;; Akku.lock pins 0.11.0, which nothing fetches. Once the index has 0.12.0
+;; and a chez-websocket whose range admits it, both ranges move, the lock
+;; with them, and the submodule goes.
 ;;
 ;; Development only: chez-cmark-gfm renders docs/ into the docs site (`make
 ;; site`), and chez-srfi gives the suites SRFI-64.

@@ -1,0 +1,85 @@
+#!/bin/sh
+# scripts/check-server-pin --version DIR VERSION
+# scripts/check-server-pin DIR PIN VERSION
+#
+# Fails unless DIR, chez-http-server's submodule, is the release the
+# Makefile names: SERVER_VERSION, at SERVER_PIN, a full commit, as a
+# shallow checkout has no tags.
+#
+# With --version it needs no git, so `make deps` runs it in the container,
+# from a linked worktree too, whose submodule's git directory the container
+# can't see: DIR is cloned, and its Akku.manifest names its package as
+# (akku-package ("chez-http-server" "VERSION") ...).
+#
+# Without, `make check-pins` runs it on the host and in CI, and it needs
+# git. It checks that DIR is cloned; that its HEAD is PIN; that the gitlink
+# the repository around DIR records for it is PIN; that its tag vVERSION is
+# PIN; and that DIR holds no change: no file edited, deleted or added,
+# ignored files and a nested submodule included. It goes on past a fault,
+# so one run names every one.
+#
+# Prints one line and exits 0, or names each fault on stderr and exits 1.
+set -u
+
+usage() {
+  echo "usage: check-server-pin --version DIR VERSION | check-server-pin DIR PIN VERSION" >&2
+  exit 2
+}
+
+if [ "${1:-}" = --version ]; then
+  [ "$#" -eq 3 ] || usage
+  dir=${2%/} version=$3
+else
+  [ "$#" -eq 3 ] || usage
+  dir=${1%/} pin=$2 version=$3
+fi
+
+if [ ! -e "$dir/.git" ]; then
+  echo "check-server-pin: $dir isn't cloned. Run 'make fetch' on the host." >&2
+  exit 1
+fi
+
+if [ "${1:-}" = --version ]; then
+  want="(akku-package (\"chez-http-server\" \"$version\")"
+  if ! grep -qF -- "$want" "$dir/Akku.manifest" 2>/dev/null; then
+    got=$(grep -o '(akku-package ("[^"]*" "[^"]*")' "$dir/Akku.manifest" 2>/dev/null | head -n 1)
+    echo "check-server-pin: $dir's Akku.manifest names ${got:-no package}, not chez-http-server $version. Run 'make fetch' on the host." >&2
+    exit 1
+  fi
+  echo "check-server-pin: $dir is chez-http-server $version, by its Akku.manifest"
+  exit 0
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "check-server-pin: needs git, which the container hasn't: run it on the host" >&2
+  exit 1
+fi
+
+status=0
+got=$(git -C "$dir" rev-parse HEAD 2>/dev/null)
+if [ "$got" != "$pin" ]; then
+  echo "check-server-pin: $dir is at ${got:-<no commit>}, not $pin" >&2; status=1
+fi
+# The repository around DIR, and DIR's path in it, from wherever this runs.
+super=$(git -C "$dir" rev-parse --show-superproject-working-tree 2>/dev/null)
+recorded=
+if [ -n "$super" ]; then
+  here=$(cd "$dir" && pwd -P) top=$(cd "$super" && pwd -P)
+  recorded=$(git -C "$top" ls-files -s -- "${here#"$top"/}" | awk '$1 == "160000" && $3 == 0 { print $2 }')
+fi
+if [ "$recorded" != "$pin" ]; then
+  echo "check-server-pin: the gitlink records $dir at ${recorded:-<none>}, not $pin" >&2; status=1
+fi
+tagged=$(git -C "$dir" rev-parse --verify --quiet "refs/tags/v$version^{commit}" 2>/dev/null)
+if [ "$tagged" != "$pin" ]; then
+  echo "check-server-pin: $dir's tag v$version is ${tagged:-<absent>}, not $pin" >&2; status=1
+fi
+changes=$(git -C "$dir" status --porcelain --untracked-files=all --ignored 2>&1)
+if [ -n "$changes" ]; then
+  echo "check-server-pin: $dir holds changes:" >&2
+  printf '%s\n' "$changes" | sed 's/^/  /' >&2
+  status=1
+fi
+
+[ "$status" -eq 0 ] && echo "check-server-pin: $dir is v$version, $pin, its gitlink's commit, with no change"
+exit $status

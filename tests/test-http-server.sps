@@ -35,6 +35,8 @@
 ;;;     (circuit http-server) alone, as a program built on circuit imports
 ;;;     them: the server's refusal, circuit's, and a condition type made
 ;;;     under each exported type;
+;;;   - await-outside, through those libraries alone: the value a resume
+;;;     posts answers the app, and a second call of it is refused;
 ;;;   - parity: (circuit test)'s res-body->bytevector reads the bytes the
 ;;;     test host's client reads.
 ;;;
@@ -1402,6 +1404,32 @@
                                              (settings piece-variable "0" "CHEZ_HTTP_PORT" "abc"))))))
           (list servers circuits))
         told)))
+
+;; The app, made in circuit-only, waits with await-outside and keeps its
+;; resume. The test plays the other thread: it calls resume between the
+;; host's calls, and the host's next call hands the value over. A second
+;; call of the same resume answers #f, and the server logs it.
+(test-equal "through circuit's libraries alone, an app waits with await-outside, and the value its resume posts answers it"
+  (list '() #t 1 (list (response "200 OK" (list (length-field 7)) "posted\n")) #f
+        '((late-resume await-outside)))
+  (let ((make-app (in-circuit-only
+                   '(lambda (keep!)
+                      (lambda (req)
+                        (make-res 200 '() (await-outside (lambda (resume) (keep! resume)))))))))
+    (if (procedure? make-app)
+        (let* ((kept #f)
+               (host (host-of (make-app (lambda (resume) (set! kept resume))) unset))
+               (c (test-host-connect! host)))
+          (test-client-send! c (b (get "/")))
+          (let* ((before (wire c))
+                 (posted (kept "posted\n"))
+                 (pending (test-host-posted host)))
+            (test-host-advance! host 0)
+            (let ((after (wire c)))
+              (let ((again (kept "again\n")))
+                (test-host-advance! host 0)
+                (list before posted pending after again (logged host))))))
+        make-app)))
 
 (test-equal "through circuit's libraries alone, a condition type made under either config error is that kind, and another condition is neither"
   '((#t #f) (#t #t) (#f #f))

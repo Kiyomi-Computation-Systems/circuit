@@ -9,6 +9,11 @@ release before 1.0.
 
 ### Added
 
+- **`(circuit http-server)` re-exports `await-outside`,** the server's wait for a thread
+  of your own: a handler hands blocking work, such as a query through a C library, to
+  a thread, and waits while the server serves everyone else. Waiting's page shows it,
+  and points at the server's traps.
+
 - **`(circuit http-server)` exports the config errors:** circuit's own
   `&circuit-config-error` and `circuit-config-error?`, and the server's
   `&http-server-config-error` and `http-server-config-error?`, re-exported. A program
@@ -27,23 +32,35 @@ release before 1.0.
 
 ### Changed
 
-- **Every dependency comes from the Akku index:** chez-http-server, what it brings,
-  chez-websocket, `hashing`, jsonparse, and chez-srfi for the suites. None is a
-  submodule now. `Akku.lock`, which `akku lock` writes, pins each one's archive and
-  sha256. `make fetch` replaces `make submodules`: it fetches `hashing` into
+- **circuit runs chez-http-server v0.12.0, from a git submodule,** `vendor/chez-http-server`
+  at `bba2ba6`, until the Akku index has that release and a chez-websocket that admits
+  it. Every other dependency still comes from Akku, and `Akku.lock` still pins the
+  server at 0.11.0, which nothing fetches. `make fetch` clones the submodule, so it
+  needs git. `make deps` checks that the submodule's `Akku.manifest` names 0.12.0.
+  `make check-pins` holds the submodule at its pin, v0.12.0's tag, with no change, so
+  it and `make check-site-deps` now need git and run on the host and in CI. An app
+  that names circuit's dependencies takes the server the same way: Installing's page
+  says how.
+
+- **Every dependency but the server comes from the Akku index:** what
+  chez-http-server brings, chez-websocket, `hashing`, jsonparse, and chez-srfi for the
+  suites. The server stays a submodule, now at v0.12.0 (above). `Akku.lock`, which
+  `akku lock` writes, pins each one's archive and sha256. `make fetch` replaces `make
+  submodules`: it clones the server's submodule, and fetches `hashing` into
   `vendor/akku` and the others into `vendor/akku-trees`, each sha256 checked. `make
   deps` builds chez-libuv's shim in a copy, `build/chez-libuv`, and copies it again
   when it differs from its tree beyond the build's two products. `make check-pins`
   holds each tree to its archive, an edit included, the copy to its tree and its
   build's products, and `Akku.lock` to the packages the Makefile fetches. In an
-  earlier checkout, before pulling, run
-  `git submodule deinit -f vendor/chez-http-server vendor/chez-websocket`. If you've
-  already pulled, remove the two directories, and
-  `"$(git rev-parse --git-common-dir)/modules/vendor/chez-http-server"` and its
-  chez-websocket twin. Then run `make fetch`. `.gitignore` keeps the old directories out
-  of `git add`. The libraries on the path are the same bytes, but chez-websocket 0.6.0,
-  which changes no library from 0.5.2, and chez-srfi akku.291, whose SRFI-1 and SRFI-64
-  are akku.181's for Chez.
+  earlier checkout, before pulling, run `git submodule deinit -f vendor/chez-websocket`
+  and `git -C vendor/chez-http-server submodule deinit -f --all`, which clears the old
+  server's own submodules: v0.12.0 needs none.
+  If you've already pulled, remove that directory, and
+  `"$(git rev-parse --git-common-dir)/modules/vendor/chez-websocket"`. Then run `make
+  fetch`, which also moves the server's submodule to its new pin. `.gitignore` keeps
+  the old directory out of `git add`. The libraries on the path are the same bytes,
+  but the server's (above), chez-websocket 0.6.0, which changes no library from 0.5.2,
+  and chez-srfi akku.291, whose SRFI-1 and SRFI-64 are akku.181's for Chez.
 - **jsonparse 0.2.0 comes from the Akku index,** in place of the v0.1.0 submodule.
   `make fetch` fetches it into `vendor/akku-trees`, as `Akku.lock` pins it, its
   sha256 checked. In an earlier checkout, remove `vendor/jsonparse` and

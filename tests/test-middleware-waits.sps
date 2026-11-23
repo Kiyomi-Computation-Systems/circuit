@@ -23,7 +23,8 @@
 ;;;     the entry the server logs when the same raise reaches it;
 ;;;   - wrap-timeout through the test host: the 504 at the deadline's
 ;;;     instant and not before, the res whole as middleware outside sees it,
-;;;     0 ms a deadline already passed, a stalled body read, a producer
+;;;     0 ms a deadline already passed, a stalled body read, a wait in
+;;;     await-outside, its late value dropped unlogged, a producer
 ;;;     outside it, an answer that doesn't wait, everything else passed
 ;;;     through, the very object, before anything unwinds, a continuable
 ;;;     raise answered where it was raised; and the ms it refuses, against
@@ -747,6 +748,20 @@
     (test-client-send! c (b (get "/slow")))
     (test-host-advance! host 100)
     (list seen (wire c))))
+
+(test-equal "wrap-timeout's deadline covers await-outside: 504 at the deadline, and a value posted after it is dropped, nothing logged"
+  (list (list empty-504) #t (list empty-504) '())
+  (let* ((kept #f)
+         (host (host-of ((wrap-timeout 100)
+                         (lambda (r) (make-res 200 '() (await-outside (lambda (resume) (set! kept resume))))))
+                        unset))
+         (c (test-host-connect! host)))
+    (test-client-send! c (b (get "/slow")))
+    (test-host-advance! host 100)
+    (let* ((answered (wire c))
+           (posted (kept "late\n")))
+      (test-host-advance! host 0)
+      (list answered posted (wire c) (logged host)))))
 
 (test-equal "wrap-timeout's deadline covers a body read that stalls: 504 at the deadline, the connection then closed"
   (list '() (list (response "504 Gateway Timeout" '("Content-Length: 0" "Connection: close") "")) #t '())

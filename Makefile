@@ -3,28 +3,33 @@
 # On a Guix host, run targets through the container:
 #   scripts/guix-env make <target>
 #
-# Every dependency comes from the Akku index. Akku.manifest names each one,
-# and Akku.lock pins each one's archive and sha256: `make lock` has Akku
-# 1.2.0 write it, and `make check-akku-lock` fails unless it is what Akku
-# makes of the manifest against today's index. `make fetch` downloads each
-# archive the lock pins, checks its sha256 and unpacks it
-# (scripts/fetch-akku-lock): hashing, for (circuit session), into
-# vendor/akku, and the others into vendor/akku-trees: chez-http-server;
-# chez-websocket, for (circuit websocket); what the server brings,
-# chez-libuv, chez-httparse, chez-uri and byte-machine, the path's one,
-# which jsonparse runs on too; jsonparse, for (circuit json); and
-# chez-srfi, for the suites' SRFI-64. On the library path are vendor/akku,
-# and each tree's src/ but two: chez-libuv's copy's src/ stands in for its
-# tree's, and chez-srfi's SRFIs are linked into build/scheme-libs, which
-# is on the path instead. `make check-pins` holds that the lock pins
+# Every dependency comes from the Akku index but one. Akku.manifest names
+# each one, and Akku.lock pins each one's archive and sha256: `make lock`
+# has Akku 1.2.0 write it, and `make check-akku-lock` fails unless it is
+# what Akku makes of the manifest against today's index. The one is
+# chez-http-server, a git submodule at SERVER_PIN, v0.12.0, until the index
+# has that release and a chez-websocket that admits it (ADR-0012): the lock
+# still pins it at 0.11.0, and nothing fetches that one. `make fetch`
+# clones the submodule, then downloads each other archive the lock pins,
+# checks its sha256 and unpacks it (scripts/fetch-akku-lock): hashing, for
+# (circuit session), into vendor/akku, and the others into
+# vendor/akku-trees: chez-websocket, for (circuit websocket); what the
+# server brings, chez-libuv, chez-httparse, chez-uri and byte-machine, the
+# path's one, which jsonparse runs on too; jsonparse, for (circuit json);
+# and chez-srfi, for the suites' SRFI-64. On the library path are the
+# submodule's src/, vendor/akku, and each tree's src/ but two: chez-libuv's
+# copy's src/ stands in for its tree's, and chez-srfi's SRFIs are linked
+# into build/scheme-libs, which is on the path instead. `make check-pins` holds that the lock pins
 # exactly what `make fetch` gets, each tree to its archive, an edit
-# included, and the copy to its tree and its build's products; `make
-# check-imports` holds that no other directory on the path holds a
-# byte-machine. Those that download run on the host: the container has no
-# network. `make deps` never fetches: it fails unless the lock pins exactly
-# what `make fetch` gets and each tree is there, recording the sha256 the
-# lock pins; it builds chez-libuv's shim in a copy, build/chez-libuv, so
-# that the fetched tree stays its archive, and links SRFI-64.
+# included, the copy to its tree and its build's products, and the
+# submodule to SERVER_PIN, with no change; `make check-imports` holds that
+# no other directory on the path holds a byte-machine. Those that download,
+# and those that need git, run on the host: the container has neither
+# network nor git. `make deps` never fetches: it fails unless the lock pins
+# exactly what `make fetch` gets, each tree is there, recording the sha256
+# the lock pins, and the submodule's Akku.manifest names SERVER_VERSION; it
+# builds chez-libuv's shim in a copy, build/chez-libuv, so that the fetched
+# tree stays its archive, and links SRFI-64.
 
 # The Chez binary. In the container, scripts/guix-env-enter exports the
 # profile's real `scheme` binary. Elsewhere, scripts/require-chez --find
@@ -64,13 +69,13 @@ GOAL = $(strip $(if $(MAKECMDGOALS),$(MAKECMDGOALS),$@))
 # FILE a path under its tree that deps looks for. fetch, deps and
 # check-pins each take every one. hashing goes into vendor/akku on its own,
 # and chez-cmark-gfm, for the docs site alone, into build/akku (site-deps).
-# deps and check-pins fail unless Akku.lock pins exactly those projects,
-# each once (CHECK_LOCKED, below).
+# chez-http-server comes from its submodule instead (below). deps and
+# check-pins fail unless Akku.lock pins exactly those projects and the
+# server, each once (CHECK_LOCKED, below).
 AKKU_LOCK_FILE := Akku.lock
 AKKU_DIR := vendor/akku
 AKKU_TREES_DIR := vendor/akku-trees
-AKKU_TREES := chez-http-server:src/http-server.sls \
-  chez-websocket:src/websocket.sls \
+AKKU_TREES := chez-websocket:src/websocket.sls \
   chez-libuv:Makefile \
   chez-httparse:src \
   byte-machine:src \
@@ -84,7 +89,6 @@ AKKU_TREE_NAMES := $(foreach t,$(AKKU_TREES),$(firstword $(subst :, ,$(t))))
 # tree nothing fetches.
 tree = $(if $(filter $(1),$(AKKU_TREE_NAMES)),$(AKKU_TREES_DIR)/$(1),$(error AKKU_TREES names no $(1), which a directory of the Makefile's is in))
 
-SERVER_DIR       := $(call tree,chez-http-server)
 WEBSOCKET_DIR    := $(call tree,chez-websocket)
 LIBUV_TREE       := $(call tree,chez-libuv)
 HTTPARSE_DIR     := $(call tree,chez-httparse)
@@ -92,6 +96,29 @@ BYTE_MACHINE_DIR := $(call tree,byte-machine)
 URI_DIR          := $(call tree,chez-uri)
 JSONPARSE_DIR    := $(call tree,jsonparse)
 SRFI_DIR         := $(call tree,chez-srfi)
+
+# --- the server, from its submodule --------------------------------------------
+# chez-http-server is a git submodule, vendor/chez-http-server, at
+# SERVER_PIN, until the Akku index has its 0.12.0 and a chez-websocket whose
+# range admits it: chez-websocket 0.6.0 names ^0.11.0 (ADR-0012). SERVER_PIN
+# is a full commit, as a shallow checkout has no tags. Akku.lock still pins
+# the server, at 0.11.0, as `akku lock` resolves the manifest, and nothing
+# fetches that one: AKKU_EXCEPTED names it, so CHECK_LOCKED counts it as
+# fetched. SERVER_VERSION is the release SERVER_PIN is, by its tag. fetch
+# clones the submodule. deps, without git, checks that its Akku.manifest
+# names SERVER_VERSION (CHECK_SERVER_VERSION): the container, run from a
+# linked worktree, can't see a submodule's git directory. check-pins, with
+# git, checks its HEAD, its gitlink and its tag vSERVER_VERSION are
+# SERVER_PIN, and that it holds no change (CHECK_SERVER).
+SERVER_PIN     := bba2ba6fea252996d31bffc6255d8be36e9bdfd2
+SERVER_VERSION := 0.12.0
+SERVER_DIR     := vendor/chez-http-server
+AKKU_EXCEPTED  := chez-http-server
+
+# How fetch clones the submodule, at the commit its gitlink records, which
+# check-pins holds to SERVER_PIN. tests/check-pins.sh, whose fake submodule
+# is in a repository of its own, gives one of its own.
+FETCH_SERVER = git submodule update --init $(SERVER_DIR)
 
 # chez-libuv's copy, where deps builds its shim. Written out, not under
 # $(BUILD_DIR): a make with a BUILD_DIR of its own, as
@@ -101,7 +128,7 @@ LIBUV_DIR := build/chez-libuv
 
 # --- the library paths --------------------------------------------------------
 # LIBDIRS is the path `make run` and `make dev` use: circuit's src/, then the
-# server's, chez-websocket's, chez-libuv's copy's and those of the other
+# server's submodule's, chez-websocket's, chez-libuv's copy's and those of the other
 # libraries the server brings, then jsonparse's, then build/scheme-libs,
 # which carries (srfi :64), then vendor/akku, which holds hashing.
 # chez-libuv locates its C shim by an absolute path baked into the
@@ -234,31 +261,39 @@ FETCH_TOOL = $(if $(shell command -v curl 2>/dev/null),curl,$(if $(shell command
 SHA256_TOOL = $(if $(shell command -v sha256sum 2>/dev/null),sha256sum,$(if $(shell command -v shasum 2>/dev/null),shasum,"sha256sum or shasum"))
 XZ_TOOL = $(if $(findstring GNU,$(shell tar --version 2>/dev/null)),xz)
 
-fetch: ## (host) Fetch every dependency as Akku.lock pins it, each sha256 checked: hashing into vendor/akku, the others into vendor/akku-trees
-	@scripts/require-tools "$(GOAL)" $(FETCH_TOOL) tar $(XZ_TOOL) $(SHA256_TOOL) diff
+fetch: ## (host) Clone the server's submodule at SERVER_PIN, and fetch every other dependency as Akku.lock pins it, each sha256 checked: hashing into vendor/akku, the others into vendor/akku-trees
+	@scripts/require-tools "$(GOAL)" git $(FETCH_TOOL) tar $(XZ_TOOL) $(SHA256_TOOL) diff
+	$(FETCH_SERVER)
 	AKKU_LOCK=$(AKKU_LOCK_FILE) AKKU_DEST=$(AKKU_DIR) sh scripts/fetch-akku-lock hashing
 	AKKU_LOCK=$(AKKU_LOCK_FILE) AKKU_DEST=$(AKKU_TREES_DIR) sh scripts/fetch-akku-lock $(AKKU_TREE_NAMES)
 
-# The two checks deps and check-pins share, each in one place.
-# CHECK_LOCKED fails unless Akku.lock pins exactly hashing, chez-cmark-gfm
-# and every tree AKKU_TREES names, each once, naming a project nothing
-# fetches and a tree the lock doesn't pin (scripts/check-lock-projects).
-# CHECK_LIBUV_COPY fails unless chez-libuv's copy is its tree plus its
-# build's two products, build/ and src/libuv/private/config.sls, naming
-# every other line `diff -rq` gives; a copy not made yet passes it
-# (scripts/check-libuv-copy).
-CHECK_LOCKED = AKKU_LOCK=$(AKKU_LOCK_FILE) sh scripts/check-lock-projects hashing chez-cmark-gfm $(AKKU_TREE_NAMES)
+# The checks deps and check-pins share, each in one place.
+# CHECK_LOCKED fails unless Akku.lock pins exactly hashing, chez-cmark-gfm,
+# every tree AKKU_TREES names and AKKU_EXCEPTED, each once, naming a project
+# nothing fetches and a tree the lock doesn't pin
+# (scripts/check-lock-projects). CHECK_LIBUV_COPY fails unless chez-libuv's
+# copy is its tree plus its build's two products, build/ and
+# src/libuv/private/config.sls, naming every other line `diff -rq` gives; a
+# copy not made yet passes it (scripts/check-libuv-copy).
+# CHECK_SERVER_VERSION fails unless the server's submodule is cloned and its
+# Akku.manifest names SERVER_VERSION, read without git; CHECK_SERVER, with
+# git, unless its HEAD, its gitlink and its tag vSERVER_VERSION are
+# SERVER_PIN and it holds no change (scripts/check-server-pin).
+CHECK_LOCKED = AKKU_LOCK=$(AKKU_LOCK_FILE) sh scripts/check-lock-projects hashing chez-cmark-gfm $(AKKU_TREE_NAMES) $(AKKU_EXCEPTED)
 CHECK_LIBUV_COPY = sh scripts/check-libuv-copy $(LIBUV_TREE) $(LIBUV_DIR)
+CHECK_SERVER_VERSION = sh scripts/check-server-pin --version $(SERVER_DIR) $(strip $(SERVER_VERSION))
+CHECK_SERVER = sh scripts/check-server-pin $(SERVER_DIR) $(strip $(SERVER_PIN)) $(strip $(SERVER_VERSION))
 
 # CHECK_LOCKED, then scripts/fetch-akku-lock --check, which downloads
 # nothing: each tree must record Akku.lock's sha256 and be the archive
 # under its directory's dl/, with that sha256, unpacked, and it names each
-# file that differs. Then CHECK_LIBUV_COPY. It goes on past a check that
-# fails, so one run names every fault. Read-only, and it needs no git or
-# network, so it runs in the container too. CI runs it after the tests and
-# the gate, so it holds that they wrote into no tree, nor into the copy.
-check-pins: ## Fail unless Akku.lock pins exactly what make fetch gets, each tree in vendor/akku and vendor/akku-trees is its archive, and chez-libuv's copy is its tree and its build's products
-	@scripts/require-tools "$(GOAL)" awk sort uniq grep tar $(XZ_TOOL) $(SHA256_TOOL) diff
+# file that differs. Then CHECK_LIBUV_COPY, then CHECK_SERVER. It goes on
+# past a check that fails, so one run names every fault. Read-only, and it
+# needs no network, but it needs git, so it runs on the host and in CI. CI
+# runs it after the tests and the gate, so it holds that they wrote into no
+# tree, nor into the copy or the submodule.
+check-pins: ## (host) Fail unless Akku.lock pins exactly what make fetch gets, each tree in vendor/akku and vendor/akku-trees is its archive, chez-libuv's copy is its tree and its build's products, and the server's submodule is SERVER_PIN with no change
+	@scripts/require-tools "$(GOAL)" git awk sort uniq grep tar $(XZ_TOOL) $(SHA256_TOOL) diff
 	@fail=0; \
 	if ! $(CHECK_LOCKED); then \
 	  echo "PIN MISMATCH: Akku.lock and the Makefile's AKKU_TREES name different packages. A lock move that adds or drops a package changes both, on one commit." >&2; fail=1; \
@@ -271,6 +306,9 @@ check-pins: ## Fail unless Akku.lock pins exactly what make fetch gets, each tre
 	fi; \
 	if ! $(CHECK_LIBUV_COPY); then \
 	  echo "PIN MISMATCH: $(LIBUV_DIR) isn't chez-libuv's tree and its build's products. Run 'make deps', which copies it again: an edit there is lost." >&2; fail=1; \
+	fi; \
+	if ! $(CHECK_SERVER); then \
+	  echo "PIN MISMATCH: $(SERVER_DIR) isn't v$(strip $(SERVER_VERSION)), $(strip $(SERVER_PIN)), with no change. Run 'make fetch' on the host, and move an edit you want out of the submodule first." >&2; fail=1; \
 	fi; \
 	exit $$fail
 
@@ -351,8 +389,8 @@ endef
 check-chez: ## Fail unless CHEZ is Chez Scheme 10.4.1 or later, threaded, naming what it found
 	@scripts/require-chez "$(GOAL)" "$(CHEZ)"
 
-# CHECK_LOCKED first. Then each tree must be there, by the file AKKU_TREES
-# names under it, and record the sha256 Akku.lock pins
+# CHECK_LOCKED first, then CHECK_SERVER_VERSION, which needs no git. Then each
+# tree must be there, by the file AKKU_TREES names under it, and record the sha256 Akku.lock pins
 # (scripts/fetch-akku-lock --check-record), as hashing must under
 # vendor/akku. chez-libuv's tree is copied to build/chez-libuv again
 # whenever CHECK_LIBUV_COPY fails, a copy not made yet aside, and
@@ -362,6 +400,10 @@ deps: check-chez ## Copy chez-libuv to build/chez-libuv and build its shim there
 	@scripts/require-tools "$(GOAL)" $(CHEZ) $(CC) pkg-config
 	@if ! $(CHECK_LOCKED) > /dev/null; then \
 	  echo "deps: so Akku.lock and the Makefile's AKKU_TREES name different packages. A lock move that adds or drops a package changes both, on one commit." >&2; \
+	  exit 1; \
+	fi
+	@if ! $(CHECK_SERVER_VERSION) > /dev/null; then \
+	  echo "deps: so the server's submodule isn't SERVER_VERSION, $(strip $(SERVER_VERSION)). Run 'make fetch' on the host: make deps never fetches, and the container has no network." >&2; \
 	  exit 1; \
 	fi
 	@if [ ! -e $(AKKU_DIR)/hashing/sha-2.scm ]; then \
@@ -566,8 +608,9 @@ check-site: site-deps srfi ## Test the site generator, then render docs/ in memo
 # fetch-akku-lock, which fetch, akku-deps and site-deps run, against an
 # archive and a lock; check-akku-lock and scripts/akku, on a fake akku and
 # a fake Chez; and check-pins and deps, on fake trees, a fake lock and a
-# fake chez-libuv build. CI's linux job runs it.
-check-site-deps: ## Test the Akku scripts, check-pins and deps' copy offline, on fake archives, locks, trees and akku
+# fake chez-libuv build, with a fake server submodule, which needs git: so
+# it runs on the host, and CI's linux job runs it.
+check-site-deps: ## (host) Test the Akku scripts, check-pins and deps' copy offline, on fake archives, locks, trees, a submodule and akku
 	@sh tests/fetch-akku-lock.sh
 	@sh tests/check-akku-lock.sh
 	@sh tests/akku.sh

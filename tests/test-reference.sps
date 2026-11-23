@@ -35,19 +35,23 @@
 ;;;       tree/<ref>/, names its tag as <ref>;
 ;;;   (g) every re-export that is a procedure has one signature comment in
 ;;;       the library under src/ that re-exports it, and its text is the one
-;;;       signature that one's docs/reference.md, as its tree under
-;;;       vendor/akku-trees holds it, gives it: in a text fence, as a table
+;;;       signature that one's docs/reference.md, as its tree holds it,
+;;;       gives it: in a text fence, as a table
 ;;;       row's name and type cells, or as an inline code span, whitespace
 ;;;       runs collapsed. As in (d), a comment is held to a reference, never
 ;;;       to what the code does.
 ;;;
-;;; Each of those three comes from the Akku index, and its tag is v and the
-;;; version Akku.lock pins it at: the one its archive's file name gives,
-;;; <name>_<version>_repack.tar.xz, a release, which the Akku.manifest of
-;;; its tree, as `make fetch` unpacks it under vendor/akku-trees, gives too.
-;;; The global constraints' Dependency section names each project Akku.lock
-;;; pins but chez-cmark-gfm once, as `<package>, now <version>`, at the
-;;; version the lock pins, and names no other that way. And the page's own
+;;; Each of those three but one comes from the Akku index, and its tag is v
+;;; and the version Akku.lock pins it at: the one its archive's file name
+;;; gives, <name>_<version>_repack.tar.xz, a release, which the
+;;; Akku.manifest of its tree, as `make fetch` unpacks it under
+;;; vendor/akku-trees, gives too. The one is chez-http-server, a submodule
+;;; under vendor/ until Akku has its release (ADR-0012): the lock still pins
+;;; it, and its tag is v and the release its submodule's Akku.manifest
+;;; gives. The global constraints' Dependency section names each project
+;;; Akku.lock pins but chez-cmark-gfm once, as `<package>, now <version>`,
+;;; at the version the lock pins, or the submodule's, and names no other
+;;; that way. And the page's own
 ;;; shape: no heading out of the convention; each type alias in its intro
 ;;; is the alias comment in src/, `;; NAME = TYPE`, where two that name one
 ;;; type agree; every entry has words, and every entry but a re-export a
@@ -124,19 +128,26 @@
 ;; Each library circuit re-exports from: its facade, its repository, which
 ;; is its project's name in Akku.lock, and its reference, in its tree.
 (define upstream-specs
-  '(((http-server) "chez-http-server" "vendor/akku-trees/chez-http-server/docs/reference.md")
+  '(((http-server) "chez-http-server" "vendor/chez-http-server/docs/reference.md")
     ((websocket) "chez-websocket" "vendor/akku-trees/chez-websocket/docs/reference.md")))
 
 ;; locked-specs : (Listof (List String String))
 ;; Each repository whose docs the pages link to: its name, which is its
 ;; project's in Akku.lock, and the Akku.manifest of its tree as `make
-;; fetch` unpacks it. The upstreams are among them.
+;; fetch` unpacks it, or clones it, for one of excepted. The upstreams are
+;; among them.
 (define locked-specs
-  '(("chez-http-server" "vendor/akku-trees/chez-http-server/Akku.manifest")
+  '(("chez-http-server" "vendor/chez-http-server/Akku.manifest")
     ("chez-websocket" "vendor/akku-trees/chez-websocket/Akku.manifest")
     ("jsonparse" "vendor/akku-trees/jsonparse/Akku.manifest")))
 
 (define lock-file "Akku.lock")
+
+;; excepted : (Listof String)
+;; The projects Akku.lock pins that circuit takes from a submodule instead,
+;; until the Akku index has the release it needs (ADR-0012): each one is at
+;; the version its submodule's Akku.manifest gives, not the lock's.
+(define excepted '("chez-http-server"))
 
 (define github "https://github.com/Kiyomi-Computation-Systems/")
 
@@ -1111,13 +1122,24 @@
 
 (define lock-data (or (read-data lock-file) '()))
 
+;; version-of : String -> (U String #f)
+;; The version circuit runs the project NAME at: for one of excepted, the
+;; one its submodule's Akku.manifest gives, as locked-specs names it, and
+;; for any other the one Akku.lock pins; #f when that gives none.
+(define (version-of name)
+  (if (member name excepted)
+      (let* ((spec (assoc name locked-specs))
+             (package (and spec (manifest-package (or (read-data (cadr spec)) '())))))
+        (and package (string=? (car package) name) (cdr package)))
+      (lock-version lock-data name)))
+
 ;; locked-tags : (Listof (Pair String (U String #f)))
-;; Each of locked-specs, with its tag: v and the version Akku.lock pins it
-;; at, #f when the lock gives none.
+;; Each of locked-specs, with its tag: v and the version circuit runs it
+;; at, by version-of, #f when that gives none.
 (define locked-tags
   (guard (e (#t '()))
     (map (lambda (spec)
-           (let ((version (lock-version lock-data (car spec))))
+           (let ((version (version-of (car spec))))
              (cons (car spec) (and version (string-append "v" version)))))
          locked-specs)))
 
@@ -1523,27 +1545,43 @@
            '("byte-machine" "jsonparse" "other" "plain" "empty" "nameless" "missing")))))
 
 ;; --- from the Akku index -------------------------------------------------------------------
-;; The pages' links into each sibling name v and the version Akku.lock
-;; pins, which is the version of the tree `make fetch` unpacked from that
-;; archive.
+;; The pages' links into each sibling name v and the version circuit runs
+;; it at: for one from the Akku index, the version Akku.lock pins, which is
+;; the version of the tree `make fetch` unpacked from that archive; for one
+;; of excepted, the version its submodule's Akku.manifest gives.
 
-(test-equal (string-append lock-file ": it pins " (joined ", " (map car locked-specs))
-                           " at a release, vX.Y.Z by its archive's file name")
+(define from-akku (filter (lambda (spec) (not (member (car spec) excepted))) locked-specs))
+
+(test-equal (string-append (joined ", " (map car locked-specs))
+                           ": each is at a release, vX.Y.Z, by its archive's file name in " lock-file
+                           ", or its submodule's Akku.manifest for " (joined ", " excepted))
   (map (lambda (spec) (list (car spec) #t)) locked-specs)
   (map (lambda (t) (list (car t) (release-tag? (cdr t)))) locked-tags))
 
 (test-equal (string-append "each tree from the Akku index, "
-                           (joined ", " (map cadr locked-specs))
+                           (joined ", " (map cadr from-akku))
                            ": its Akku.manifest names its package at the version " lock-file " pins")
   (guard (e (#t (list 'raised (describe e))))
-    (map (lambda (spec) (cons (car spec) (lock-version lock-data (car spec)))) locked-specs))
+    (map (lambda (spec) (cons (car spec) (lock-version lock-data (car spec)))) from-akku))
   (guard (e (#t (list 'raised (describe e))))
-    (map (lambda (spec) (manifest-package (or (read-data (cadr spec)) '()))) locked-specs)))
+    (map (lambda (spec) (manifest-package (or (read-data (cadr spec)) '()))) from-akku)))
+
+(test-equal (string-append (joined ", " excepted)
+                           ": a submodule, its Akku.manifest naming its package at a release, while "
+                           lock-file " still pins it")
+  (map (lambda (name) (list name #t #t)) excepted)
+  (guard (e (#t (list 'raised (describe e))))
+    (map (lambda (name)
+           (list name
+                 (release-tag? (let ((v (version-of name))) (and v (string-append "v" v))))
+                 (string? (lock-version lock-data name))))
+         excepted)))
 
 ;; --- the records' versions -----------------------------------------------------------------
 ;; The global constraints' Dependency section says which version each
 ;; package is at now, as `<package>, now <version>`: each is the version
-;; Akku.lock pins, and each project the lock pins is named so once, but
+;; Akku.lock pins, or its submodule's, by version-of, and each project the
+;; lock pins is named so once, but
 ;; chez-cmark-gfm, the docs site's renderer alone. So a lock that moves
 ;; without its line fails, and so does a line naming a package the lock
 ;; doesn't have.
@@ -1562,8 +1600,8 @@
 (define (pair-name<? a b) (string<? (car a) (car b)))
 
 (test-equal (string-append constraints ", its Dependency section: each `<package>, now <version>` names the version "
-                           lock-file " pins that package at")
-  (map (lambda (r) (cons (car r) (lock-version lock-data (car r)))) recorded-versions)
+                           lock-file " pins that package at, or its submodule's for " (joined ", " excepted))
+  (map (lambda (r) (cons (car r) (version-of (car r)))) recorded-versions)
   recorded-versions)
 
 (test-equal (string-append constraints ", its Dependency section: it names each project " lock-file
@@ -1835,7 +1873,7 @@
  (lambda (path)
    (let ((text (read-text path)))
      (test-equal (string-append path ": every link into chez-http-server's, chez-websocket's or jsonparse's repository at a ref names "
-                                "the tag of the version " lock-file " pins: "
+                                "the tag of the version circuit runs it at, " lock-file "'s or its submodule's: "
                                 (joined ", " (map (lambda (repo) (or (link-tag repo) "<none>")) link-repos)))
        '()
        (if text

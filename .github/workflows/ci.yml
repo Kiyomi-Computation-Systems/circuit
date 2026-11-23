@@ -2,13 +2,14 @@ name: CI
 
 # Linux only, deliberately (AGENTS.md: do NOT set up macOS runners). One job,
 # run on two images, amd64 and arm64 (AGENTS.md: portable across both): it
-# installs the toolchain, fetches every dependency as Akku.lock pins it with
-# `make fetch`, builds Chez at its floor (once, then cached), and runs `make
+# installs the toolchain, clones the server's submodule at SERVER_PIN and
+# fetches every other dependency as Akku.lock pins it with `make fetch`,
+# builds Chez at its floor (once, then cached), and runs `make
 # test`, which builds chez-libuv's shim, in a copy, against the system
 # libuv and runs check-help, check-suites and every suite, then checks the
 # docs site and runs the cost gate, `make gate`. Then `make check-pins`
 # holds that none of that wrote into a tree, nor into chez-libuv's copy
-# past its build's products. Last, it fetches Akku 1.2.0 and holds Akku.lock
+# past its build's products, nor into the server's submodule. Last, it fetches Akku 1.2.0 and holds Akku.lock
 # to what it makes of Akku.manifest against today's index (`make
 # akku-deps`, `make check-akku-lock`). The site job builds the site as the
 # Pages workflow does.
@@ -88,7 +89,10 @@ jobs:
 
       # libuv for the shim (pkg-config path); a C compiler and make for the
       # shim and for Chez, which scripts/ci/build-chez.sh configures with no
-      # X11 or curses; curl, which fetches every dependency, Chez, Akku,
+      # X11 or curses; git, which clones the server's submodule (`make
+      # fetch`) and holds it to its pin (`make check-pins`, and its own
+      # tests in `make check-site-deps`); curl, which fetches every other
+      # dependency, Chez, Akku,
       # Akku's index and oha, and is the client the integration suites run
       # against the server, over loopback; coreutils is GNU timeout, which
       # `make test` and `make gate` run under, and sha256sum, which checks
@@ -98,18 +102,20 @@ jobs:
       # which unpacks each archive. Installed first: `make fetch` needs
       # them. Most are already on the image: naming them keeps the job from
       # depending on that. No cmake: with libuv at its floor the shim links
-      # the system one. No git: no step after the checkout runs it.
+      # the system one.
       - name: Install toolchain
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libuv1-dev curl coreutils diffutils cmark-gfm xz-utils
+            build-essential pkg-config libuv1-dev git curl coreutils diffutils cmark-gfm xz-utils
 
-      # Fetch every dependency as Akku.lock pins it, each sha256 checked,
-      # hashing into vendor/akku and the others into vendor/akku-trees,
-      # before building anything: an archive that isn't the lock's fails
-      # here, in seconds, not after a cold Chez build. Every archive is
-      # public, so no token is needed, and a pull request from a fork, which
+      # Clone the server's submodule, at the commit its gitlink records, and
+      # fetch every other dependency as Akku.lock pins it, each sha256
+      # checked, hashing into vendor/akku and the others into
+      # vendor/akku-trees, before building anything: an archive that isn't
+      # the lock's fails here, in seconds, not after a cold Chez build. The
+      # server's repository and every archive are public, so no token is
+      # needed, and a pull request from a fork, which
       # gets no secrets, builds as one from this repository does. `make test`
       # needs the trees (deps checks they are there) and never fetches.
       - name: Fetch dependencies
@@ -229,8 +235,9 @@ jobs:
           make gate
 
       # After the build, the tests and the gate, each tree must still be its
-      # archive, and chez-libuv's copy its tree and its build's two
-      # products: none of them may write into a tree. Run straight after
+      # archive, chez-libuv's copy its tree and its build's two products,
+      # and the server's submodule SERVER_PIN with no change: none of them
+      # may write into a tree. Run straight after
       # `make fetch`, this couldn't fail.
       - name: Check dependency pins
         run: make check-pins
@@ -251,8 +258,9 @@ jobs:
   # and no libuv. apt's Chez is below the floor, which is fine here: nothing
   # the site runs imports the server or (libuv). Of the dependencies, the
   # site needs only chez-srfi, for its suites' SRFI-64, which `make srfi`
-  # links from its tree. curl, diffutils and xz-utils come first: `make
-  # fetch` fetches every dependency, and unpacks each.
+  # links from its tree. git, curl, diffutils and xz-utils come first:
+  # `make fetch` clones the server's submodule, fetches every other
+  # dependency, and unpacks each.
   site:
     name: site
     runs-on: ubuntu-24.04
@@ -265,7 +273,7 @@ jobs:
       - name: Install Chez and cmark-gfm
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends chezscheme cmark-gfm curl diffutils xz-utils
+          sudo apt-get install -y --no-install-recommends chezscheme cmark-gfm git curl diffutils xz-utils
 
       - name: Fetch dependencies
         run: make fetch
