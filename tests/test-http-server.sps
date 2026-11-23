@@ -31,6 +31,10 @@
 ;;;   - refusals, each a 500 before the head, logged handler-failed;
 ;;;   - CIRCUIT_PORT_PIECE_BYTES, read once, from env or the process's
 ;;;     environment, and the malformed values it refuses;
+;;;   - the config errors, told apart through (rnrs), (circuit) and
+;;;     (circuit http-server) alone, as a program built on circuit imports
+;;;     them: the server's refusal, circuit's, and a condition type made
+;;;     under each exported type;
 ;;;   - parity: (circuit test)'s res-body->bytevector reads the bytes the
 ;;;     test host's client reads.
 ;;;
@@ -53,6 +57,7 @@
 ;;; Thu, 01 Jan 1970 00:00:00 GMT, but in the long poll's row, where the
 ;;; 504 is written at 30 s. Whether a port is closed is Chez's port-closed?.
 (import (rnrs)
+        (rnrs eval)
         (rnrs mutable-strings)
         (srfi :64)
         (only (chezscheme) port-closed? putenv system)
@@ -1365,6 +1370,47 @@
                         (raised-by (lambda () (run-server ok-app (settings "CHEZ_HTTP_PORT" "x")))))))
     (putenv "CHEZ_HTTP_PORT" "")
     refusal))
+
+;; circuit-only : (U Environment #f)
+;; (rnrs), (circuit) and (circuit http-server), and nothing of the server's,
+;; as a program built on circuit imports them; #f when they can't be loaded.
+(define circuit-only
+  (guard (e (#t #f))
+    (environment '(rnrs) '(circuit) '(circuit http-server))))
+
+;; in-circuit-only : Datum -> Any
+;; FORM's value, evaluated in circuit-only, or what it raised.
+(define (in-circuit-only form)
+  (guard (e (#t (list 'raised (if (message-condition? e) (condition-message e) e)
+                      (if (irritants-condition? e) (condition-irritants e) '()))))
+    (eval form circuit-only)))
+
+;; Both refusals are of malformed settings, so neither listens: circuit's
+;; comes first, as circuit->handler reads its setting before serve reads
+;; the port, and a run-server that missed it raises the server's.
+(test-equal "through circuit's libraries alone, run-server's refusal is a config error: the server's not circuit's, and circuit's both"
+  '((#t #f) (#t #t))
+  (let ((told (in-circuit-only
+               '(lambda (thunk)
+                  (guard (e ((http-server-config-error? e) (list #t (circuit-config-error? e))))
+                    (thunk)
+                    'no-raise)))))
+    (if (procedure? told)
+        (let* ((servers (told (lambda () (run-server ok-app (settings "CHEZ_HTTP_PORT" "abc")))))
+               (circuits (told (lambda ()
+                                 (run-server ok-app
+                                             (settings piece-variable "0" "CHEZ_HTTP_PORT" "abc"))))))
+          (list servers circuits))
+        told)))
+
+(test-equal "through circuit's libraries alone, a condition type made under either config error is that kind, and another condition is neither"
+  '((#t #f) (#t #t) (#f #f))
+  (in-circuit-only
+   '(let ()
+      (define-condition-type &theirs &http-server-config-error make-theirs theirs?)
+      (define-condition-type &mine &circuit-config-error make-mine mine?)
+      (map (lambda (c) (list (http-server-config-error? c) (circuit-config-error? c)))
+           (list (make-theirs) (make-mine) (make-message-condition "no"))))))
 
 ;; These rows set the process's environment, so they come last, and put it
 ;; back to empty, which keeps the default.

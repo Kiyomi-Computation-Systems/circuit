@@ -114,6 +114,7 @@
     &deadline-passed deadline-passed? &client-closed client-closed?
     &resolve-error resolve-error? resolve-error-reason
     &body-failed body-failed? body-failed-reason body-failed-status
+    &http-server-config-error http-server-config-error?
     transport? transport-write! transport-read-start! transport-read-stop!
     transport-close! transport-abort! transport-deadline! transport-on-drain!
     transport-on-close!))
@@ -220,8 +221,9 @@
   '(make-test-req res-body->bytevector test-req-done!)
   (sorted-exports '(circuit test)))
 
-(test-equal "(circuit http-server) exports its two and the server's waits, conditions, transport procedures and awaiting, exactly"
-  (sorted (append '(circuit->handler run-server) server-reexports))
+(test-equal "(circuit http-server) exports its own four and the server's waits, conditions, transport procedures and awaiting, exactly"
+  (sorted (append '(circuit->handler run-server &circuit-config-error circuit-config-error?)
+                  server-reexports))
   (sorted-exports '(circuit http-server)))
 
 (test-equal "(circuit http-server) leaves out the server's pull and its port: req-body is the body's one port"
@@ -234,7 +236,7 @@
   (filter (lambda (name) (memq name (library-exports '(circuit http-server)))) '(make-transport)))
 
 (test-equal "(circuit http-server)'s re-exported procedures are the server's own"
-  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t)
   (map (lambda (pair) (eq? (car pair) (cdr pair)))
        (list (cons adapter:awaiting server:awaiting) (cons adapter:await server:await) (cons adapter:sleep-ms server:sleep-ms)
              (cons adapter:with-deadline server:with-deadline) (cons adapter:resolve server:resolve)
@@ -245,6 +247,7 @@
              (cons adapter:body-failed? server:body-failed?)
              (cons adapter:body-failed-reason server:body-failed-reason)
              (cons adapter:body-failed-status server:body-failed-status)
+             (cons adapter:http-server-config-error? server:http-server-config-error?)
              (cons adapter:transport? server:transport?)
              (cons adapter:transport-write! server:transport-write!)
              (cons adapter:transport-read-start! server:transport-read-start!)
@@ -256,7 +259,7 @@
              (cons adapter:transport-on-close! server:transport-on-close!))))
 
 (test-equal "(circuit http-server)'s re-exported condition types are the server's own"
-  '(#t #t #t #t)
+  '(#t #t #t #t #t)
   (map (lambda (pair) (eq? (car pair) (cdr pair)))
        (list (cons (record-type-descriptor adapter:&deadline-passed)
                    (record-type-descriptor server:&deadline-passed))
@@ -265,7 +268,9 @@
              (cons (record-type-descriptor adapter:&resolve-error)
                    (record-type-descriptor server:&resolve-error))
              (cons (record-type-descriptor adapter:&body-failed)
-                   (record-type-descriptor server:&body-failed)))))
+                   (record-type-descriptor server:&body-failed))
+             (cons (record-type-descriptor adapter:&http-server-config-error)
+                   (record-type-descriptor server:&http-server-config-error)))))
 
 (test-equal "(circuit) exports what an app uses, exactly"
   (sorted facade-names)

@@ -25,7 +25,8 @@ Env        = (String -> (U String #f))
 ```
 
 - `Req` is a request, `Res` a response, and `Nat` an exact integer, 0 or
-  more.
+  more. A `ConditionType` is the name `define-condition-type` makes: not a
+  value, but a parent for a condition type of your own.
 - `Key` is what `make-req-key` makes, and `ResKey` what `make-res-key`
   makes. `SizedBody`, `WrappedBody` and `TappedBody` are what
   `make-sized-body`, `res-wrap-body` and `res-tap-body` make, and
@@ -639,6 +640,37 @@ circuit->handler : (Req -> Res) [Env] -> (Request -> Awaiting)
 The app as a server handler, for the server's `serve` or its test host. It
 reads `CIRCUIT_PORT_PIECE_BYTES` once, now, and a malformed one raises. See
 [Configuration](configuration.md) and [Testing handlers](testing.md).
+
+### `&circuit-config-error`
+
+```text
+&circuit-config-error : ConditionType
+```
+
+What a malformed setting of circuit's own raises, such as
+`CIRCUIT_PORT_PIECE_BYTES=0`. It is a kind of `&http-server-config-error`.
+See [Configuration](configuration.md).
+
+### `circuit-config-error?`
+
+```text
+circuit-config-error? : Any -> Boolean
+```
+
+Whether it is a `&circuit-config-error`: circuit refused one of its own
+settings, not one of the server's. See [Configuration](configuration.md).
+
+### `&http-server-config-error`
+
+What a malformed setting raises before the server listens, the server's or
+circuit's; see [the server's
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-server).
+
+### `http-server-config-error?`
+
+Whether it is a `&http-server-config-error`: `run-server` refused a
+setting, any setting; see [the server's
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-server).
 
 ### `await`
 

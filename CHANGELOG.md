@@ -9,6 +9,13 @@ release before 1.0.
 
 ### Added
 
+- **`(circuit http-server)` exports the config errors:** circuit's own
+  `&circuit-config-error` and `circuit-config-error?`, and the server's
+  `&http-server-config-error` and `http-server-config-error?`, re-exported. A program
+  can catch a malformed setting that `run-server` refuses, the server's or circuit's,
+  without importing `(http-server)`. Configuration's page shows one that prints a line
+  and exits 2.
+
 - **`make akku-deps`, `make lock` and `make check-akku-lock`**, on the host. `make
   akku-deps` fetches Akku 1.2.0 into `build/akku-tool`, its sha256 checked against
   `scripts/akku-tool.lock`, and `scripts/akku` runs it on `CHEZ`. `make lock` runs
