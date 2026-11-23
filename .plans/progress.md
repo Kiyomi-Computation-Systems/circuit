@@ -214,10 +214,21 @@ close-out under **Close-outs**, newest first.
   items 1 and 2 of the owner's #53; its close-out is below. ADR-0012, Proposed, amends
   ADR-0011 for the server alone until the Akku index has 0.12.0 and a chez-websocket
   that admits it.
-- **Next:** #53's item 3, the worker, a slice of its own: a design first, answering
-  #53's seven questions and its request that the worker be modelled and verified as
-  state machines, then the owner's approval. Publishing circuit on Akku is a slice of
-  its own too (ADR-0011).
+- **The worker's design**, [`2026-11-23-worker-design.md`](2026-11-23-worker-design.md),
+  is #53's item 3, in [PR #55](https://github.com/Kiyomi-Computation-Systems/circuit/pull/55)
+  on 2026-11-23; its close-out is below. The owner approved it on 2026-11-23, and
+  ADR-0013 is accepted.
+  - Three adversarial reviews on Opus found one blocking flaw, then none, then none.
+    Every probe the reviews wrote was rerun, and reproduced, before its finding was
+    taken in.
+  - The owner answered on 2026-11-23: Q1 "Never run it", Q3 "Refuse them", Q8 "One
+    thread of its own", Q14 "make-test-worker".
+- **Next:** the worker's slices, once the design is approved:
+  1. W1, the machine and its explorer;
+  2. W2, the shell, the double, `wrap-busy` and the contract rows;
+  3. W3, the docs page, the example and the records.
+
+  Publishing circuit on Akku is a slice of its own too (ADR-0011).
 
 ## Open
 
@@ -301,6 +312,72 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-23: the worker's design, and ADR-0013, in PR #55
+
+On the owner's "start the worker design - this needs to be rigorous", with a review once
+a design was proposed, then "Review the revision", "one more adversarial review" and
+"approved". #53's item 3. Commits on `design/worker`: the design and the records
+(1cfa3cd), this close-out (80ca4ed), and its CI run named here. CI passed on the PR
+(run 45188305408, 5m39s), on amd64, arm64 and the site job. The run on 1cfa3cd was
+cancelled when 80ca4ed was pushed.
+
+- **#53 read closely:** its diagram, its table and its §10 verification request. The
+  design's §1 names nine changes:
+  - Running → Answered is two steps, the server's delivery between them;
+  - "Abandoned" is three states;
+  - neither the worker's stop nor the server's appears in the diagram;
+  - with several threads, a queue at its cap is no test for a refusal;
+  - the inline double can't reach the queue's rows;
+  - the explorer must model the shell's protocol and the server's contract, not only
+    the step function;
+  - several properties are missing;
+  - TLA+ isn't needed under one lock.
+- **The design:**
+  - three libraries: a pure machine, an internal impure shell, and the public facade;
+  - the machine's rows as data, with "can't happen" rows counted;
+  - the shell's protocol and rules R1–R12;
+  - the answers to #53's six questions, its comment's seventh, and seven of its own;
+  - properties S1–S16 and L1–L4;
+  - five layers of verification, with the mutants each must kill;
+  - gates G11 and G12;
+  - three slices to build it, W1 to W3.
+- **The owner's answers, 2026-11-23:** Q1 "Never run it", Q3 "Refuse them", Q8 "One
+  thread of its own", Q14 "make-test-worker"; the rest as recommended. ADR-0013 is
+  accepted on "approved". From W2 it amends ADR-0006's items 1, 2 and 4.
+- **Techo:** its planning session read the design, and found nothing that breaks its
+  T1–T4 or its shutdown order. Its first T5 held only under a drain. The owner accepted
+  a restated T5 in Techo's ADR-0008 amendment of 2026-11-23, which "refuse" keeps. I
+  checked that amendment on disk before citing it.
+- **Probed** in the container, in `build/probe-worker/`, git-ignored:
+  - `thread-join` exists;
+  - `exit` in a job ends only its thread, and runs its after-thunks;
+  - a warning in a thread prints, and the job goes on;
+  - a forked thread inherits its forker's parameters;
+  - `bytes-allocated` counts every thread;
+  - a post made in or during `register` is handed over within the same host call;
+  - a pass-through handler around `await-outside` is transparent;
+  - a thread blocked in `mutex-acquire` with interrupts disabled stalls the collector.
+- **The reviews,** each read-only, on Opus. I reran every probe each one wrote, and
+  each reproduced:
+  - **the first**, on the first draft: one blocking flaw, ten to fix, ten minor, 15
+    probes. The blocking flaw: a `guard` around a job left and re-entered the job's
+    `dynamic-wind`, so a transaction lost a write and still committed. 284,356 tokens,
+    25m23s;
+  - **the second**, on the first revision: none blocking, six to fix, twelve minor, 6
+    probes. Among them, the observer's points and the double's wait. 271,622 tokens,
+    24m48s;
+  - **the third**, on the second revision and the five records: none blocking, four to
+    fix, twelve minor. Among them, a section enabling interrupts before releasing its
+    lock. It found every one of #53's asks answered. 275,223 tokens, 21m51s.
+- **Where I went against a review:**
+  - **interrupts across every section that doesn't wait**, which deadlocks the
+    collector;
+  - **abandoning on any raise**, which can leave a wait for ever;
+  - **passing a continuable raise on without breaking the worker**, which faults on
+    `mutex-release`, as that review's own probe showed.
+- **The checks:** `tests/test-reference.sps`, 264 of 264, in the container; every link
+  in the records resolves.
 
 ### 2026-11-23: the server's v0.12.0 from a submodule, and `await-outside`, in PR #54
 

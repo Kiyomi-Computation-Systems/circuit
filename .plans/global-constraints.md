@@ -108,7 +108,8 @@ provisional. They bind until that record is accepted or amended.
   `req-ref` and set with `req-set`, and a handler's data on a response under keys from
   `make-res-key`, read with `res-ref` and set with `res-set`. Each side refuses the other's
   keys, and every response helper keeps them (ADR-0005).
-- **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`
+- **The core is plain R6RS.** Only `(circuit http-server)` and `(circuit middleware waits)`,
+  and the worker's shell from slice W2 (under "The worker" below),
   may import the server's libraries, never `(http-server private ...)`, and they take from
   `(chezscheme)` only through `(only (chezscheme) name ...)`, each name on the audit's
   allowlist, `getenv`, `port-has-port-length?`, `port-length`, `real-time`,
@@ -131,6 +132,35 @@ provisional. They bind until that record is accepted or amended.
   imports the server. No circuit library imports any other `(websocket ...)` library,
   nor `(circuit websocket)`, and `(circuit websocket)` imports neither `(chezscheme)` nor
   the server's libraries. `make check-imports` holds it (ADR-0006).
+
+## The worker
+
+These rules are from ADR-0013, and the worker's design holds them in full. The worker
+lands in slices W1 to W3. The import rules bind from W2, which amends ADR-0006 and the
+audit.
+
+- **Three libraries.**
+  - `(circuit worker machine)` is pure, plain R6RS and internal.
+  - `(circuit worker shell)` is internal. It imports `(only (http-server) await-outside
+    deadline-passed? client-closed?)`, and thread names from `(chezscheme)` on an
+    allowlist of its own.
+  - `(circuit worker)` is public, and imports the shell.
+
+  No other library imports either impure one (ADR-0006 as ADR-0013 amends it).
+- **Every decision about jobs, threads and the queue is in the machine's `step`, under
+  one mutex.** Only the broken worker and the double's mark are the shell's own, and
+  real-thread rows check those. The shell carries out
+  `step`'s effects outside the lock, and follows the design's rules R1 to R12. The rows
+  of the design's §4.2 are data in the suite, and every row is driven.
+- **No `guard` around a job, a set-up, a tear-down or a wait.**
+  - A job runs under a two-layer `with-exception-handler` catch.
+  - `worker-call` sees abandonment through a pass-through handler.
+  - A `guard` leaves and re-enters a job's `dynamic-wind` when it lets a warning
+    through.
+- **A job whose caller left before it began never runs.** `worker-stop!` refuses
+  every job not yet begun, waits for the running ones, and joins every thread.
+- **Each mutant in the design's §8.8 is seen to fail its layer** before that layer is
+  accepted (ADR-0013).
 
 ## Cost
 
