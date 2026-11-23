@@ -214,10 +214,19 @@ close-out under **Close-outs**, newest first.
   items 1 and 2 of the owner's #53; its close-out is below. ADR-0012, Proposed, amends
   ADR-0011 for the server alone until the Akku index has 0.12.0 and a chez-websocket
   that admits it.
-- **Next:** #53's item 3, the worker, a slice of its own: a design first, answering
-  #53's seven questions and its request that the worker be modelled and verified as
-  state machines, then the owner's approval. Publishing circuit on Akku is a slice of
-  its own too (ADR-0011).
+- **The worker's design**, [`2026-11-23-worker-design.md`](2026-11-23-worker-design.md),
+  is #53's item 3. The owner approved it on 2026-11-23, and ADR-0013 is accepted.
+  - Three adversarial reviews on Opus found one blocking flaw, then none, then none.
+    Every probe the reviews wrote was rerun, and reproduced, before its finding was
+    taken in.
+  - The owner answered on 2026-11-23: Q1 "Never run it", Q3 "Refuse them", Q8 "One
+    thread of its own", Q14 "make-test-worker".
+- **Next:** the worker's slices, once the design is approved:
+  1. W1, the machine and its explorer;
+  2. W2, the shell, the double, `wrap-busy` and the contract rows;
+  3. W3, the docs page, the example and the records.
+
+  Publishing circuit on Akku is a slice of its own too (ADR-0011).
 
 ## Open
 

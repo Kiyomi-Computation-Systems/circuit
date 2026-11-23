@@ -24,7 +24,14 @@
   the sessions design §4); 2026-11-10, in slice 11: another core library,
   `(circuit json)`, may import jsonparse's `(jsonparse easy)` through `only`, and the audit
   reads that library's closure from byte-machine's `src/` and jsonparse's (item 6;
-  [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md), design §15.36)
+  [ADR-0009](0009-jsonparse-is-a-submodule-on-the-servers-byte-machine.md), design §15.36).
+  Pending: [ADR-0013](0013-a-worker-runs-jobs-on-threads-of-its-own-decided-by-a-pure-step-function-under-one-lock.md),
+  accepted on 2026-11-23, amends items 1, 2 and 4 from the worker's slice W2:
+  - `(circuit worker shell)` may import `(only (http-server) await-outside
+    deadline-passed? client-closed?)`, and thread names from `(chezscheme)` on an
+    allowlist of its own;
+  - `(circuit worker)` may import the shell, the one exception to item 4's "none
+    imports an impure one".
 - **Scope:** which circuit libraries may import what
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §6, §9, §11, §15 item 4
 
