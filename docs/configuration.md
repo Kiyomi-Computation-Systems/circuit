@@ -78,7 +78,7 @@ It prints `listening 0.0.0.0 3000`. The ones you'll reach for first:
 - Timeouts are whole seconds.
 - On a platform that sets `PORT`, pass it on: `CHEZ_HTTP_PORT=$PORT`.
 - The rest, with what each does, are on the server's
-  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/configuration.md)
+  [Configuration](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/configuration.md)
   page.
 
 ## Size a port body's pieces

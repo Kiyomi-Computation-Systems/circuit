@@ -8,6 +8,9 @@
   - publishing circuit on Akku is a slice of its own;
   - after the review, circuit runs the newest release that each range admits, not the
     combination each sibling's own lock was tested on ("Accept, and record it").
+  Items 3, 6 and 7 amended for chez-http-server alone by
+  [ADR-0012](0012-chez-http-server-0-12-0-from-a-submodule-until-akku-has-it.md), on
+  2026-11-23: a submodule at v0.12.0 until Akku has it.
 - **Date:** 2026-11-20
 - **Supersedes:**
   - [ADR-0003](0003-chez-http-server-is-a-submodule-pinned-at-a-release-tag.md)'s items 1
@@ -121,7 +124,8 @@ Read on 2026-11-20:
 - **An older checkout deletes `vendor/chez-http-server`, `vendor/chez-websocket` and their
   `.git/modules/vendor/` directories, then runs `make fetch`.** `.gitignore` keeps the
   old directories out of `git add`.
-- **`make check-pins` could run in the container,** since it needs no git now. It runs on
+- **`make check-pins` could run in the container,** since it needs no git now. (No
+  longer: ADR-0012's submodule check needs git.) It runs on
   the host and in CI, as before.
 - **circuit is still not installed through Akku.** `.akkuignore` keeps its own libraries
   out of `akku install`. ADR-0008's condition for publishing circuit is met, and

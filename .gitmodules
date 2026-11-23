@@ -1,0 +1,3 @@
+[submodule "vendor/chez-http-server"]
+	path = vendor/chez-http-server
+	url = https://github.com/Kiyomi-Computation-Systems/chez-http-server.git

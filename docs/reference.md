@@ -664,146 +664,151 @@ settings, not one of the server's. See [Configuration](configuration.md).
 
 What a malformed setting raises before the server listens, the server's or
 circuit's; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-server).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-server).
 
 ### `http-server-config-error?`
 
 Whether it is a `&http-server-config-error`: `run-server` refused a
 setting, any setting; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-server).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-server).
 
 ### `await`
 
 The server's wait for a procedure of yours to call `resume`; see [the
-server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
+
+### `await-outside`
+
+The server's wait for a thread of your own to call `resume`; see [the
+server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `sleep-ms`
 
 The server's wait of so many milliseconds; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `with-deadline`
 
 The server's deadline over a thunk's waits; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `resolve`
 
 The server's wait for a host name's addresses; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `&deadline-passed`
 
 The condition a wait raises once a `with-deadline` deadline has passed; see
-[the server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+[the server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `deadline-passed?`
 
 Whether it is a `&deadline-passed`; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `&client-closed`
 
 The condition a wait raises once the client has closed or reset the
 connection; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `client-closed?`
 
 Whether it is a `&client-closed`; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `&resolve-error`
 
 The condition `resolve` raises for a name that does not resolve; see [the
-server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `resolve-error?`
 
 Whether it is a `&resolve-error`; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `resolve-error-reason`
 
 Why a lookup failed, such as `EAI_NONAME`; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `&body-failed`
 
 The condition a body's read raises when the body fails: past a cap,
 malformed or stalled; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `body-failed?`
 
 Whether it is a `&body-failed`; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `body-failed-reason`
 
 Why a body failed, such as `body-too-large`; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `body-failed-status`
 
 The status the server answers for a failed body, such as 413; see [the
-server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `awaiting`
 
 The server's answer that runs a thunk where it may wait, for a take-over
 that waits; a handler never answers it, as the adapter does for every
 request. See [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#waiting).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#waiting).
 
 ### `transport?`
 
 Whether it is a transport, the stream a take-over gets after the 101; see
 [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-write!`
 
 Sends bytes on the transport; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-read-start!`
 
 Hands each read from the transport to a procedure, and its end to another;
 see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-read-stop!`
 
 Stops reading the transport; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-close!`
 
 Closes the transport, once its writes have gone out and the client closes
-too; see [the server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+too; see [the server's reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-abort!`
 
 Closes the transport now, dropping writes not yet sent; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-deadline!`
 
 Calls a procedure once so many milliseconds pass, or cancels that for
 `#f`; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-on-drain!`
 
 Calls a procedure when the server shuts down; see [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ### `transport-on-close!`
 
 Calls a procedure once the transport has closed, whoever closed it; see
 [the server's
-reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/reference.md#the-transport).
+reference](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/reference.md#the-transport).
 
 ## `(circuit middleware waits)`
 

@@ -89,6 +89,58 @@ hello
 - [examples/long-poll.sps](../examples/long-poll.sps) is this, with a
   deadline, and a client that leaves forgotten.
 
+## Wait for another thread
+
+```scheme
+(import (rnrs) (only (chezscheme) fork-thread sleep make-time) (circuit) (circuit http-server))
+
+(define (text status s)
+  (make-res status '(("content-type" . "text/plain")) s))
+
+;; Blocks its thread for 2 s, as a C library's call might.
+(define (slow-square n)
+  (sleep (make-time 'time-duration 0 2))
+  (* n n))
+
+(run-server
+ (lambda (req)
+   (if (string=? (req-path req) "/slow")
+       (let ((n (await-outside
+                 (lambda (resume)
+                   (fork-thread (lambda () (resume (slow-square 7))))))))
+         (text 200 (string-append (number->string n) "\n")))
+       (text 200 "fast\n"))))
+```
+
+Ask for `/slow`, and while it waits, ask for `/` from another terminal:
+
+```text
+$ curl -w '%{time_total} s\n' http://127.0.0.1:8080/slow
+49
+2.001242 s
+```
+
+```text
+$ curl -w '%{time_total} s\n' http://127.0.0.1:8080/
+fast
+0.000572 s
+```
+
+- Some work can only block, such as a query through a C library. Give it
+  to a thread of your own, and wait with `await-outside`.
+- `(await-outside register)` is `await` for another thread. `register`
+  runs on the server's thread and only hands the work over. The thread
+  calls `(resume v)`, and `await-outside` gives back `v`.
+- `resume` answers `#t` once it has posted `v`, or `#f` if it was called
+  before or the server has stopped.
+- A deadline or the client's close ends the wait, not the thread's work.
+- The thread must not wait, nor touch the request or a response: take
+  what it needs out of the request first. A thread that raises never calls
+  `resume`, so catch there.
+- Read the server's
+  [Waiting for another thread](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/waiting.md#waiting-for-another-thread-await-outside)
+  before you start one: it has the traps, and a worker with a queue.
+
 ## Give up after a time
 
 In the first program, answer `/slow` this way instead:
@@ -111,8 +163,9 @@ gave up
 - Code that isn't waiting is never cut short: it raises at its next wait,
   if it has one.
 - `deadline-passed?` tells the deadline from other raises.
-- A `resume` called after its deadline wakes nothing, and the server logs
-  `late-resume await`.
+- An `await`'s `resume` called after its deadline wakes nothing, and the
+  server logs `late-resume await`. An `await-outside`'s value is dropped
+  without a word.
 - `(wrap-timeout ms)` puts a deadline around a whole handler, and answers
   an empty 504: see [Middleware](middleware.md).
 
@@ -165,7 +218,8 @@ to your system.
 
 - **Don't block.** A call that holds the thread, such as Chez's `sleep`,
   holds up every request until it returns: while one handler slept 2 s
-  that way, a request for `/` took 1.7 s. Use `sleep-ms`.
+  that way, a request for `/` took 1.7 s. Use `sleep-ms`, or give the
+  call to a thread of your own (above).
 - **Don't wait outside a request.** A wait at the program's top level
   raises: `a wait on no coroutine`. A take-over can't wait either, unless
   it answers `awaiting`: see [Upgrades and WebSockets](upgrades.md).
@@ -176,5 +230,5 @@ to your system.
   wait.
 
 The server's
-[Waiting](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/waiting.md)
+[Waiting](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/waiting.md)
 page goes deeper: memory, costs, and how a body read waits.

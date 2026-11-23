@@ -165,9 +165,9 @@ else
 fi
 
 # Assertion 10: the Makefile's own checks pass in here too: check-help, and
-# test, which runs every suite. check-pins would pass in here as well, but
-# it holds the fetched trees, not the container, so it isn't one of them:
-# the host and CI run it.
+# test, which runs every suite. check-pins isn't one of them: it holds the
+# fetched trees and the server's submodule, not the container, and needs
+# git for the submodule, so the host and CI run it.
 if ! make --no-print-directory check-help; then
   bad "check-help"
 fi

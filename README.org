@@ -64,12 +64,13 @@ You need Linux or macOS, on x86-64 or arm64, with:
 
 Circuit runs on [[https://github.com/Kiyomi-Computation-Systems/chez-http-server][chez-http-server]], takes WebSockets from
 [[https://github.com/Kiyomi-Computation-Systems/chez-websocket][chez-websocket]] and reads JSON with
-[[https://github.com/Kiyomi-Computation-Systems/jsonparse][jsonparse]], each from the Akku index.
+[[https://github.com/Kiyomi-Computation-Systems/jsonparse][jsonparse]], each from the Akku index but the server, a submodule at its
+v0.12.0 until Akku has that release.
 
 #+begin_src sh
 git clone https://github.com/Kiyomi-Computation-Systems/circuit.git
 cd circuit
-make fetch   # fetches every dependency from the Akku index, as Akku.lock pins it
+make fetch   # clones the server, and fetches the rest from the Akku index, as Akku.lock pins it
 make test    # builds the libuv shim, then runs every tests/test-*.sps
 #+end_src
 

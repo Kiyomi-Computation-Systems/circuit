@@ -204,15 +204,27 @@ close-out under **Close-outs**, newest first.
   submodule (ADR-0011, which supersedes ADR-0003's items 1 to 6 and 8, and ADR-0010's
   items 3 and 4).
 - **`(circuit http-server)` exports the config errors**, squashed from
-  [PR #52](https://github.com/Kiyomi-Computation-Systems/circuit/pull/52) on 2026-11-22,
+  [PR #52](https://github.com/Kiyomi-Computation-Systems/circuit/pull/52) on 2026-11-23,
   which closes the owner's #51; its close-out is below. `&circuit-config-error` and
   `circuit-config-error?` are circuit's own, and `&http-server-config-error` and
   `http-server-config-error?` the server's, re-exported.
-- **Next:** the owner's call. The Open list below holds what is known. Publishing
-  circuit on Akku is a slice of its own (ADR-0011).
+- **The server is at v0.12.0, from a submodule, and `(circuit http-server)` re-exports
+  `await-outside`**, squashed from
+  [PR #54](https://github.com/Kiyomi-Computation-Systems/circuit/pull/54) on 2026-11-23,
+  items 1 and 2 of the owner's #53; its close-out is below. ADR-0012, Proposed, amends
+  ADR-0011 for the server alone until the Akku index has 0.12.0 and a chez-websocket
+  that admits it.
+- **Next:** #53's item 3, the worker, a slice of its own: a design first, answering
+  #53's seven questions and its request that the worker be modelled and verified as
+  state machines, then the owner's approval. Publishing circuit on Akku is a slice of
+  its own too (ADR-0011).
 
 ## Open
 
+- **The server's exception ends** once the Akku index has chez-http-server 0.12.0 and a
+  chez-websocket whose range admits it: chez-websocket 0.6.0 names `^0.11.0`, and
+  Kiyomi-Computation-Systems/chez-websocket#115 asks for that release. Nothing turns CI
+  red when both are there: look at the index. ADR-0012's item 6 says what moves then.
 - **`scripts/require-chez`, left from PR #28:**
   - with no GNU `timeout` or `gtimeout` on PATH, as on a Mac without coreutils, its probe
     is unbounded: a `scheme` that never exits hangs every make target, `make help`
@@ -289,6 +301,102 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-23: the server's v0.12.0 from a submodule, and `await-outside`, in PR #54
+
+On the owner's #53, filed by Techo's planning session, then in this session: "take the
+exception", "pin first, worker later", keep the manifest and the lock as Akku makes
+them, and file chez-websocket's ask. Items 1 and 2 of #53; item 3, the worker, is the
+next slice. Commits on `deps/server-0.12-await-outside`: the change (fcc54f7), Now and
+this close-out (60e2327), and its CI run named here. It passed on the PR (run
+45096605087, 5m17s), on amd64, arm64 and the site job. Each job's `make fetch` checked
+the submodule out at `bba2ba6`. On both architectures, `make check-site-deps`'s
+harness passed, and after the tests and the gate `make check-pins` held the submodule
+at v0.12.0 with no change.
+
+- **read first, 2026-11-23:** `akku update` at 01:05Z: the index has the server at
+  0.9.1 and 0.11.0, and chez-websocket at 0.6.0 alone, which names `chez-http-server
+  ^0.11.0`, below 0.12.0 as Akku reads a caret. So no manifest that names
+  chez-websocket can lock 0.12.0, on the index or not: filed as
+  Kiyomi-Computation-Systems/chez-websocket#115. The tag v0.12.0 peels to `bba2ba6`.
+  Six of the server's libraries changed and none of its depends, and its own lock pins
+  the versions circuit's does;
+- **the trial, before any change:** the server cloned at `bba2ba6` into `build/trial`,
+  the path's server taken from it by `SERVER_DIR`: `make test` 26 of 26 and `make gate`
+  within every bound, in the container, chez-websocket 0.6.0 from Akku. Neither wrote
+  into the server's tree;
+- **ADR-0012, Proposed:** it amends ADR-0011's items 3, 6 and 7 for the server alone.
+  - `vendor/chez-http-server` is a submodule at `SERVER_PIN`, `SERVER_VERSION` 0.12.0.
+  - The manifest and the lock stay Akku's, the lock's 0.11.0 entry unfetched, as
+    `AKKU_EXCEPTED` names it.
+  - The exception ends once the index has 0.12.0 and a chez-websocket that admits it.
+    Nothing turns red then: the Open list holds it.
+  - A consumer such as Techo keeps circuit's depends and puts the server's `src/`
+    first on its path.
+
+  Global constraints, AGENTS.md, Installing's page, README.org, `Akku.manifest`'s
+  comment, the CHANGELOG and both workflows say the same, and ADR-0011's status names
+  the amendment;
+- **the checks:** `make fetch` clones the submodule (`FETCH_SERVER`). Each check is
+  `scripts/check-server-pin`:
+  - `make deps`, without git: the submodule's `Akku.manifest` names `SERVER_VERSION`;
+  - `make check-pins`, with git: its HEAD, its gitlink and its tag v0.12.0 are
+    `SERVER_PIN`, and `git status` shows nothing, ignored files and nested submodules
+    included.
+
+  `tests/check-pins.sh` builds a fake server, with two tagged releases and a nested
+  submodule, in a fake repository, its git configuration kept from the user's. Rows 13
+  to 19 hold each fault, deps copying nothing on one, and a deinit clearing a nested
+  submodule. The harness has 38 rows, and `make check-site-deps` now runs on the host
+  for git. Ten mutants of the script and the Makefile were each killed by a failing
+  row;
+- **the reference suite:** an `excepted` list and `version-of` take the server's
+  version and reference from its submodule; 33 links into the server moved to v0.12.0,
+  and the constraints say `chez-http-server, now 0.12.0`. Run first on the old records,
+  it failed 35 rows. An empty `excepted` failed 37 rows, and a `version-of` that ignored
+  it 36;
+- **`await-outside`:** re-exported from `(circuit http-server)`, its signature comment
+  the server's table row. Each row was watched failing first:
+  - test-names' lists and `eq?` row;
+  - an adapter row in which an app made in circuit's libraries alone waits, the test
+    playing the thread: its value answers, and a second call is `#f` and logged;
+  - a `wrap-timeout` row: 504 at the deadline, and a later value dropped unlogged.
+
+  Waiting's page gains a section, its program run in the container: `/` answered in
+  0.6 ms while `/slow` waited 2 s on its thread. It points at the server's traps.
+  Middleware's page lists `await-outside` among what `wrap-timeout` covers. Mutants: an
+  `await-outside` of circuit's own, on copies of the names and adapter suites that load
+  with it, failed the `eq?` row and the adapter row; a deadline a millisecond late failed
+  the new row and six others;
+- **the review,** read-only on Opus, found one major and eight minor:
+  - M1: `make deps` read the submodule's HEAD from its git directory, which the
+    container can't see from a linked worktree. Reproduced in a worktree of circuit
+    under `build/`, it failed there with "has no HEAD". Fixed: `deps` reads the
+    manifest's version, which passed in the same worktree. `check-pins` holds the
+    commit, now its tag too (m3), and a branch HEAD no longer matters (m4);
+  - m1: a row's clean-up ran while the server was still moved, so later rows passed on
+    the copy's fault. The review's mutant, a Makefile that drops the server's fault,
+    killed one row then and 11 now;
+  - m2: a v0.3.0 checkout keeps the old server's own submodules, which `check-pins`
+    names. The CHANGELOG and ADR-0012 say to deinit them, and a row holds it;
+  - m5: the user's global hooks reached the harness's git;
+  - m6: Waiting's page lacked the deadline and named a rule the server doesn't;
+  - m7 and m8: stale records and loose wording.
+
+  All taken;
+- **checks, on the final tree:**
+  - in the container: `make check-guix` passed, its `make test` 26 of 26, and
+    `make check-site` and `make check-help` passed. `make gate`, run on the final
+    `src/` before the review's fixes, which touch no library, held every bound, worst
+    G4 one at +81 of 88 and G3 GET at +324 of 384;
+  - on the host: `make check-pins`, `make check-site-deps` (94 rows) and
+    `make check-akku-lock` passed;
+  - a fresh clone of fcc54f7, under `build/`: `make fetch` cloned the submodule from
+    GitHub at `bba2ba6` and unpacked the seven trees, and `make check-pins` passed on
+    the host. In its container, `make deps` and `make check-imports` passed, and so did
+    the names, adapter and reference suites;
+- **the ledger:** #52's Now dates its merge 2026-11-23, its UTC day;
+- **agents:** the review, Opus: 203,087 tokens, 79 tool uses, 13m23s.
 
 ### 2026-11-22: the config errors exported from `(circuit http-server)`, in PR #52
 

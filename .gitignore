@@ -7,10 +7,10 @@
 /vendor/akku-trees/
 
 # the old submodules, which a checkout from before each came from Akku
-# keeps: jsonparse's, the server's and chez-websocket's. Not on the path,
-# and never to be added back as gitlinks
+# keeps: jsonparse's and chez-websocket's. Not on the path, and never to be
+# added back as gitlinks. The server's, vendor/chez-http-server, is a
+# submodule again, until Akku has its 0.12.0 (ADR-0012)
 /vendor/jsonparse/
-/vendor/chez-http-server/
 /vendor/chez-websocket/
 
 # Chez compiled objects / whole-program optimization outputs

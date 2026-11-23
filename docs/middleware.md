@@ -311,8 +311,9 @@ The server's terminal shows `request GET / 504 written 1003 127.0.0.1`.
 
 - `(wrap-timeout ms)` runs the handler under a deadline, and answers an
   empty `504` once `ms` milliseconds pass.
-- It covers what the handler waits for: `sleep-ms`, `await`, a read of the
-  body. It cuts nothing short that isn't waiting: a busy loop runs on.
+- It covers what the handler waits for: `sleep-ms`, `await`,
+  `await-outside`, a read of the body. It cuts nothing short that isn't
+  waiting: a busy loop runs on, and so does another thread's work.
 - It doesn't cover a producer, which runs after the handler returns.
 - Put it outside `wrap-catch`. The catch passes the deadline on, so an
   `on-raise` that waits past it still gets the `504`. With the timeout

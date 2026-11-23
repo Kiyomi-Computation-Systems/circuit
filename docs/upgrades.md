@@ -68,7 +68,7 @@ hi
   keep them quick. A raise in one is logged `taker-failed`, and the stream
   closed.
 - The server's
-  [Upgrades](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.11.0/docs/upgrades.md)
+  [Upgrades](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/upgrades.md)
   page has the rules for reads, writes, closing and shutdown.
 
 ## Wait inside a take-over

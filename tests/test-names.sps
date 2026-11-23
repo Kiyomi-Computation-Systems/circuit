@@ -110,7 +110,7 @@
 ;; The server's waits, conditions, transport procedures and awaiting, which
 ;; (circuit http-server) re-exports.
 (define server-reexports
-  '(awaiting await sleep-ms with-deadline resolve
+  '(awaiting await await-outside sleep-ms with-deadline resolve
     &deadline-passed deadline-passed? &client-closed client-closed?
     &resolve-error resolve-error? resolve-error-reason
     &body-failed body-failed? body-failed-reason body-failed-status
@@ -236,9 +236,10 @@
   (filter (lambda (name) (memq name (library-exports '(circuit http-server)))) '(make-transport)))
 
 (test-equal "(circuit http-server)'s re-exported procedures are the server's own"
-  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t)
+  '(#t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t #t)
   (map (lambda (pair) (eq? (car pair) (cdr pair)))
-       (list (cons adapter:awaiting server:awaiting) (cons adapter:await server:await) (cons adapter:sleep-ms server:sleep-ms)
+       (list (cons adapter:awaiting server:awaiting) (cons adapter:await server:await)
+             (cons adapter:await-outside server:await-outside) (cons adapter:sleep-ms server:sleep-ms)
              (cons adapter:with-deadline server:with-deadline) (cons adapter:resolve server:resolve)
              (cons adapter:deadline-passed? server:deadline-passed?)
              (cons adapter:client-closed? server:client-closed?)
