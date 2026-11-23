@@ -22,6 +22,40 @@ Exception in limits-from-environment: expected a whole number in ASCII digits wi
   fine, while `-1` and ` 80` are refused.
 - Each variable is read once, as the program starts.
 
+## Catch a bad setting
+
+```scheme
+(import (rnrs) (circuit) (circuit http-server))
+
+(define (app req) (make-res 200 '() "hello\n"))
+
+(define (refuse e)
+  (let ((err (current-error-port)))
+    (put-string err "bad setting: ")
+    (put-string err (condition-message e))
+    (put-string err " ")
+    (write (condition-irritants e) err)
+    (newline err)
+    (exit 2)))
+
+(guard (e ((http-server-config-error? e) (refuse e)))
+  (run-server app))
+```
+
+```text
+$ CHEZ_HTTP_PORT=80a scheme --libdirs "$(make libdirs)" --program app.sps
+bad setting: expected a whole number in ASCII digits ("CHEZ_HTTP_PORT" "80a")
+$ echo $?
+2
+```
+
+- `http-server-config-error?` answers `#t` for any setting refused, the
+  server's or circuit's.
+- `circuit-config-error?` answers `#t` for circuit's own alone, such as
+  `CIRCUIT_PORT_PIECE_BYTES`. Its condition type, `&circuit-config-error`,
+  is a kind of the server's `&http-server-config-error`.
+- The irritants are the variable and its value.
+
 ## The server's settings
 
 ```sh
@@ -58,7 +92,8 @@ CIRCUIT_PORT_PIECE_BYTES=16384 make run PROGRAM=app.sps
 | `CIRCUIT_PORT_PIECE_BYTES` | 65536 | the most a piece of a port body holds |
 
 - It must be 1 or more, in digits. `CIRCUIT_PORT_PIECE_BYTES=0` stops the
-  program before it listens, with `Exception in circuit->handler`.
+  program before it listens, with `Exception in circuit->handler`, a
+  `&circuit-config-error`.
 - [Bodies and streaming](bodies.md) says how a port body goes out.
 
 ## WebSocket limits

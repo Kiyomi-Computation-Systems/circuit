@@ -40,21 +40,22 @@
 ;;; else the process's environment: CIRCUIT_PORT_PIECE_BYTES, the most a
 ;;; piece of a port body holds, 65,536 by default. A number is the server's:
 ;;; ASCII digits alone, leading zeros allowed, at least 1, no maximum; unset
-;;; or empty keeps the default. A malformed one raises a condition for which
-;;; the server's http-server-config-error? answers #t, as serve raises its
-;;; own, so run-server refuses it before anything listens.
+;;; or empty keeps the default. A malformed one raises a
+;;; &circuit-config-error, a kind of the server's &http-server-config-error,
+;;; as serve raises its own, so run-server refuses it before anything
+;;; listens, and http-server-config-error? answers #t for either.
 ;;;
 ;;; It re-exports the server's waits, the conditions they and the body
-;;; raise, and what a take-over uses, the transport procedures and
-;;; awaiting, the same bindings as (http-server)'s, so an app needs only
-;;; (circuit) and this library. A handler never answers awaiting: the
-;;; adapter answers it for every request. Not
-;;; next-body-piece or body-input-port: req-body is the body's one port, and
-;;; a second would split it. Not make-transport either: it makes a
-;;; transport to test a taker without a server, and a test imports it from
-;;; (http-server).
+;;; raise, its config error, and what a take-over uses, the transport
+;;; procedures and awaiting, the same bindings as (http-server)'s, so an
+;;; app needs only (circuit) and this library. A handler never answers
+;;; awaiting: the adapter answers it for every request. Not next-body-piece
+;;; or body-input-port: req-body is the body's one port, and a second would
+;;; split it. Not make-transport either: it makes a transport to test a
+;;; taker without a server, and a test imports it from (http-server).
 (library (circuit http-server)
-  (export circuit->handler run-server
+  (export circuit->handler run-server &circuit-config-error circuit-config-error?
+          &http-server-config-error http-server-config-error?
           awaiting await sleep-ms with-deadline resolve
           &deadline-passed deadline-passed? &client-closed client-closed?
           &resolve-error resolve-error? resolve-error-reason
@@ -74,7 +75,7 @@
                 request-http-minor request-header request-header-values request-header-list
                 request-remote-address request-remote-port request-local-address
                 request-local-port
-                &http-server-config-error
+                &http-server-config-error http-server-config-error?
                 await sleep-ms with-deadline resolve
                 &deadline-passed deadline-passed? &client-closed client-closed?
                 &resolve-error resolve-error? resolve-error-reason
@@ -114,8 +115,16 @@
   ;; transport-on-drain!, transport-on-close! : Transport (-> Any) -> Any
   ;; The server's own, re-exported: see its docs/upgrades.md.
 
-  ;; A malformed setting: a config error of the server's kind, so
-  ;; http-server-config-error? answers #t, as it does for serve's own.
+  ;; http-server-config-error? : Any -> Boolean
+  ;; &http-server-config-error: a condition type, an &http-server-error
+  ;; The server's own, re-exported: what serve raises for a malformed
+  ;; setting, before it listens. See its docs/reference.md.
+
+  ;; &circuit-config-error : ConditionType
+  ;; A malformed setting of circuit's own, CIRCUIT_PORT_PIECE_BYTES: a kind
+  ;; of the server's &http-server-config-error, so http-server-config-error?
+  ;; answers #t, as it does for serve's own.
+  ;; circuit-config-error? : Any -> Boolean
   (define-condition-type &circuit-config-error &http-server-config-error
     make-circuit-config-error circuit-config-error?)
 
