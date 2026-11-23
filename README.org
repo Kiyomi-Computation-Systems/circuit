@@ -21,6 +21,9 @@ An HTTP layer in the manner of [[https://github.com/ring-clojure/ring][Ring]] fo
 - *Handlers that wait.* Each request runs on a coroutine of its own, so a
   handler can sleep, wait for another request, or give up at a deadline (see
   [[file:docs/waiting.md][docs/waiting.md]]).
+- *Workers for blocking work.* A worker runs a job that can only block, such
+  as a database query, on threads of its own, while the server serves
+  everyone else (see [[file:docs/workers.md][docs/workers.md]]).
 - *A router.* By the path, then the method. A word beats a parameter whatever
   the table's order, and groups and mounts take middleware of their own (see
   [[file:docs/routing.md][docs/routing.md]]).
@@ -32,8 +35,8 @@ An HTTP layer in the manner of [[https://github.com/ring-clojure/ring][Ring]] fo
 - *Handlers tested without a server.* ~make-test-req~ makes a request to
   call a handler with (see [[file:docs/testing.md][docs/testing.md]]).
 - *A plain R6RS core.* Requests, responses, headers, middleware and the
-  router are portable R6RS. Only the adapter and the waits' middleware use
-  Chez's own procedures.
+  router are portable R6RS. Only the adapter, the waits' middleware and the
+  worker's shell use Chez's own procedures.
 
 v0.3.0 is the latest release. The API may change in any release before 1.0;
 [[file:CHANGELOG.md][CHANGELOG.md]] says what each release has.

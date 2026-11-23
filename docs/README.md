@@ -62,6 +62,7 @@ Press Ctrl-C and the server finishes what it is doing, then stops.
 | `(circuit middleware cors)` | `wrap-cors`: lets a page on another origin call you |
 | `(circuit middleware headers)` | `wrap-default-headers` and `wrap-hsts`: safe headers on every response |
 | `(circuit websocket)` | `websocket-res`, which answers a WebSocket handshake |
+| `(circuit worker)` | `make-worker` and `worker-call`: blocking work, such as a database query, on threads of its own |
 | `(circuit test)` | `make-test-req`, to call a handler with no server |
 
 ## What it is not
@@ -101,6 +102,8 @@ the [changelog](../CHANGELOG.md) says what each release has.
 - [Routing](routing.md): routes, groups and mounts.
 - [Waiting](waiting.md): sleeping, deadlines, and waiting for another
   request.
+- [Workers](workers.md): blocking work, such as a database query, on
+  threads of its own.
 - [Upgrades and WebSockets](upgrades.md): taking a connection over.
 - [Testing handlers](testing.md): calling a handler with no server.
 - [Configuration](configuration.md): the environment variables.

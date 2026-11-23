@@ -21,6 +21,7 @@
       ("middleware.md"    . "Middleware")
       ("routing.md"       . "Routing")
       ("waiting.md"       . "Waiting")
+      ("workers.md"       . "Workers")
       ("upgrades.md"      . "Upgrades and WebSockets")
       ("testing.md"       . "Testing handlers")
       ("configuration.md" . "Configuration")

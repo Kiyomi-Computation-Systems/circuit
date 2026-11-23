@@ -110,7 +110,7 @@
                 make-condition condition-wait condition-signal condition-broadcast
                 disable-interrupts enable-interrupts make-thread-parameter get-thread-id))
 
-  ;; State = Any, a set-up's value
+  ;; State = Any
   ;; Observer = Symbol Party Fixnum Any -> Any
   ;; Party = (maker) | (thread Positive-Fixnum) | (stopper) | (caller Ticket)
 

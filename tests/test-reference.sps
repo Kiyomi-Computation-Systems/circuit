@@ -8,9 +8,9 @@
 ;;; block whose info string is text, holding the signature, then words and
 ;;; links. Its rows:
 ;;;
-;;;   (a) the page's sections are the twelve public libraries, in their order,
+;;;   (a) the page's sections are the thirteen public libraries, in their order,
 ;;;       each once;
-;;;   (b) every library under src/ is one of the twelve, or the names it
+;;;   (b) every library under src/ is one of the thirteen, or the names it
 ;;;       exports that no public library exports are exactly the ones this
 ;;;       suite lists as the adapter's, the worker's and the tests' own;
 ;;;   (c) under each section, the entries are the library's exports, by
@@ -108,11 +108,11 @@
 (define src-dir
   (if (and (pair? arguments) (pair? (cdr arguments)) (pair? (cddr arguments))) (caddr arguments) "src"))
 ;; public-libraries : (Listof (Listof Symbol))
-;; The twelve, in the page's order.
+;; The thirteen, in the page's order.
 (define public-libraries
   '((circuit) (circuit http-server) (circuit middleware waits) (circuit middleware cors)
     (circuit middleware headers) (circuit router) (circuit params) (circuit json)
-    (circuit cookies) (circuit session) (circuit websocket) (circuit test)))
+    (circuit cookies) (circuit session) (circuit websocket) (circuit worker) (circuit test)))
 
 ;; internal-exports : (Listof (Pair (Listof Symbol) (Listof Symbol)))
 ;; What a library under src/ exports for the adapter, the worker and the tests, which no
@@ -125,11 +125,7 @@
      res-wrapped-body-inner res-wrapped-body-proc res-wrapped-body?)
     ((circuit worker machine) initial-machine make-machine machine? machine-phase
      machine-slots machine-queue machine-cap machine-raises step step/row)
-    ((circuit worker shell) make-worker worker-call worker-stop! worker? make-test-worker
-     &worker-full worker-full? &worker-stopped worker-stopped? make-shell-worker
-     worker-live-count worker-lock-free?)
-    ((circuit worker) make-worker worker-call worker-stop! worker? make-test-worker
-     &worker-full worker-full? &worker-stopped worker-stopped? wrap-busy)))
+    ((circuit worker shell) make-shell-worker worker-live-count worker-lock-free?)))
 
 ;; upstream-specs : (Listof (List (Listof Symbol) String String))
 ;; Each library circuit re-exports from: its facade, its repository, which
@@ -1618,7 +1614,7 @@
 
 ;; --- (a) the sections ------------------------------------------------------------------------
 
-(test-equal (string-append page ": its ## sections are the twelve public libraries, in order, each once")
+(test-equal (string-append page ": its ## sections are the thirteen public libraries, in order, each once")
   public-libraries
   (map section-library page-sections))
 
@@ -1655,7 +1651,7 @@
                      (let ((exports (exports-of library)))
                        (if exports (without exports all-public-names) 'unloadable)))))
          (test-equal (string-append (source-path s) ": " (written library)
-                                    " is no public library, so what it exports that none of the twelve does is the adapter's, the worker's and the tests' alone")
+                                    " is no public library, so what it exports that none of the thirteen does is the adapter's, the worker's and the tests' alone")
            (sorted-symbols (cond ((assoc library internal-exports) => cdr) (else '())))
            left)))))
  sources)

@@ -15,7 +15,7 @@
 ;;; Its tests hold what the import cannot: that each library exports exactly
 ;;; its list, so the (circuit) facade keeps the adapter's, the tests', the
 ;;; router's, the CORS and header middleware's, the params', the JSON
-;;; and the cookies' names out,
+;;; and the cookies' names out, and the worker's too,
 ;;; that the adapter's re-exports are the server's own bindings,
 ;;; compared through a prefixed import of each, and that the like-named
 ;;; bindings of the two make different things.
@@ -41,6 +41,7 @@
         (jsonparse easy)
         (circuit cookies)
         (circuit session)
+        (circuit worker)
         (circuit test)
         (circuit http-server)
         (circuit websocket)
@@ -212,6 +213,11 @@
   '()
   (filter (lambda (name) (memq name (library-exports '(circuit))))
           (library-exports '(circuit session))))
+
+(test-equal "(circuit worker) exports its ten exactly"
+  '(&worker-full &worker-stopped make-test-worker make-worker worker-call worker-full? worker-stop!
+    worker-stopped? worker? wrap-busy)
+  (sorted-exports '(circuit worker)))
 
 (test-equal "(circuit websocket) exports websocket-res alone: an app takes the rest from (websocket)"
   '(websocket-res)

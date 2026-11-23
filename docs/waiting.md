@@ -139,7 +139,9 @@ fast
   `resume`, so catch there.
 - Read the server's
   [Waiting for another thread](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/waiting.md#waiting-for-another-thread-await-outside)
-  before you start one: it has the traps, and a worker with a queue.
+  before you start one: it has the traps.
+- For threads with a queue of their own, and a `503` when it is full, use
+  a worker: see [Workers](workers.md).
 
 ## Give up after a time
 

@@ -272,6 +272,9 @@ The server's terminal shows `failed /boom`.
   again stuck for good, and catching the second turns a `504` into a `500`.
 - It covers the handler's call alone. A producer, a wrap's `f` and a tap
   run after the handler returns, so a raise there reaches the server.
+- `wrap-busy`, from `(circuit worker)`, goes inside it, so a worker with no
+  room answers `503`, not `500`: see
+  [Workers](workers.md#when-the-queue-is-full-wrap-busy).
 
 A catch of your own passes the same two on, and answers `&body-failed`
 with its status. The predicates come from `(circuit http-server)`:
