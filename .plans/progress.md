@@ -308,7 +308,11 @@ On the owner's #53, filed by Techo's planning session, then in this session: "ta
 exception", "pin first, worker later", keep the manifest and the lock as Akku makes
 them, and file chez-websocket's ask. Items 1 and 2 of #53; item 3, the worker, is the
 next slice. Commits on `deps/server-0.12-await-outside`: the change (fcc54f7), Now and
-this close-out, and its CI run named here.
+this close-out (60e2327), and its CI run named here. It passed on the PR (run
+45096605087, 5m17s), on amd64, arm64 and the site job. Each job's `make fetch` checked
+the submodule out at `bba2ba6`. On both architectures, `make check-site-deps`'s
+harness passed, and after the tests and the gate `make check-pins` held the submodule
+at v0.12.0 with no change.
 
 - **read first, 2026-11-23:** `akku update` at 01:05Z: the index has the server at
   0.9.1 and 0.11.0, and chez-websocket at 0.6.0 alone, which names `chez-http-server
