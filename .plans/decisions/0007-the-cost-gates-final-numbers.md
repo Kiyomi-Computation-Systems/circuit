@@ -10,7 +10,10 @@
   work, is held (the owner's decision, design §15 item 24); 2026-10-29: on the server's
   v0.9.1, which fixes #245, G8 and G8 on-done read about 620 B less at 1 connection and
   300 B less at 50, and no held gate moves; 2026-10-29: CI holds the gate on Linux arm64
-  too, where its first run read every gate within 12 B of amd64's
+  too, where its first run read every gate within 12 B of amd64's; 2026-11-23, in the
+  worker's slice W1: G11, the worker machine's own allocation for one job, is held at
+  512 B ([ADR-0013](0013-a-worker-runs-jobs-on-threads-of-its-own-decided-by-a-pure-step-function-under-one-lock.md)
+  item 13), the bound the owner accepted the same day ("Accept 512 B")
 - **Scope:** the bounds `make gate` holds and prints, and what they are measured on
 - **Plan:** [the design](../2026-10-24-circuit-design.md) §4, §13, §15 item 6
 
@@ -57,6 +60,11 @@ record size step, where a six-field request record failed it by 1 B.
    | G10 word, the router's own work | 128 | held | 90 (in 7 runs) | each word compared by a substring: 341 |
    | G10 param | 256 | held | 167 | each word compared by a substring: 401 |
    | G10 miss | 64 | held | 4 | each word compared by a substring: 323 |
+   | G11, the worker machine's own work for one job | 512 | held | 448 (in 9 runs, each the same) | the slot vector rebuilt through a list: 544 |
+
+   G11 is in bytes a job, not a request: a call, a next and an end through the machine's
+   `step` on one thread, nothing queued, over 5,000 against 25,000 jobs, the ticket and
+   the events built once. No server is involved.
 
    G6 stays a smoke: at least 90% of raw's rate at 50 connections, printed, never failing.
 4. **G7 holds a port body**: a 6-byte bytevector port, made per request, as the body,
@@ -120,5 +128,14 @@ G3 and G4 mutants.
   - **A word route's match made per request** reads 108–117 B, under the 128 B bound. A
     suite row holds that one: `tests/test-router.sps` bounds a words-only route at 88 B,
     in plain Chez.
+- **The worker's slice W1 measured G11**, in eight runs by its gate builder and one by
+  the session on 2026-11-23:
+  - **It reads 448 B a job in every run**, both rounds: a byte count of a pure function
+    on one thread has no noise. So the 64 B of headroom is for Chez and compiler drift,
+    not noise, and 512 B is the design's aim.
+  - **Events built for each job read 576 B**, printed and not held: 128 B for the three
+    events, which the worker's shell will pay.
+  - **The regression is close.** A slot vector rebuilt through a list reads 544 B, 32 B
+    over the bound, since one thread's vector is small; the gate fails it, exit 1.
 - **G1 and G2 are re-baselined at each move of the server's pin**, as before.
 - **Per-connection costs cancel under keep-alive**, so the gate doesn't see them.

@@ -161,6 +161,10 @@ audit.
   every job not yet begun, waits for the running ones, and joins every thread.
 - **Each mutant in the design's §8.8 is seen to fail its layer** before that layer is
   accepted (ADR-0013).
+- **The explorer runs in `make test`, and its larger worlds in `make
+  check-worker-model`,** which CI runs on amd64 alone, since the machine is pure. Both
+  fail unless every row of the table fires, and unless each configuration reaches its
+  floor of worlds (ADR-0013).
 
 ## Cost
 
@@ -171,5 +175,6 @@ audit.
   384 B (G7); `wrap-log`'s own work, over the app registering a no-op `req-on-done!`, at
   most 384 B (G8 own); `wrap-timeout` over the app, its deadline never passing, at most
   768 B, with a park and without (G9); the router's own work, at most 128 B a word route,
-  256 B a one-parameter route and 64 B a path no route takes (G10). CI fails over any of
-  them (ADR-0007).
+  256 B a one-parameter route and 64 B a path no route takes (G10); the worker machine's
+  own work for one job, a call, a next and an end through `step` on one thread, at most
+  512 B (G11). CI fails over any of them (ADR-0007).

@@ -7,7 +7,8 @@ name: CI
 # builds Chez at its floor (once, then cached), and runs `make
 # test`, which builds chez-libuv's shim, in a copy, against the system
 # libuv and runs check-help, check-suites and every suite, then checks the
-# docs site and runs the cost gate, `make gate`. Then `make check-pins`
+# docs site and runs the cost gate, `make gate`, and, on amd64, the worker
+# machine's larger exploration, `make check-worker-model`. Then `make check-pins`
 # holds that none of that wrote into a tree, nor into chez-libuv's copy
 # past its build's products, nor into the server's submodule. Last, it fetches Akku 1.2.0 and holds Akku.lock
 # to what it makes of Akku.manifest against today's index (`make
@@ -69,7 +70,9 @@ jobs:
             machine: aarch64
             chez-machine: tarm64le
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    # amd64 also runs the worker model's larger worlds, about eleven minutes,
+    # on top of a Chez build when its cache misses.
+    timeout-minutes: 45
     steps:
       # The machine is the arch its label names, checked before anything is
       # built: a label that lands on another arch fails here, by name, not
@@ -225,14 +228,22 @@ jobs:
       # The cost gate, a step of its own: `make oha` fetches
       # oha, the gate's load client, at the version and sha256 the server's
       # tests/fetch-oha.sh pins; `make gate` reads bytes a request through
-      # circuit's adapter against the raw server, prints G1, G2 and G8, and
-      # fails when a held gate, G3 to G5, G7, G8 own, G9 or G10, is over its bound.
+      # circuit's adapter against the raw server, and one job through the
+      # worker's machine, prints G1, G2 and G8, and fails when a held gate,
+      # G3 to G5, G7, G8 own, G9, G10 or G11, is over its bound.
       # A byte count is not noise-bound, so CI holds it. Requests a second are,
       # so `make gate-rps` (G6) runs locally before a release, not here.
       - name: Cost gate
         run: |
           make oha
           make gate
+
+      # The worker's machine explored in worlds too big for `make test`, up
+      # to 3 threads and 4 handlers: about eleven minutes and 6 GB. The
+      # machine is pure R6RS, so one arch is enough.
+      - name: Worker model, larger worlds
+        if: matrix.arch == 'amd64'
+        run: make check-worker-model
 
       # After the build, the tests and the gate, each tree must still be its
       # archive, chez-libuv's copy its tree and its build's two products,
