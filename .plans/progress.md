@@ -234,8 +234,9 @@ close-out under **Close-outs**, newest first.
     2026-11-23.
   - An adversarial review on Opus found one blocking gap, a check that couldn't fail,
     now fixed.
-- **W2, the worker's shell and its verification, is built**, #53's item 3, in a PR not
-  yet merged; its close-out is below.
+- **W2, the worker's shell and its verification, is built**, #53's item 3, in
+  [PR #57](https://github.com/Kiyomi-Computation-Systems/circuit/pull/57), not yet
+  merged; its close-out is below.
   - `(circuit worker shell)`, internal, runs the machine's decisions on real threads
     under one lock. It has the double, the observer and the broken worker.
   - `(circuit worker)` is the public library: the API, re-exported, and `wrap-busy`.
@@ -332,11 +333,18 @@ close-out under **Close-outs**, newest first.
 
 ## Close-outs
 
-### 2026-11-23: W2, the worker's shell and its verification
+### 2026-11-23: W2, the worker's shell and its verification, in PR #57
 
 On the owner's "Begin W2. Layer 4b can reuse W1's world model. Use the same
 parallelization / subagent strategy as before. tell Techo's session once W2 lands."
-#53's item 3, the second of the worker's three slices, on `w2/shell`.
+#53's item 3, the second of the worker's three slices. Commits on `w2/shell`: the slice
+(a7d9ecc) and this close-out.
+
+CI passed on a7d9ecc (run 45272639102):
+- amd64 in 22m17s, of which `make check-worker-model` took 15m38s, against W1's 11m56s
+  on the same model: the runner's variance, within the step's 25-minute limit;
+- arm64 in 6m51s;
+- the site job in 1m50s.
 
 - **How it was built.** I fixed the shell's exports, its observer's points and notes,
   and who owns each file in one brief, `build/w2/interface.md` (git-ignored). Six
