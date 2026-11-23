@@ -191,14 +191,20 @@ GATE_LIBDIRS = $(if $(GATE_FIRST),$(GATE_FIRST):)$(LIBDIRS):$(LIBUV_DIR)/tests
 # one Chez loads is the one the audit read, whatever a path's order.
 LIBRARY_DIRS = $(sort $(subst :, ,$(LIBDIRS) $(TEST_LIBDIRS) $(LIBDIRS):$(LIBUV_DIR)/tests))
 
+# Seconds `make check-worker-model` may run before timeout kills it and
+# make names it HUNG. It takes about eleven minutes and 6 GB here; 25
+# minutes sits under CI's 45-minute job timeout with the rest of the job,
+# so the job names a hang rather than being killed.
+WORKER_MODEL_TIMEOUT ?= 1500
+
 # Seconds `make gate` or `make gate-rps` may run before timeout kills it
 # and make names it HUNG. Each takes under a minute here; under CI's
-# 30-minute job timeout, so the job names a hang rather than being killed.
+# 45-minute job timeout, so the job names a hang rather than being killed.
 GATE_TIMEOUT ?= 600
 
 # One physical line: check-help reads it with awk, and fails if it ends in
 # a backslash.
-.PHONY: help check-help check-guix check-guix-inside fetch check-pins akku-deps lock check-akku-lock oha check-chez srfi deps dev run libdirs test check-suites check-imports gate gate-rps site-deps site check-site check-site-deps clean
+.PHONY: help check-help check-guix check-guix-inside fetch check-pins akku-deps lock check-akku-lock oha check-chez srfi deps dev run libdirs test check-suites check-imports check-worker-model gate gate-rps site-deps site check-site check-site-deps clean
 
 .DEFAULT_GOAL := help
 
@@ -525,14 +531,29 @@ check-imports: deps ## Fail unless only the two impure libraries import the serv
 	@scripts/require-tools "$(GOAL)" $(CHEZ)
 	@$(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-imports.sps src --akku $(AKKU_DIR) --jsonparse $(JSONPARSE_DIR)/src --byte-machine $(BYTE_MACHINE_DIR)/src $(LIBRARY_DIRS)
 
+# The worker's machine explored in worlds too big for `make test`: the
+# explorer of tests/test-worker-model.sps, its checks and its cycle search,
+# over configurations of up to 3 threads and 4 handlers, each with its
+# shortest failing trace (tests/check-worker-model.sps). CI runs it on amd64
+# alone: the machine is pure, so another arch adds nothing but minutes.
+check-worker-model: deps ## Explore the worker's machine in worlds too big for make test, up to 3 threads and 4 handlers; fail on any property
+	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
+	@fg=; if [ -t 0 ]; then fg=--foreground; fi; \
+	$(TIMEOUT) $$fg $(WORKER_MODEL_TIMEOUT) $(CHEZ) --libdirs $(TEST_LIBDIRS) --program tests/check-worker-model.sps; \
+	rc=$$?; \
+	[ $$rc -ne 124 ] || echo "check-worker-model: HUNG (no exit within $(WORKER_MODEL_TIMEOUT)s)" >&2; \
+	exit $$rc
+
 # The cost gate, outside `make test`: bytes a
 # request through circuit's adapter, against the raw server and its
-# `awaiting` path, in one process, with the counts fixed (tests/gate.sps).
-# It prints G1, G2, G8 and G8 on-done, and fails when a held gate, G3 to G5, G7, G8 own, G9
-# or G10, is over its bound, naming it. CI runs it as a step of its own: noise doesn't move a
-# byte count. At a terminal, timeout runs with --foreground, as in `make
-# test`, and an oha it started may outlive a HUNG gate.
-gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5, G7, G8 own, G9, G10) is over its bound
+# `awaiting` path, in one process, with the counts fixed (tests/gate.sps);
+# and G11, the bytes of one job through the worker's machine. It prints G1,
+# G2, G8 and G8 on-done, and fails when a held gate, G3 to G5, G7, G8 own,
+# G9, G10 or G11, is over its bound, naming it. CI runs it as a step of its
+# own: noise doesn't move a byte count. At a terminal, timeout runs with
+# --foreground, as in `make test`, and an oha it started may outlive a HUNG
+# gate.
+gate: deps ## Run the cost gate: bytes a request over the raw server; fail if a held gate (G3 to G5, G7, G8 own, G9, G10, G11) is over its bound
 	@scripts/require-tools "$(GOAL)" $(TIMEOUT) $(CHEZ)
 	@[ -x $(OHA) ] || { echo "gate: $(OHA) not found. Run 'make oha' on the host: it fetches oha, and the container has no network." >&2; exit 1; }
 	@fg=; if [ -t 0 ]; then fg=--foreground; fi; \

@@ -10,6 +10,8 @@
 
   The design's other answers stand as recommended.
 - **Date:** 2026-11-23
+- **Amended:** 2026-11-23, in slice W1: the bounded proof's consequence says what is
+  exhausted, as built.
 - **Amends:** [ADR-0006](0006-only-the-adapter-and-middleware-waits-import-the-server.md)'s
   items 1, 2 and 4, for the worker's two impure libraries (item 2 below).
 - **Scope:** `(circuit worker)`, its machine, its shell and its double
@@ -146,8 +148,21 @@ finding was taken in (the design's §12 and §14).
 - **The double is stricter than #53's inline double.** A wait in a job raises, and a
   state used across threads is caught. It hangs where the real worker wouldn't: a job
   that never ends, and a handler holding its own lock across the call.
-- **The proof is bounded.** Worlds beyond two threads, a cap of two, three callers and
-  two stoppers are reached only at random. Two things are held by review alone:
+- **The proof is bounded, and is not the whole cross of its bounds.** Layer 3
+  exhausts chosen configurations, `make test`'s and `make check-worker-model`'s. Their
+  suites' headers give the reasoning, and W1's close-out lists each one.
+  - A flag adds optional events, so a configuration's checks at every step and world
+    cover it without the flag too. Each liveness check runs where no optional event can
+    rescue a stuck party.
+  - A failed start never meets a handler or a stopper, since neither acts before the
+    maker is answered ready. So fork and set-up failures are explored without handlers.
+  - Not exhausted anywhere, and reached only by the random walks (up to 4 threads, a cap
+    of 8, 50 handlers and two stoppers):
+    - 3 threads with 4 handlers and two stoppers;
+    - 2 threads and 3 handlers with every flag and two stoppers;
+    - worlds with deadlines, or every flag, at 3 threads and 4 handlers.
+
+  Two things are held by review alone:
   - the shell's R3, since the observer has no point inside the lock;
   - S4, that a thread's state never enters the shared record.
 - **Building it is three slices,** each reviewed:

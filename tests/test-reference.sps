@@ -12,7 +12,7 @@
 ;;;       each once;
 ;;;   (b) every library under src/ is one of the twelve, or the names it
 ;;;       exports that no public library exports are exactly the ones this
-;;;       suite lists as the adapter's and the tests' own;
+;;;       suite lists as the adapter's, the worker's and the tests' own;
 ;;;   (c) under each section, the entries are the library's exports, by
 ;;;       library-exports, each once; a failure names what is missing and
 ;;;       what isn't exported;
@@ -115,14 +115,16 @@
     (circuit cookies) (circuit session) (circuit websocket) (circuit test)))
 
 ;; internal-exports : (Listof (Pair (Listof Symbol) (Listof Symbol)))
-;; What a library under src/ exports for the adapter and the tests, which no
+;; What a library under src/ exports for the adapter, the worker and the tests, which no
 ;; public library exports, so the page leaves out. Any other library's is ().
 (define internal-exports
   '(((circuit request) make-req make-req-view req-body-made)
     ((circuit response) res-body-port res-body-stream
      res-sized-body-inner res-sized-body-length res-sized-body?
      res-tapped-body-inner res-tapped-body-proc res-tapped-body?
-     res-wrapped-body-inner res-wrapped-body-proc res-wrapped-body?)))
+     res-wrapped-body-inner res-wrapped-body-proc res-wrapped-body?)
+    ((circuit worker machine) initial-machine make-machine machine? machine-phase
+     machine-slots machine-queue machine-cap machine-raises step step/row)))
 
 ;; upstream-specs : (Listof (List (Listof Symbol) String String))
 ;; Each library circuit re-exports from: its facade, its repository, which
@@ -1648,7 +1650,7 @@
                      (let ((exports (exports-of library)))
                        (if exports (without exports all-public-names) 'unloadable)))))
          (test-equal (string-append (source-path s) ": " (written library)
-                                    " is no public library, so what it exports that none of the twelve does is the adapter's and the tests' alone")
+                                    " is no public library, so what it exports that none of the twelve does is the adapter's, the worker's and the tests' alone")
            (sorted-symbols (cond ((assoc library internal-exports) => cdr) (else '())))
            left)))))
  sources)

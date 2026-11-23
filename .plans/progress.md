@@ -223,10 +223,20 @@ close-out under **Close-outs**, newest first.
     taken in.
   - The owner answered on 2026-11-23: Q1 "Never run it", Q3 "Refuse them", Q8 "One
     thread of its own", Q14 "make-test-worker".
-- **Next:** the worker's slices, once the design is approved:
-  1. W1, the machine and its explorer;
-  2. W2, the shell, the double, `wrap-busy` and the contract rows;
-  3. W3, the docs page, the example and the records.
+- **W1, the worker's pure machine and its verification, is built**, #53's item 3, in
+  [PR #56](https://github.com/Kiyomi-Computation-Systems/circuit/pull/56), not yet
+  merged; its close-out is below.
+  - `(circuit worker machine)`, internal and plain R6RS, decides every row of the
+    design's §4.2.
+  - Layers 1 to 4a hold it: the table's static checks, every row and cell driven, an
+    exhaustive explorer with a cycle pass, and random walks.
+  - G11 holds one job's allocation at 512 B, the bound the owner accepted on
+    2026-11-23.
+  - An adversarial review on Opus found one blocking gap, a check that couldn't fail,
+    now fixed.
+- **Next:** the worker's remaining slices:
+  1. W2, the shell, the double, `wrap-busy` and the contract rows;
+  2. W3, the docs page, the example and the records.
 
   Publishing circuit on Akku is a slice of its own too (ADR-0011).
 
@@ -312,6 +322,147 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-23: W1, the worker's pure machine and its verification, in PR #56
+
+On the owner's "start W1, the pure machine. Use our parallelization strategy, using sonnet
+for mechanical tasks with opus reviews." #53's item 3, the first of the worker's three
+slices. Commits on `w1/machine`: the slice (37c42ec), this close-out, and its CI run
+named here.
+
+CI passed on 37c42ec (run 45224496952):
+- amd64 in 16m25s, of which `make check-worker-model` took 11m56s;
+- arm64 in 6m5s;
+- the site job in 51s.
+
+- **How it was built.** I fixed the machine's data shapes and the table's open edge
+  cases in one interface brief, `build/w1/interface.md` (git-ignored). Builders worked
+  in parallel on disjoint files:
+  - the machine, on Sonnet;
+  - the table and layers 1–2, on Sonnet, from the design and never from the machine's
+    code, so two translations of the table are compared;
+  - the explorer and walks, on Opus;
+  - G11, on Sonnet;
+  - the machine mutants, on Sonnet.
+
+  Then one read-only adversarial review, on Opus. I verified every hand-back: I reran
+  its checks and mutants and read the machine whole.
+- **`(circuit worker machine)`**, `src/circuit/worker/machine.sls`, internal, imports
+  `(rnrs)` alone. It holds:
+  - `step` and `step/row`, which also answers the row, for the explorer's cross-check;
+  - an immutable record, a two-list queue, and a slot vector copied only on change;
+  - every row that changes nothing answers the machine it was given;
+  - every can't-happen case, and every malformed event, raises an `&assertion` whose
+    `who` is `step`.
+
+  `tests/test-reference.sps` lists its exports as internal.
+- **Layers 1 and 2**, `tests/test-worker-table.sps` over `tests/worker-rows.sls`, 447
+  checks:
+  - the 43 rows and 26 can't-happen cells as data, with a feature space per event;
+  - every point of the 738-point cross matched by exactly one row or cell;
+  - every phase reachable, and stopped or failed reachable from every phase;
+  - every row driven from a synthetic state and compared whole, every cell driven, and
+    every point of the cross stepped;
+  - queues spanning both lists;
+  - C2 and C3 at the cap from both sides;
+  - an enqueue onto 1,000 tickets allocates no more than onto 1.
+- **Layer 3**, `tests/test-worker-model.sps` over `tests/worker-model.sls`: 103 checks,
+  53 configurations, 37 s and 444 MB. A world holds:
+  - the machine;
+  - each thread's place in the shell's loop, each handler's, and the loop's;
+  - the inbox, the maker and up to two stoppers;
+  - the double's wait and marks;
+  - a spurious-wakeup budget, and ghost state.
+
+  At every step the explorer checks `step/row`'s row against `classify`'s. A breadth-first
+  pass is followed by a cycle search. Every row fires, and each configuration is held to
+  99% of its world count. It exhausts, as T threads, C cap, H handlers, S stoppers:
+  - plain: T 1–2 × C 0–2 × H 0–3;
+  - start (fork, set-up and tear-down failures): T1 S1, T2 S1, T3;
+  - stop (tear-down failures, jobs that leave), H3 S2: T1 C 0–2, T2 C 0–1;
+  - stop with deadlines: T1 C 0–2 H3 S2, T2 C0 H2 S2, T2 C 0–1 H3 S1;
+  - full, every flag: T1 C 0–2 H3 S1, T1 C1 H2 S2, T2 C0 H2 S1;
+  - the double: plain H 0–3, H3 S1, H2 S2; full H3 S1, H2 S2.
+- **Larger worlds**, `make check-worker-model` (new), in CI on amd64: 49 checks, 609 s
+  and 5.9 GB. It exhausts:
+  - plain T 1–3 × C 0–2 H4;
+  - start T3 H2 S1;
+  - stop T3 C0 H4 S1 and T2 C1 H4 S2;
+  - stop with deadlines: T2 C 0–1 H3 S2, T2 C1 H4 S1, T3 C0 H3 S1, T1 C2 H4 S2;
+  - full: T1 C 0–2 H3 S2, T2 C0 H2 S2;
+  - every flag a handler can meet: T2 C 0–1 H3 S1, 10.9M worlds;
+  - the double, full, H3 S2.
+
+  Not exhausted anywhere, and reached by the walks alone: T3 H4 S2; T2 H3 with every
+  flag and two stoppers; deadline or full worlds at T3 H4.
+- **Layer 4a**, `tests/test-worker-walks.sps`: 10,000 walks, seed 20261123,
+  1,707,592 steps, in 2.2 s. They range over up to 4 threads, a cap of 8, 50 handlers
+  and two stoppers.
+- **G11**, in `make gate`: the machine's own allocation for one job.
+  - It reads 448 B in all 9 runs. The owner accepted the 512 B bound on 2026-11-23
+    ("Accept 512 B").
+  - With events built for each job it reads 576 B, printed and not held.
+  - The regression, a slot vector rebuilt through a list, reads 544 B and fails the gate,
+    exit 1. No other gate moved.
+- **Mutants**, all regenerated from the final sources, each killed by failing rows,
+  none by a load error:
+  - 15 of the machine, from the design's §8.8, against the table, model and walk suites.
+    `n2-no-phase-guard` passes layers 3 and 4a, but layer 2, the layer the design names,
+    kills it;
+  - 11 of the model (R3, R4, three `while`→`if`, wake-one, C1's signal, the review's two
+    joins, and two of the explorer's own guards), against the model and walk suites;
+  - the table's N2 mutant, killed by layer 1;
+  - the review's six, each now killed by a named row.
+
+  In layer 3 a machine mutant often fails first on the row cross-check or a can't-happen
+  row. With that cross-check off, I watched each named property fire: S9, L3, S10 and S11
+  (`build/w1/props/`). For S11, N2's guard also had to go. The design's §8.8 now says so.
+- **What I fixed myself:**
+  - `classify` gave F1 and K3 where the machine raised, on a second fork and on a failed
+    look with no raise kept. It now has `born` and `start-raise` features.
+  - It sat inside a catch-all `guard`; it now raises when no entry, or more than one,
+    matches.
+  - Each of those failed a new row first.
+- **A hazard of the shared checkout:** `make deps` deletes and relinks
+  `build/scheme-libs/srfi` on every run. One mutant run died "library not found" while
+  the G11 builder was running `make gate`. From then on the agents ran programs directly,
+  and I ran the make targets alone. Saved as a memory.
+- **The review**, on Opus, found the machine faithful, with no mistake shared by the
+  machine and the table. It found the model's atomicity choices and the world key's
+  reductions sound. Every finding was reproduced by its own mutant, and fixed:
+  - **blocking:** S7 could never fail. A stopper or maker that skipped its joins failed
+    only world-count floors. S7 is now checked at every world, and the key keeps joined
+    apart from returned;
+  - no driven row held a queue spanning both lists;
+  - C2 wasn't held one below its cap;
+  - an unguarded `classify` killed the table suite;
+  - the walks drew random numbers inside a plain `let`;
+  - the records claimed every combination of the bounds;
+  - notes: floors at the exact count, now 99%; ghost state never read, now removed;
+    "settled" accepted any returned thread, now one whose slot has ended.
+- **Records:**
+  - ADR-0007 amended for G11;
+  - ADR-0013 amended: the bounded proof says what is exhausted;
+  - the design's §7 (S10 and S11 are about steps), §8.3 and §8.8;
+  - the global constraints: G11, and the explorer's two runs;
+  - `Makefile` and CI: `check-worker-model`, and the job's limit from 30 to 45 minutes.
+- **The checks**, in the container, on the final tree:
+  - `make test`, 29 of 29 suites;
+  - `make check-worker-model`, 49 of 49;
+  - `make gate`, every held gate within its bound;
+  - `make check-help` and `make check-imports`.
+- **Agents**, each figure from its notification:
+
+  | Agent | Model | Tokens | Time |
+  |---|---|---|---|
+  | the machine | Sonnet | 77,334 | 2m54s |
+  | the table | Sonnet | 108,606 | 5m55s |
+  | the table, the review's fixes | Sonnet | 132,971 | 2m2s |
+  | the explorer | Opus | 375,147 | 57m12s |
+  | the explorer, the review's fixes | Opus | 423,317 | 26m7s |
+  | G11 | Sonnet | 92,083 | 15m57s |
+  | the machine mutants | Sonnet | 83,129 | 7m52s |
+  | the review | Opus | 327,143 | 24m18s |
 
 ### 2026-11-23: the worker's design, and ADR-0013, in PR #55
 

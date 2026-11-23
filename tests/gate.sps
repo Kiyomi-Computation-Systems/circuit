@@ -19,6 +19,9 @@
 ;;;     fails, naming it, and 0 otherwise. A run in which oha saw anything
 ;;;     but its count of 200s, each with the 6-byte body, measured nothing:
 ;;;     the gate exits 1 there and then, naming it.
+;;;     G11 is not an oha figure: the bytes of one job through (circuit
+;;;     worker machine)'s `step`, on this thread, the server's loop not
+;;;     turning. See `job-bytes`, below.
 ;;;   rps OHA
 ;;;     G6, the smoke: requests a second, `oha -z 5s`, get-adapter against
 ;;;     get-raw at 1 and 50 keep-alive connections, two rounds, the two
@@ -81,7 +84,8 @@
         (only (circuit middleware) wrap)
         (only (circuit middleware waits) wrap-catch wrap-timeout wrap-log)
         (only (circuit router) make-router route group GET POST PUT DELETE)
-        (only (circuit http-server) circuit->handler))
+        (only (circuit http-server) circuit->handler)
+        (only (circuit worker machine) make-machine machine-slots step))
 
 ;;; ------------------------------------------------------------------------
 ;;; The counts and the gates. Each bound was measured through the real
@@ -95,6 +99,11 @@
 (define large-count 25000)
 (define rounds 2)
 (define connection-counts '(1 50))
+
+;; G11, held: the machine's own allocation for one job, in bytes. Its
+;; bound was measured as the others': headroom over the worst
+;; figure of eight runs, and under what a known regression reads.
+(define g11-bound 512)
 
 ;; G6, the smoke: oha -z 5s, two rounds; its floor, 90% of raw's rate at 50
 ;; connections, is printed and never fails.
@@ -148,6 +157,52 @@
    (make-gate "G10 miss" "router-miss" "path-miss" 1 64 #t
               (string-append "the same, both asked /nope/nothing, which no route takes:"
                              " the router's own work to find nothing"))))
+
+;;; ------------------------------------------------------------------------
+;;; G11: one job through the machine's `step`.
+
+;; One idle thread, serving, nothing queued, nothing parked. A job is a call
+;; (an idle slot is given the ticket), a next (the slot runs it) and an end
+;; (the slot goes idle, the ticket's result posted), after which the machine
+;; is as it began.
+(define machine-0 (make-machine 'serving '(idle) '() 4 '()))
+(define ticket-0 (list 'ticket))
+(define call-0 (list 'call ticket-0))
+(define next-0 (list 'next 1))
+(define end-0 (list 'end 1 'result))
+
+;; job : Machine Event Event Event -> Machine — the three events, stepped in
+;; order; the replies and effects are dropped.
+(define (job m call next end)
+  (let*-values (((m1 r1 e1) (step m call))
+                ((m2 r2 e2) (step m1 next))
+                ((m3 r3 e3) (step m2 end)))
+    m3))
+
+;; job-bytes : Nat Boolean -> Nat — the bytes allocated by `n` jobs on one
+;; machine: with the ticket and the events built once, or, when `fresh?`,
+;; built for each job, as a caller that builds its events pays.
+(define (job-bytes n fresh?)
+  (collect)
+  (let ((b0 (allocated)))
+    (let loop ((i 0) (m machine-0))
+      (if (< i n)
+          (loop (+ i 1)
+                (if fresh?
+                    (let ((k (list 'ticket)))
+                      (job m (list 'call k) (list 'next 1) (list 'end 1 'result)))
+                    (job m call-0 next-0 end-0)))
+          (let ((b1 (allocated)))
+            ;; Every job returns the machine to where it began.
+            (unless (equal? (machine-slots m) '(idle))
+              (refuse "G11: a job left the machine's slot not idle"))
+            (- b1 b0))))))
+
+;; job-figure : Boolean -> Real — bytes a job, as the gate measures: the
+;; difference between the large count and the small, over the extra jobs.
+(define (job-figure fresh?)
+  (let* ((small (job-bytes small-count fresh?)) (big (job-bytes large-count fresh?)))
+    (/ (- big small) (- large-count small-count))))
 
 ;;; ------------------------------------------------------------------------
 ;;; The adapter's environment.
@@ -685,6 +740,21 @@
        (if (and (gate-held? g) (not ok?)) (append failed (list g)) failed)))
    '() gates))
 
+;; g11-table : -> Real — measures and prints G11, and answers its worst
+;; figure over the rounds. The server's loop is not turning, so nothing else
+;; allocates in the measured span. The figure with fresh events is printed,
+;; and never held.
+(define (g11-table)
+  (let* ((figures (map (lambda (k) (job-figure #f)) (iota* rounds)))
+         (fresh (map (lambda (k) (job-figure #t)) (iota* rounds)))
+         (worst (apply max figures)))
+    (printf "\nG11, the machine's own allocation for a job, bytes a job, over ~a rounds:\n" rounds)
+    (printf "  events built once: ~a B; worst ~a B; bound ~a B; headroom ~a B; held, ~a\n"
+            (span figures whole) (whole worst) (whole g11-bound) (whole (- g11-bound worst))
+            (if (<= worst g11-bound) "pass" "FAIL"))
+    (printf "  events built for each job (printed, not held): ~a B\n" (span fresh whole))
+    worst))
+
 ;; counted-log : -> String — the server's log, counted by kind.
 (define (counted-log)
   (apply string-append
@@ -738,15 +808,20 @@
   (printf "\nlog:~a\n" (counted-log))
   (printf "\nBytes a request, the whole process; over baseline is the difference, round by round.\n")
   (table variants "B/request" "over" - signed)
-  (let ((failed (gate-table)))
+  (let* ((failed (gate-table))
+         (g11 (g11-table)))
     (for-each (lambda (g) (printf "\n  ~a: ~a\n" (gate-name g) (gate-what g))) gates)
+    (printf "\n  G11: the machine's own allocation for one job: a call, a next and an end through step, one thread, nothing queued, the ticket and the events built once\n")
     (newline)
     (for-each (lambda (g)
                 (printf "gate: FAIL ~a, ~a: ~a over ~a reads ~a B, over its bound of ~a B\n"
                         (gate-name g) (gate-what g) (gate-variant g) (gate-base g)
                         (signed (gate-worst g)) (whole (gate-bound g))))
               failed)
-    (if (null? failed)
+    (when (> g11 g11-bound)
+      (printf "gate: FAIL G11, the machine's own allocation for one job: reads ~a B, over its bound of ~a B\n"
+              (whole g11) (whole g11-bound)))
+    (if (and (null? failed) (<= g11 g11-bound))
         (begin (printf "gate: pass, every held gate within its bound\n") (exit 0))
         (exit 1))))
 

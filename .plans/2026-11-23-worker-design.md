@@ -835,8 +835,8 @@ Each answer has a recommendation and the choices against it.
 | S7 | Once `worker-stop!` returns, no job runs and every thread has been joined. | explorer (the stopper's end); real threads: `thread-join`, and the shell's live count, an internal export |
 | S8 | A job that raises doesn't end the worker: the next job runs. | rows E1–E4; explorer |
 | S9 | A call is refused full only when no thread is idle and the queue holds `cap`. | explorer |
-| S10 | A job whose caller left before it began never runs. | explorer |
-| S11 | No job begins after a stop begins. | explorer |
+| S10 | A job whose caller left before it began never runs: no step answers `run k` after k's abandon step. | explorer |
+| S11 | No step begins a job after a stop begins: none answers `run k` after S1, X1 or X2. A thread told `run j` by E1 or E3 before the stop still enters j's code after it, since S1 leaves running slots alone. | explorer |
 | S12 | No step emits a post for a ticket after that ticket's abandon step. A post emitted before it may still be carried out after, which is §4.4's Posted → Lost. | explorer |
 | S13 | `worker-stop!` on a worker's thread is refused, and changes nothing. | row S4; real threads |
 | S14 | A job's answer is posted only after the job returned, and a job begins only after its call. | explorer, by ghost order. Techo's T2 rests on it |
@@ -962,6 +962,14 @@ The worlds run every combination of these bounds:
 The suite runs the bounds above inside its time limit. A larger exploration, with 3
 threads and 4 callers, runs under `make check-worker-model`, in CI on one architecture,
 if it doesn't fit there.
+
+**As built in W1**, the bounds are covered by chosen configurations, not their whole
+cross product. A flag only adds events, so a configuration's checks at every step and
+world cover it without the flag. Each liveness check runs where no optional event rescues
+a stuck party. A failed start meets no handler or stopper. The headers of
+`tests/test-worker-model.sps` and `tests/check-worker-model.sps` give that reasoning,
+W1's close-out in the ledger lists each configuration exhausted, and ADR-0013's
+consequences list what only the random walks reach.
 
 ### 8.4 The real shell against the model (layer 4)
 
@@ -1095,7 +1103,10 @@ After `test-host-stop-posts!`, the host's next outside wait opens a fresh inbox
 
 ### 8.8 Mutants each layer must kill
 
-Each one is seen to fail before its layer is accepted.
+Each one is seen to fail before its layer is accepted. In layer 3 a machine mutant
+usually fails first on the explorer's cross-check of `step/row`'s row against the
+table's own choice, or on a can't-happen row, before the property named here. W1 showed
+each named property firing with that cross-check off.
 
 | Mutant | Fails |
 |---|---|
@@ -1110,7 +1121,7 @@ Each one is seen to fail before its layer is accepted.
 | A2 leaves t idle while j stays queued | layer 3: L3 |
 | A2 gives t the newest queued job | layer 3: S5 |
 | S1 doesn't empty the queue | layer 3: L1 or S11 |
-| S1 leaves given jobs to run | layer 3: S11 |
+| S1 leaves given jobs to run | layer 3: a can't-happen, since N2's phase guard refuses the given slot's next in stopping; S11 only with N2's guard gone too |
 | E1 takes the newest queued job | layer 3: S5 |
 | E3/E4 post to the dropping job | layer 3: S12 |
 | T4 forgets `wake-waiters` | layer 3: L2 |
@@ -1131,6 +1142,11 @@ Each one is seen to fail before its layer is accepted.
 | the maker's, a stopper's or the double's `while` on `done` made an `if` | layer 3: a spurious wakeup on `done` |
 | N2 without its phase guard | layer 1: (stopping, next, given) matches both N2 and its can't-happen row; layer 2: that row's assertion |
 | the double runs the job on the caller's thread | the double's rows: a wait in a job doesn't raise |
+
+Another is equivalent for layer 3's properties, and layer 2's rows alone kill it: S1 and
+X1 without their signal to a given slot. That thread was signalled when its job was
+given, and hasn't stepped next since. Probed in W1: layer 3 fails no property on it, and
+only its world counts move.
 
 One candidate is an equivalent mutant, so it isn't listed: the thread's `while` around
 `condition-wait` made an `if`. §4.5's loop steps next again after any wait reply, so it
