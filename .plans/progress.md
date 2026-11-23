@@ -223,8 +223,9 @@ close-out under **Close-outs**, newest first.
     taken in.
   - The owner answered on 2026-11-23: Q1 "Never run it", Q3 "Refuse them", Q8 "One
     thread of its own", Q14 "make-test-worker".
-- **W1, the worker's pure machine and its verification, is built** on `w1/machine`,
-  #53's item 3, not yet merged; its close-out is below.
+- **W1, the worker's pure machine and its verification, is built**, #53's item 3, in
+  [PR #56](https://github.com/Kiyomi-Computation-Systems/circuit/pull/56), not yet
+  merged; its close-out is below.
   - `(circuit worker machine)`, internal and plain R6RS, decides every row of the
     design's §4.2.
   - Layers 1 to 4a hold it: the table's static checks, every row and cell driven, an
@@ -322,11 +323,17 @@ close-out under **Close-outs**, newest first.
 
 ## Close-outs
 
-### 2026-11-23: W1, the worker's pure machine and its verification
+### 2026-11-23: W1, the worker's pure machine and its verification, in PR #56
 
 On the owner's "start W1, the pure machine. Use our parallelization strategy, using sonnet
 for mechanical tasks with opus reviews." #53's item 3, the first of the worker's three
-slices, on `w1/machine`.
+slices. Commits on `w1/machine`: the slice (37c42ec), this close-out, and its CI run
+named here.
+
+CI passed on 37c42ec (run 45224496952):
+- amd64 in 16m25s, of which `make check-worker-model` took 11m56s;
+- arm64 in 6m5s;
+- the site job in 51s.
 
 - **How it was built.** I fixed the machine's data shapes and the table's open edge
   cases in one interface brief, `build/w1/interface.md` (git-ignored). Builders worked
