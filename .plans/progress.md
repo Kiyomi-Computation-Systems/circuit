@@ -318,7 +318,9 @@ close-out under **Close-outs**, newest first.
 On the owner's "start the worker design - this needs to be rigorous", with a review once
 a design was proposed, then "Review the revision", "one more adversarial review" and
 "approved". #53's item 3. Commits on `design/worker`: the design and the records
-(1cfa3cd), this close-out, and its CI run named here.
+(1cfa3cd), this close-out (80ca4ed), and its CI run named here. CI passed on the PR
+(run 45188305408, 5m39s), on amd64, arm64 and the site job. The run on 1cfa3cd was
+cancelled when 80ca4ed was pushed.
 
 - **#53 read closely:** its diagram, its table and its §10 verification request. The
   design's §1 names nine changes:
