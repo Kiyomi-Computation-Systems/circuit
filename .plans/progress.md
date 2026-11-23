@@ -345,8 +345,10 @@ close-out under **Close-outs**, newest first.
 
 On the owner's "Begin W3 using our parallel / subagent strategy". #53's item 3, the
 last of the worker's three slices. Commits on `w3/page`: the slice (2fb01d4) and this
-close-out.
-No code changed: the one edit under `src/` is a comment.
+close-out (e5d15f5). No code changed: the one edit under `src/` is a comment.
+
+CI passed on e5d15f5 (run 45290996524): amd64 in 17m11s, arm64 in 6m27s, and the
+site job in 40s. The run on 2fb01d4 was cancelled when the close-out was pushed.
 
 - **How it was built.** One brief, `build/w3/brief.md` (git-ignored), fixed the API as
   built, the page's name and place, the example's spec, and who owned each file. Three
