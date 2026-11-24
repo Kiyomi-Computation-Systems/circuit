@@ -361,7 +361,9 @@ against what had merged.
   "don't act on the job's success alone", was there only by implication: the 504's
   "can't tell the client whether its job ran", and the link to the server's
   "Don't act on `#t`". It is a bullet of its own under "What not to do" now.
-- **Checks:** `make check-site` and the reference suite, in the container.
+- **Checks:** `make check-site` and the reference suite, in the container. CI passed on
+  c51e651 (run 45301805799): amd64 in 17m31s, arm64 in 6m53s, and the site job in
+  2m22s.
 
 ### 2026-11-23: W3, the worker's page, its example and its reference, in PR #58
 
