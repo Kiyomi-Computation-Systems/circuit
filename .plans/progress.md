@@ -245,9 +245,9 @@ close-out under **Close-outs**, newest first.
   - The audit holds the shell to its own allowlist, and only `(circuit worker)` may
     import it.
   - G12 holds `wrap-busy` at 512 B, the bound the owner accepted on 2026-11-23.
-- **W3, the worker's page, its example and its reference, is built**, #53's item 3, in
-  [PR #58](https://github.com/Kiyomi-Computation-Systems/circuit/pull/58), not
-  yet merged; its close-out is below.
+- **W3, the worker's page, its example and its reference, is merged**, #53's item 3,
+  squashed from [PR #58](https://github.com/Kiyomi-Computation-Systems/circuit/pull/58)
+  on 2026-11-24; its close-out is below. The worker is done.
   - `(circuit worker)` is the thirteenth public library, with a reference section that
     `tests/test-reference.sps` holds.
   - The Workers page follows Waiting: a job, the stop, a full queue, a 504, several
