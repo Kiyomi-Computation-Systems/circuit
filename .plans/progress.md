@@ -248,6 +248,10 @@ close-out under **Close-outs**, newest first.
 - **W3, the worker's page, its example and its reference, is merged**, #53's item 3,
   squashed from [PR #58](https://github.com/Kiyomi-Computation-Systems/circuit/pull/58)
   on 2026-11-24; its close-out is below. The worker is done.
+- **#53 is closed**, on 2026-11-24, its every item done in PRs #54 to #58. Its fifth
+  worker trap, "don't act on the job's success alone", is on the Workers page, squashed
+  from [PR #59](https://github.com/Kiyomi-Computation-Systems/circuit/pull/59) on
+  2026-11-24; its close-out is below.
   - `(circuit worker)` is the thirteenth public library, with a reference section that
     `tests/test-reference.sps` holds.
   - The Workers page follows Waiting: a job, the stop, a full queue, a 504, several
@@ -340,6 +344,26 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-24: #53 closed, and its fifth worker trap on the Workers page, in PR #59
+
+On the owner's "close it now add the small PR", after I read #53's "Done when"
+against what had merged.
+
+- **#53 is closed,** with a comment mapping each of its items to its PR:
+  - ADR-0012, v0.12.0 and `await-outside` in #54;
+  - the design and ADR-0013 in #55;
+  - the worker in #56 to #58.
+
+  Every real-thread test its section 6 lists is a named row of
+  `tests/test-worker-threads.sps`.
+- **The gap:** #53's section 5 lists five traps, and the page stated four. The fifth,
+  "don't act on the job's success alone", was there only by implication: the 504's
+  "can't tell the client whether its job ran", and the link to the server's
+  "Don't act on `#t`". It is a bullet of its own under "What not to do" now.
+- **Checks:** `make check-site` and the reference suite, in the container. CI passed on
+  c51e651 (run 45301805799): amd64 in 17m31s, arm64 in 6m53s, and the site job in
+  2m22s.
 
 ### 2026-11-23: W3, the worker's page, its example and its reference, in PR #58
 
