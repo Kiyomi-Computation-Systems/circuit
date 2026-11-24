@@ -260,6 +260,10 @@ x86-64, both threads counted, over 10,000 calls:
   Chez's thread parameters are the ones `make-worker` ran with. Another
   parameter's `parameterize` in the handler may or may not reach the job,
   and on `make-test-worker` it always does. Log from the handler.
+- **Don't act on a job's success alone.** A job that committed may have
+  lost its caller to a deadline or a closed connection, so the client may
+  never see the answer. Do nothing on a job's success, such as sending a
+  confirmation, that assumes the client was told.
 - **Don't call a worker from an interrupt handler,** such as a signal
   handler or a timer. It can hang the worker or break it, and nothing
   refuses it.
