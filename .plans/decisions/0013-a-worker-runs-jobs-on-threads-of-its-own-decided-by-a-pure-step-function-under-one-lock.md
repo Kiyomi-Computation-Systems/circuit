@@ -16,6 +16,8 @@
   - the shell exports one more internal name for its suites, `worker-lock-free?`;
   - a section enables interrupts under the handler that carries out its effects, so a
     raise there breaks the worker with them pending (item 11).
+  2026-11-23, in slice W3, a record only: `(circuit worker)`, public as item 1
+  decides, gained the Workers page, `examples/worker.sps` and its reference section.
 - **Amends:** [ADR-0006](0006-only-the-adapter-and-middleware-waits-import-the-server.md)'s
   items 1, 2 and 4, for the worker's two impure libraries (item 2 below).
 - **Scope:** `(circuit worker)`, its machine, its shell and its double

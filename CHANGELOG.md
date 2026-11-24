@@ -9,6 +9,16 @@ release before 1.0.
 
 ### Added
 
+- **`(circuit worker)`, for blocking work such as a database query.** `make-worker`
+  starts threads of its own, each with the state its set-up makes, such as a
+  connection, and a queue of the length you give. `worker-call` runs a job on one of
+  them with that state, while the handler waits and the server serves everyone else.
+  A job whose caller left before it began never runs. `worker-stop!` refuses the jobs
+  not yet begun, waits for the running ones, and tears every thread down. `wrap-busy`
+  answers a full or stopped worker with an empty 503 and `Retry-After`.
+  `make-test-worker` is a worker for an app's tests. The Workers page shows it all,
+  and `examples/worker.sps` runs a blocking job while `/` answers at once.
+
 - **`(circuit http-server)` re-exports `await-outside`,** the server's wait for a thread
   of your own: a handler hands blocking work, such as a query through a C library, to
   a thread, and waits while the server serves everyone else. Waiting's page shows it,

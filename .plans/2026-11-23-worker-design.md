@@ -119,8 +119,9 @@ before they can be built and checked.
   The shell exports one more for the suites, `worker-lock-free?`. It
   answers whether another thread could take the lock now, by forking one that tries
   without blocking. S16's rows and the collect-request row read it, since Chez's mutexes
-  are recursive and the thread that raised can't test its own hold. Until W3 writes the
-  reference, `(circuit worker)`'s exports are listed among the internal ones too.
+  are recursive and the thread that raised can't test its own hold. Until W3 wrote the
+  reference, `(circuit worker)`'s exports were listed among the internal ones too.
+  Since W3, the shell's internal names are its three alone.
 - **No global state.** Every mutex, condition and record belongs to one worker. One
   thread parameter holds, on each worker thread, that thread's own id, for S13. A
   thread a job forks inherits the parameter but not the id, so the check is by id.
@@ -1279,6 +1280,49 @@ ever takes a second lock, or if a property needs worlds that layer 3 can't reach
     (d) change, and a new rule like (i) is added.
 - **The global constraints, AGENTS.md's architecture bullet, CHANGELOG and README** all
   follow.
+
+**As built in W3:**
+
+- **The page** is `docs/workers.md`. Its sections:
+  - a job run on a worker, as a running program with a router;
+  - the stop, last;
+  - a full queue and `wrap-busy`;
+  - a deadline's 504;
+  - several threads;
+  - a handler's test on the double, in the server's test host;
+  - what a call costs;
+  - what not to do.
+
+  Every output on it is a run's. Waiting, Testing and Middleware link it.
+- **Ports and parameters.** §10's "a job's parameters and ports are the ones
+  `make-worker` ran with" holds for the current ports and for thread parameters. A
+  parameter made by `make-parameter` is one value shared by every thread, and a
+  `parameterize` in the handler is a `dynamic-wind`, which the handler's wait leaves.
+  But a call hands its job over before the wait leaves it, so on `make-worker` a job
+  can begin while the handler's value still holds: the review's probes saw it once in
+  9,000 trials. On the double, whose call waits inside the `parameterize`, the job
+  always sees it: 300 of 300. The page says "current ports and thread parameters", and
+  to pass a job plain data, never a parameter.
+- **The cost,** measured in the server's test host, both threads counted:
+  - about 4,800 B a `worker-call` on a one-thread worker;
+  - about 4,600 B on the double;
+  - about 1,400 B for `await-outside` answered by a hand-rolled thread.
+
+  The machine's share is 448 B, which G11 holds. The test host has no libuv loop, so a
+  call in the server may cost more, as the page says. That was not measured.
+- **The example** takes `/slow?ms=N`, 200 ms by default, so a row can hold a job long
+  enough to see `/` answered meanwhile. Its `/waiting` counts the `/slow` requests in
+  `worker-call`, as the long poll's counts its waits. A queue of one and `wrap-busy 1`
+  give a third `/slow` an empty 503, and the queued job runs only once the first has
+  answered. `/` answers within 1 s while a job runs. It ends with `(run-server app)`
+  then `(worker-stop! w)`, and a row sends `SIGINT` and sees it exit 0.
+- **The reference** has no `Worker` alias, since no comment in `src/` defines one, and
+  the intro's notes say what `Worker` and `Positive-Fixnum` are. `State = Any` is an
+  alias. The shell's comment lost its trailing words, which the suite's alias reader
+  would have read as part of the type. `tests/test-names.sps` imports `(circuit worker)`
+  beside every other library, and no name clashes.
+- **README.org** gains a Workers feature, and names the worker's shell among the
+  libraries that use Chez's own procedures.
 
 ## 11. Building it
 

@@ -137,7 +137,9 @@ provisional. They bind until that record is accepted or amended.
 ## The worker
 
 These rules are from ADR-0013, and the worker's design holds them in full. The worker
-lands in slices W1 to W3. W2 amended ADR-0006 and the audit for the import rules.
+landed in slices W1 to W3. W2 amended ADR-0006 and the audit for the import rules, and
+W3 made `(circuit worker)` public: the Workers page, `examples/worker.sps` and its
+reference section, which `tests/test-reference.sps` holds.
 
 - **Three libraries.**
   - `(circuit worker machine)` is pure, plain R6RS and internal.

@@ -234,9 +234,9 @@ close-out under **Close-outs**, newest first.
     2026-11-23.
   - An adversarial review on Opus found one blocking gap, a check that couldn't fail,
     now fixed.
-- **W2, the worker's shell and its verification, is built**, #53's item 3, in
-  [PR #57](https://github.com/Kiyomi-Computation-Systems/circuit/pull/57), not yet
-  merged; its close-out is below.
+- **W2, the worker's shell and its verification, is merged**, #53's item 3, squashed
+  from [PR #57](https://github.com/Kiyomi-Computation-Systems/circuit/pull/57) on
+  2026-11-23 (b7e6f95); its close-out is below.
   - `(circuit worker shell)`, internal, runs the machine's decisions on real threads
     under one lock. It has the double, the observer and the broken worker.
   - `(circuit worker)` is the public library: the API, re-exported, and `wrap-busy`.
@@ -245,10 +245,18 @@ close-out under **Close-outs**, newest first.
   - The audit holds the shell to its own allowlist, and only `(circuit worker)` may
     import it.
   - G12 holds `wrap-busy` at 512 B, the bound the owner accepted on 2026-11-23.
-- **Next:** W3, the worker's docs page, its example and the reference, which makes
-  `(circuit worker)` the thirteenth public library.
-
-  Publishing circuit on Akku is a slice of its own too (ADR-0011).
+- **W3, the worker's page, its example and its reference, is merged**, #53's item 3,
+  squashed from [PR #58](https://github.com/Kiyomi-Computation-Systems/circuit/pull/58)
+  on 2026-11-24; its close-out is below. The worker is done.
+  - `(circuit worker)` is the thirteenth public library, with a reference section that
+    `tests/test-reference.sps` holds.
+  - The Workers page follows Waiting: a job, the stop, a full queue, a 504, several
+    threads, a test on the double, the cost, and the traps. Every output on it is a
+    run's.
+  - `examples/worker.sps` runs a blocking job while `/` answers at once, and its rows
+    hold every answer its README row gives.
+- **Next:** the owner's call. A release would carry the worker. Publishing circuit on
+  Akku is a slice of its own too (ADR-0011).
 
 ## Open
 
@@ -332,6 +340,163 @@ close-out under **Close-outs**, newest first.
   `chez-http1`. It stays as background; the design supersedes it where they differ.
 
 ## Close-outs
+
+### 2026-11-23: W3, the worker's page, its example and its reference, in PR #58
+
+On the owner's "Begin W3 using our parallel / subagent strategy". #53's item 3, the
+last of the worker's three slices. Commits on `w3/page`: the slice (2fb01d4) and this
+close-out (e5d15f5). No code changed: the one edit under `src/` is a comment.
+
+CI passed on e5d15f5 (run 45290996524): amd64 in 17m11s, arm64 in 6m27s, and the
+site job in 40s. The run on 2fb01d4 was cancelled when the close-out was pushed.
+
+- **How it was built.** One brief, `build/w3/brief.md` (git-ignored), fixed the API as
+  built, the page's name and place, the example's spec, and who owned each file. Three
+  builders worked in parallel on disjoint files:
+  - the page, on Opus;
+  - the example and its rows, on Sonnet;
+  - the reference and its two suites, on Sonnet.
+
+  I made the nav, the home page, the other pages' cross-links and the records. Then
+  one read-only adversarial review, on Opus. Its findings were small, so I fixed them
+  myself.
+
+  I verified every hand-back:
+  - I reran each suite;
+  - I reran every program on the page from its own fences, two of its trap probes and
+    one of its cost runs;
+  - I reran a sample of the example's mutants and every reference mutant;
+  - I reproduced each review finding before fixing it.
+- **`docs/workers.md`**, the Workers page, after Waiting in the nav. Its sections:
+  - a job run on a worker, as a running program with a router;
+  - the stop, after `run-server` returns;
+  - a full queue and `wrap-busy`'s 503;
+  - a deadline's 504, and what it means for a job;
+  - several threads;
+  - a handler's test on `make-test-worker`, in the server's test host;
+  - what a call costs;
+  - what not to do.
+
+  Every output on it is a run's, in the container over loopback. Waiting, Testing and
+  Middleware link it, and the home page's table and Read next name it.
+- **The cost,** measured in the server's test host, both threads counted, 20 rounds of
+  10,000 calls:
+  - 4,776–4,864 B a `worker-call` on a one-thread worker;
+  - 4,550–4,643 B on the double;
+  - 1,398–1,412 B for `await-outside` answered by a hand-rolled thread.
+
+  The machine's share is 448 B, as G11 holds it. The page gives them rounded, and says
+  that a call in a running server, on its libuv loop, may cost more. That wasn't
+  measured.
+- **`examples/worker.sps`:** one thread and a queue of one, `/slow?ms=N` (200 ms by
+  default) blocking it with Chez's `sleep`, and `/` answered at once. Its `/waiting`
+  orders the rows' requests, as the long poll's does. `(wrap routes (wrap-busy 1)
+  wrap-catch)` makes a third `/slow` an empty 503. The program ends with `(run-server
+  app)`, then `(worker-stop! w)`.
+- **`tests/test-examples.sps`**, 106 checks, about 7 s more than before. The new rows:
+  - the example's shape;
+  - each answer whole;
+  - `/` within 1 s while a 3 s job runs;
+  - the 503, and the queued job running only once the first has answered;
+  - `SIGINT`, after which the program exits 0.
+- **The reference:**
+  - the `(circuit worker)` section, ten entries;
+  - `State = Any` in the alias block, and notes on `Worker` and `Positive-Fixnum`;
+  - "thirteen" in the intro.
+
+  `tests/test-reference.sps` lists `(circuit worker)` among the public libraries, and
+  the shell's internal names are its three alone. `tests/test-names.sps` imports
+  `(circuit worker)` beside every other library, with no clash, and holds its ten
+  exports.
+
+  The shell's alias comment, `;; State = Any, a set-up's value`, lost its trailing
+  words, which the suite's alias reader takes as part of the type.
+- **What the work found:**
+  - **A job can see a handler's `parameterize` of a shared parameter.** A call hands
+    its job over before the handler's wait leaves the `parameterize`. On the real worker,
+    the review's probes saw it once in 9,000 trials, and mine not in 3,000. On the
+    double, whose call waits
+    inside the `parameterize`, the job always sees it. The design said a job's
+    parameters are `make-worker`'s, which holds only for thread parameters and the
+    current ports. The page says to pass a job plain data, never a parameter.
+  - **`worker-stop!` from another worker's thread** is refused, as designed. Its message
+    is "called on a worker's own thread", which reads oddly there. The code is
+    unchanged.
+- **The review**, on Opus, found nothing blocking. I reproduced and fixed each of its six
+  should-fix findings:
+  - the page's pointer to the server's traps left out the worst, a blocking C call not
+    bound `__collect_safe`. It names it now;
+  - the parameter race above;
+  - the cost table had no caveat for the server's own loop;
+  - README.org needed a Workers feature, and the worker's shell among the libraries
+    that use Chez's own procedures, against the design's note that it needed nothing;
+  - **no row held "`/` answers at once"**: a `/` that blocked the loop 1 s passed all
+    106 rows. The row now bounds `/`;
+  - **no row held "a queue of one"**: two threads and no queue passed all 106 rows. The
+    row now sees the queued job still running once the first has answered.
+
+  The last two were flaws in my brief, which gave no bound for the first and named
+  `/waiting` as the check for the second. `/waiting` can't tell running from queued.
+
+  Of its twelve nits, I fixed nine:
+  - a hang on the double under `wrap-timeout` alone;
+  - Testing's "never hangs";
+  - `/waiting`'s README wording;
+  - an unheld 60,000 ms cap, now gone;
+  - "Chez's" `warning`;
+  - the first program's cap;
+  - the test program's long lines, and a bullet split in two;
+  - the stopped condition's wording;
+  - ADR-0013's entry, a record now, not an amendment.
+
+  Two were about the builders' scripts:
+  - B's `hangstop` mutant raises at once instead of hanging. The review's
+    `teardown-hangs` isolates the `SIGINT` row;
+  - C's mutant script wrote its mutant suites into `tests/` for the length of a run.
+
+  I left two:
+  - the page's length, 1,629 words against Waiting's 1,099: it covers every item design
+    §10 lists;
+  - keeping the shell's alias comment's trailing words on a line of their own, which
+    the review didn't probe.
+- **Mutants:**
+  - **the example:**
+    - B's 12, on the rows before the review: the job inline, a cap of 2, no
+      `wrap-busy`, `wrap-busy 2`, the default `ms`, the sleep's seconds, the stop
+      removed or replaced, the counter not raised or not lowered, the 404's hint, and
+      the answer's text. Each failed a named row;
+    - on the final rows, nine, each failing a named row: the job inline, a cap of 2,
+      the stop replaced, `/` answering `fast!`, the count starting at 1, `/` blocking
+      1 s, two threads and no queue, a tear-down that hangs, and a `guard` that doesn't
+      lower the count;
+  - **the reference:** C's ten, rerun by me, each failing its row:
+    - the section gone;
+    - an entry gone;
+    - a signature changed;
+    - the alias changed on the page, and in `src/`;
+    - `(circuit worker)` left out of the public libraries;
+    - a public name left in `internal-exports`;
+    - the names suite's list one longer, and one shorter.
+- **The checks**, in the container, on the final tree:
+  - `make test`, 34 of 34 suites;
+  - `make check-site`;
+  - `make check-help`;
+  - `make gate`, every held gate within its bound, run after the one `src/` edit.
+- **Records:**
+  - CHANGELOG's Unreleased;
+  - README.org;
+  - AGENTS.md's count of public libraries;
+  - the global constraints' worker section;
+  - ADR-0013's record of W3;
+  - the design's "As built in W3" notes in §2 and §10.
+- **Agents**, each figure from its notification:
+
+  | Agent | Model | Tokens | Time |
+  |---|---|---|---|
+  | the page | Opus | 297,293 | 29m30s |
+  | the example and its rows | Sonnet | 116,822 | 14m40s to its report, 19m20s with its idle background waits |
+  | the reference and its suites | Sonnet | 68,662 | 1m27s |
+  | the review | Opus | 248,779 | 16m21s |
 
 ### 2026-11-23: W2, the worker's shell and its verification, in PR #57
 

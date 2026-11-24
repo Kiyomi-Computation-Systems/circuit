@@ -2,8 +2,9 @@
 
 Small servers, each one file, each showing one thing. Each imports only
 `(rnrs)`, `(circuit)` and `(circuit http-server)`; middleware.sps imports
-`(circuit middleware waits)` too, router.sps `(circuit router)`, and websocket.sps
-`(circuit websocket)` and chez-websocket's `(websocket)`. Run one
+`(circuit middleware waits)` too, router.sps `(circuit router)`, websocket.sps
+`(circuit websocket)` and chez-websocket's `(websocket)`, and worker.sps
+`(circuit worker)`, `(circuit middleware waits)` and Chez's `sleep` and `make-time`. Run one
 from the checkout's root:
 
 ```sh
@@ -23,9 +24,10 @@ say otherwise, and stops on Ctrl-C.
 | [middleware.sps](middleware.sps) | a catch, a timeout of 1 s and a log, composed | `curl -i '127.0.0.1:8080/slow?ms=1500'` | `/`: `200`, `hello`; `/slow?ms=N`: `200`, `waited N ms`, or past 1 s an empty `504`; `/boom`: an empty `500`. Each request logs a line, `request GET /slow 504 written 1001 127.0.0.1`, and `/boom` first `handler-failed Exception in app: boom` |
 | [websocket.sps](websocket.sps) | a WebSocket echo, with `websocket-res` | `printf hi \| curl -s --max-time 1 -T - ws://127.0.0.1:8080/echo`, with curl 8.11 or later; or, to type messages, `websocat ws://127.0.0.1:8080/echo` | `/echo`: `101`, then each message back as it came: curl sends `hi` as one binary message, prints the `hi` that comes back, and waits until `--max-time`; `/echo` with no handshake: an empty `400`; a handshake from another site's page: an empty `403`, the connection closed; any other path: `404`, `text/plain`, `open a WebSocket to /echo` |
 | [router.sps](router.sps) | routes by path, then method, with `(circuit router)` | `curl -i 127.0.0.1:8080/users/42` | `/`: `200`, `home`; `/users`: `200`, `ann` and `bob`, a line each; `POST /users` with the body `cat`: `201`, `created cat`; `/users/new`: `200`, `the new user form`, the word beating `/users/:id`; `/users/42`: `200`, `user 42`, and `/users/a%20b` `user a b`; `/admin/stats`: `200`, `2 users`, with `x-admin: yes` from the group's middleware; `/files/a/b`: `200`, `file /a/b, mounted at /files`, and `/files` `file /, mounted at /files`; any other path: an empty `404`; `DELETE /users/new`: an empty `405`, `allow: GET, HEAD` |
+| [worker.sps](worker.sps) | a blocking job on a worker thread, with a queue of one, and `wrap-busy` | `curl '127.0.0.1:8080/slow?ms=3000'`, then in another terminal `curl 127.0.0.1:8080/` | `/`: `200`, `fast`, at once, even while a `/slow` runs; `/slow?ms=N`: `200`, `slept N ms` after N ms, 200 if none; with one `/slow` running and one queued, a third: an empty `503`, `retry-after: 1`; `/waiting`: `200`, `N waiting`, how many `/slow` requests wait on the worker now; any other path: `404`, `text/plain`, with a hint |
 
 hello and echo answer any request, and upgrade any request with no
-`Upgrade: echo`. stream, long-poll, middleware and websocket answer any other `404`,
+`Upgrade: echo`. stream, long-poll, middleware, websocket and worker answer any other `404`,
 with a hint, and router an empty one.
 
 `tests/test-examples.sps` runs each one and checks what it answers.

@@ -28,6 +28,11 @@
 ;;; make test's timeout reaches it too. Chez reaps no child, so each sh stays
 ;;; a zombie, holding nothing, until the suite exits.
 ;;;
+;;; The worker's rows order their requests by the example's own count of the
+;;; /slow requests in worker-call, GET /waiting, as the long poll's do, and
+;;; end it with SIGINT, which run-server answers by returning, so the program
+;;; stops its worker and exits 0.
+;;;
 ;;; Oracles: examples/README.md, which says what each example answers; curl,
 ;;; which says which local port it used; the settings a row gives; the
 ;;; bytes a row sends, which the echo hands back; and, for
@@ -39,7 +44,10 @@
 ;;; middleware.sps, which imports (circuit middleware waits) too,
 ;;; router.sps, which imports (circuit router) too, and websocket.sps, which
 ;;; imports (circuit websocket) and (websocket) too; and its last form calls
-;;; run-server. For websocket.sps, RFC 6455 is an oracle too: §1.3's key
+;;; run-server. worker.sps imports (rnrs), `sleep` and `make-time` of
+;;; (chezscheme), (circuit), (circuit http-server), (circuit worker) and
+;;; (circuit middleware waits), and its last two forms are (run-server app)
+;;; and (worker-stop! w). For websocket.sps, RFC 6455 is an oracle too: §1.3's key
 ;;; and its accept, §5.7's masked Hello and its unmasked form, and §5.5.1's
 ;;; close answered with its code.
 ;;;
@@ -476,6 +484,48 @@
 (define (send port message) (answer (fetch port "/send" "--data-binary" message)))
 
 ;;; ------------------------------------------------------------------------
+;;; The worker
+
+;; slow-started! : String Nat String String -> String
+;; Starts a curl on GET TARGET in a directory of its own under DIR, named
+;; NAME, as start! does, and gives that directory.
+(define (slow-started! dir port name target)
+  (let ((d (file-in dir name)))
+    (mkdir d)
+    (start! d (list "curl" "-sS" "-i" "--max-time" "30" (url port target)))
+    d))
+
+;; slow-answer : String -> (U Answer Any)
+;; The answer of the curl in D, once it has ended, waiting at most 20 s;
+;; 'never-ended if it hasn't.
+(define (slow-answer d)
+  (if (poll (lambda () (ended? d)) 20000)
+      (parse-answer (or (file-text (file-in d "out")) ""))
+      'never-ended))
+
+;; timed : (-> Any) Nat -> (List Any (U 'waited (List 'took-ms Nat)))
+;; THUNK's answer, and whether it took MS milliseconds or more.
+(define (timed thunk ms)
+  (let* ((start (now-ms))
+         (a (thunk))
+         (took (- (now-ms) start)))
+    (list a (if (>= took ms) 'waited (list 'took-ms took)))))
+
+;; within : (-> Any) Nat -> (List Any (U 'in-time (List 'took-ms Nat)))
+;; THUNK's answer, and whether it came in under MS milliseconds.
+(define (within thunk ms)
+  (let* ((start (now-ms))
+         (a (thunk))
+         (took (- (now-ms) start)))
+    (list a (if (< took ms) 'in-time (list 'took-ms took)))))
+
+;; The empty 503 the worker's wrap-busy 1 makes.
+(define busy-answer
+  (list "HTTP/1.1 503 Service Unavailable"
+        (list date '("retry-after" . "1") (content-length 0))
+        ""))
+
+;;; ------------------------------------------------------------------------
 ;;; The upgrade
 
 ;; A bash script, its port its first argument: it asks for Upgrade: echo,
@@ -625,6 +675,20 @@
                    (list (car (reverse data)) (car (car data))))
                   (else (list 'no-form-last (reverse data))))))))))
 
+;; program-forms : String -> Any
+;; The first datum of the program at PATH, and its last two. Or why it can't say.
+(define (program-forms path)
+  (guard (e (#t (list 'unreadable (describe e))))
+    (call-with-port (open-input-file path)
+      (lambda (port)
+        (let loop ((data '()))
+          (let ((datum (read port)))
+            (if (eof-object? datum)
+                (if (>= (length data) 3)
+                    (list (car (reverse data)) (list (cadr data) (car data)))
+                    (list 'too-few-forms (reverse data)))
+                (loop (cons datum data)))))))))
+
 ;;; ------------------------------------------------------------------------
 ;;; The rows
 
@@ -650,6 +714,14 @@
                                  " (circuit websocket) and (websocket) alone, and ends in run-server")
                   '((import (rnrs) (circuit) (circuit http-server) (circuit websocket) (websocket)) run-server)
                   (program-shape "examples/websocket.sps"))
+
+      (test-equal (string-append "worker: it imports (rnrs), sleep and make-time of (chezscheme), (circuit),"
+                                 " (circuit http-server), (circuit worker) and (circuit middleware waits)"
+                                 " alone, and ends in (run-server app) and (worker-stop! w)")
+                  '((import (rnrs) (only (chezscheme) sleep make-time) (circuit) (circuit http-server)
+                            (circuit worker) (circuit middleware waits))
+                    ((run-server app) (worker-stop! w)))
+                  (program-forms "examples/worker.sps"))
 
       (with-server "hello" "examples/hello.sps" '()
         (lambda (port)
@@ -935,6 +1007,67 @@
                                  (if (and ms (<= 998 ms) (< ms 1500)) 'from-998-to-under-1500 (list 'ms ms))))
                              (filter (lambda (line) (string=? (car line) "request GET /slow 504 written N 127.0.0.1"))
                                      lines))))))
+
+      (with-server-in "worker" "examples/worker.sps" '()
+        (lambda (dir port)
+          (test-equal "worker: GET / is fast, as text"
+                      (text-answer "HTTP/1.1 200 OK" "fast\n")
+                      (answer (fetch port "/")))
+          (test-equal "worker: GET /waiting with no job is 0 waiting"
+                      (text-answer "HTTP/1.1 200 OK" "0 waiting\n")
+                      (answer (fetch port "/waiting")))
+          (test-equal "worker: GET /slow with no ms sleeps 200 ms, no sooner, then says so"
+                      (list (text-answer "HTTP/1.1 200 OK" "slept 200 ms\n") 'waited)
+                      (timed (lambda () (answer (fetch port "/slow"))) 200))
+          (test-equal "worker: GET /slow?ms=1100 sleeps 1100 ms, no sooner, seconds and all"
+                      (list (text-answer "HTTP/1.1 200 OK" "slept 1100 ms\n") 'waited)
+                      (timed (lambda () (answer (fetch port "/slow?ms=1100"))) 1100))
+          (test-equal "worker: GET /slow?ms=x, not digits, sleeps the default, 200 ms"
+                      (list (text-answer "HTTP/1.1 200 OK" "slept 200 ms\n") 'waited)
+                      (timed (lambda () (answer (fetch port "/slow?ms=x"))) 200))
+          (test-equal "worker: GET / answers within 1 s while a /slow job runs, which is still running then"
+                      (list 1 (list (text-answer "HTTP/1.1 200 OK" "fast\n") 'in-time) 'still-running
+                            (text-answer "HTTP/1.1 200 OK" "slept 3000 ms\n") 0)
+                      (call-with-temp-directory
+                       (lambda (tmp)
+                         (let* ((d (slow-started! tmp port "slow" "/slow?ms=3000"))
+                                (one (until-waiting port 1))
+                                (fast (within (lambda () (answer (fetch port "/"))) 1000))
+                                (running (if (ended? d) 'ended-already 'still-running))
+                                (slow (slow-answer d)))
+                           (stop! d)
+                           (list one fast running slow (until-waiting port 0))))))
+          (test-equal (string-append "worker: one /slow running and one queued, a third is an empty 503 with"
+                                     " retry-after: 1, and the queued one runs only once the first has answered")
+                      (list 1 2 busy-answer
+                            (text-answer "HTTP/1.1 200 OK" "slept 1500 ms\n")
+                            'still-running
+                            (text-answer "HTTP/1.1 200 OK" "slept 1000 ms\n")
+                            0)
+                      (call-with-temp-directory
+                       (lambda (tmp)
+                         (let* ((a (slow-started! tmp port "a" "/slow?ms=1500"))
+                                (one (until-waiting port 1))
+                                (b (slow-started! tmp port "b" "/slow?ms=1000"))
+                                (two (until-waiting port 2))
+                                (third (answer (fetch port "/slow?ms=100")))
+                                (first-answer (slow-answer a))
+                                (b-running (if (ended? b) 'ended-already 'still-running))
+                                (second-answer (slow-answer b)))
+                           (stop! a)
+                           (stop! b)
+                           (list one two third first-answer b-running second-answer (until-waiting port 0))))))
+          (test-equal "worker: any other path is 404, with a hint"
+                      (text-answer "HTTP/1.1 404 Not Found" "try /, /slow?ms=3000 or /waiting\n")
+                      (answer (fetch port "/nope")))
+          ;; The last row: it ends the program.
+          (test-equal "worker: SIGINT ends run-server, the worker is stopped, and the program exits 0"
+                      (list 'sent 0)
+                      (let ((pid (number-in dir "pid")))
+                        (list (if (and pid (= 0 (car (capture-command (list "kill" "-INT" (number->string pid))))))
+                                  'sent
+                                  'not-sent)
+                              (and (poll (lambda () (ended? dir)) 10000) (number-in dir "status")))))))
 
       (with-server "loopback" "tests/loopback-app.sps"
         '("CIRCUIT_PORT_PIECE_BYTES=4" "CHEZ_HTTP_MAX_BODY_BYTES=4")

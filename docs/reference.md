@@ -1,6 +1,6 @@
 # API reference
 
-Every name the twelve public libraries export, one entry each, library by
+Every name the thirteen public libraries export, one entry each, library by
 library. An entry gives the name's signature, says what it does, and links
 the guide page that explains it. A name `(circuit http-server)` re-exports
 from chez-http-server has no signature here: its entry links the server's
@@ -22,6 +22,7 @@ Cookies    = (Listof (Pair String String))
 Session    = (Listof (Pair String String))
 TakeOver   = (Transport Bytevector -> Answer)
 Env        = (String -> (U String #f))
+State      = Any
 ```
 
 - `Req` is a request, `Res` a response, and `Nat` an exact integer, 0 or
@@ -40,6 +41,9 @@ Env        = (String -> (U String #f))
   `CookieOption` is what a `cookie-` constructor makes, such as
   `cookie-path`, and `SessionOption` what a `session-` constructor makes,
   such as `session-name`.
+- `Worker` is what `make-worker` and `make-test-worker` make, and `State`
+  is what a worker's set-up returns, which each of its jobs gets.
+  `Positive-Fixnum` is a fixnum of 1 or more.
 - `Request`, `Transport`, `Answer` and `Awaiting` are chez-http-server's.
   `WebSocket`, `HandshakeSettings` and `WebsocketLimits` are
   chez-websocket's.
@@ -1541,6 +1545,108 @@ The answer to a handshake: a 101 whose take-over runs the procedure with the
 WebSocket, or the refusal, a 400 or 403 with no body. Settings and limits
 left out are chez-websocket's defaults. See
 [Upgrades and WebSockets](upgrades.md).
+
+## `(circuit worker)`
+
+Runs a blocking job on a thread of its own, and answers 503 when the worker
+has no room.
+
+```scheme
+(import (rnrs) (circuit) (circuit http-server) (circuit worker)
+        (circuit middleware waits))
+```
+
+### `make-worker`
+
+```text
+make-worker : (-> State) Nat [Positive-Fixnum] [(State -> Any)] -> Worker
+```
+
+`(make-worker set-up cap [threads [tear-down]])` starts `threads` threads,
+1 by default, each with the state its run of `set-up` returns, and a queue
+of at most `cap` jobs. Each thread runs `tear-down`, if given, with its
+state after its last job. See [Workers](workers.md).
+
+### `worker-call`
+
+```text
+worker-call : Worker (State -> Any) -> Any
+```
+
+Runs the job on one of the worker's threads with that thread's state,
+waits for it, and answers its values, or raises what it raised. With no
+thread idle and the queue full it raises `&worker-full`, and once a stop
+has begun `&worker-stopped`. See [Workers](workers.md).
+
+### `worker-stop!`
+
+```text
+worker-stop! : Worker -> Void
+```
+
+Refuses the jobs not yet begun, waits for the running ones, and tears every
+thread down. Call it after `run-server` returns, never from a job. See
+[Workers](workers.md).
+
+### `worker?`
+
+```text
+worker? : Any -> Boolean
+```
+
+Whether the value is a worker. See [Workers](workers.md).
+
+### `make-test-worker`
+
+```text
+make-test-worker : (-> State) [(State -> Any)] -> Worker
+```
+
+A worker for tests: one thread and no queue. See [Workers](workers.md).
+
+### `&worker-full`
+
+```text
+&worker-full : ConditionType
+```
+
+What a call raises when no thread is idle and the queue is full. See
+[Workers](workers.md).
+
+### `worker-full?`
+
+```text
+worker-full? : Any -> Boolean
+```
+
+Whether the value is a `&worker-full`. See [Workers](workers.md).
+
+### `&worker-stopped`
+
+```text
+&worker-stopped : ConditionType
+```
+
+What a call raises once a stop has begun, and what the caller of a job
+not yet begun at the stop gets. See [Workers](workers.md).
+
+### `worker-stopped?`
+
+```text
+worker-stopped? : Any -> Boolean
+```
+
+Whether the value is a `&worker-stopped`. See [Workers](workers.md).
+
+### `wrap-busy`
+
+```text
+wrap-busy : Nat -> Middleware
+```
+
+Answers an empty 503 with `retry-after` of that many seconds when the
+handler raises `&worker-full` or `&worker-stopped`. Put it inside
+`wrap-catch`. See [Workers](workers.md).
 
 ## `(circuit test)`
 

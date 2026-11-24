@@ -126,6 +126,9 @@ It prints the statuses the client has read, at 999 ms and at 1000 ms:
   read.
 - Nothing runs between your calls, so a test never sleeps and never hangs.
 - `wrap-catch` alone needs no host, as long as the handler doesn't wait.
+- A handler that calls a worker runs here too, on `make-test-worker`,
+  though two things can hang it: see
+  [Workers](workers.md#test-a-handler-that-calls-a-worker).
 - The server's
   [Testing handlers](https://github.com/Kiyomi-Computation-Systems/chez-http-server/blob/v0.12.0/docs/testing.md)
   has the rest: a body in pieces, a client that leaves, the server's log.
